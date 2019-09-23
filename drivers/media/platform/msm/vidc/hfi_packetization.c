@@ -1735,7 +1735,7 @@ int create_pkt_cmd_session_set_property(
 	{
 		struct hfi_vpe_color_space_conversion *hfi = NULL;
 		struct hal_vpe_color_space_conversion *hal = pdata;
-		dprintk(VIDC_ERR, "HAL_PARAM_VPE_COLOR_SPACE_CONVERSION +\n");
+
 		pkt->rg_property_data[0] =
 				HFI_PROPERTY_PARAM_VPE_COLOR_SPACE_CONVERSION;
 		hfi = (struct hfi_vpe_color_space_conversion *)
@@ -1752,7 +1752,6 @@ int create_pkt_cmd_session_set_property(
 		memcpy(hfi->csc_bias, hal->csc_bias, sizeof(hfi->csc_bias));
 		memcpy(hfi->csc_limit, hal->csc_limit, sizeof(hfi->csc_limit));
 		pkt->size += sizeof(struct hfi_vpe_color_space_conversion);
-		dprintk(VIDC_ERR, "HAL_PARAM_VPE_COLOR_SPACE_CONVERSION -\n");
 		break;
 	}
 	case HAL_PARAM_VENC_VPX_ERROR_RESILIENCE_MODE:

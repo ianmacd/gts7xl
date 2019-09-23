@@ -303,7 +303,7 @@ void process_pd(void *data, u8 plug_attach_done, u8 *pdic_attach, MSG_IRQ_STATUS
 		process_message_role(usbpd_data);
 	} else ;
 
-	if (MSG_IRQ_State->BITS.Data_Flag_SRC_Capability)
+	if (MSG_IRQ_State->BITS.Data_Flag_SRC_Capability && !is_src)
 	{
 		uint8_t ReadMSG[32];
 		int available_pdo_num;

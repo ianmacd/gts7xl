@@ -101,6 +101,7 @@ struct stm32_touchpad_dev {
 	int					move_count[STM32_TOUCH_MAX_FINGER_NUM];
 	int					touch_count;
 	u8					button;
+	u8					button_state;
 	int					button_code;
 };
 
@@ -114,8 +115,9 @@ static void stm32_release_all_finger(struct stm32_touchpad_dev *stm32)
 		return;
 
 	input_info(true, &stm32->pdev->dev, "%s\n", __func__);
-	if (stm32->button == ICON_BUTTON_DOWN) {
-		stm32->button = ICON_BUTTON_UP;
+	stm32->button = ICON_BUTTON_UP;
+	if (stm32->button_state == ICON_BUTTON_DOWN) {
+		stm32->button_state = ICON_BUTTON_UP;
 		input_report_key(stm32->input_dev, stm32->button_code, 0);
 		input_info(true, &stm32->pdev->dev, "[BRA] 0x%X\n", stm32->button_code);
 	}
@@ -161,7 +163,7 @@ static void stm32_pogo_touchpad_event(struct stm32_touchpad_dev *stm32, char *ev
 {
 	struct stm32_point_data touch_info;
 	int i;
-	static int latest_id;
+	static int latest_id = 0;
 	u8 sub_status, prev_sub_status;
 	int x, y, w, lx, ly;
 
@@ -184,17 +186,16 @@ static void stm32_pogo_touchpad_event(struct stm32_touchpad_dev *stm32, char *ev
 	memcpy(&touch_info, event, len);
 
 	if (stm32_bit_test(touch_info.status, BIT_ICON_EVENT)) {
-		if (stm32_bit_test(touch_info.button_info, BIT_O_ICON0_DOWN))
+		if (stm32_bit_test(touch_info.button_info, BIT_O_ICON0_DOWN)) {
 			stm32->button = ICON_BUTTON_DOWN;
-		else
+		} else {
 			stm32->button = ICON_BUTTON_UP;
-
-		input_report_key(stm32->input_dev, stm32->button_code,
-					stm32->button == ICON_BUTTON_DOWN);
-		input_info(true, &stm32->pdev->dev,
-				"[B%s] 0x%X\n",
-				stm32->button == ICON_BUTTON_DOWN ? "P" : "R",
-				stm32->button_code);
+			if (stm32->button_state == ICON_BUTTON_DOWN)
+				input_info(true, &stm32->pdev->dev,
+						"[BR] 0x%X\n", stm32->button_code);
+			stm32->button_state = ICON_BUTTON_UP;
+			input_report_key(stm32->input_dev, stm32->button_code, ICON_BUTTON_UP);
+		}
 	}
 
 	if (!stm32_bit_test(touch_info.status, BIT_PT_EXIST)) {
@@ -313,27 +314,33 @@ static void stm32_pogo_touchpad_event(struct stm32_touchpad_dev *stm32, char *ev
 		sizeof(struct stm32_point_data));
 
 out_sync:
-	input_sync(stm32->input_dev);
-
 	/* decide LEFT/RIGHT button event based on coordinate of last touch id */
-	if (stm32->button == ICON_BUTTON_UP) {
+	if (stm32->button_state == ICON_BUTTON_UP) {
 		int resolution_x = 0;
 
 		if (stm32->touch_count == 0) {
 			stm32->button_code = BTN_LEFT;
 			latest_id = 0;
-			return;
+		} else {
+			resolution_x = pogo_get_tc_resolution_x();
+			if (resolution_x <= 0)
+				resolution_x = 1776;
+
+			if (touch_info.coords[latest_id].x < resolution_x / 2)
+				stm32->button_code = BTN_LEFT;
+			else
+				stm32->button_code = BTN_RIGHT;
+
+			if (stm32->button == ICON_BUTTON_DOWN) {
+				stm32->button_state = ICON_BUTTON_DOWN;
+				input_report_key(stm32->input_dev, stm32->button_code, ICON_BUTTON_DOWN);
+				input_info(true, &stm32->pdev->dev,
+						"[BP] tID:%d 0x%X\n", latest_id, stm32->button_code);
+			}
 		}
-
-		resolution_x = pogo_get_tc_resolution_x();
-		if (resolution_x <= 0)
-			resolution_x = 1776;
-
-		if (touch_info.coords[latest_id].x < resolution_x / 2)
-			stm32->button_code = BTN_LEFT;
-		else
-			stm32->button_code = BTN_RIGHT;
 	}
+
+	input_sync(stm32->input_dev);
 }
 
 #ifdef CONFIG_OF

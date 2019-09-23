@@ -39,6 +39,8 @@
 #include <linux/rkp_cfp.h>
 #endif
 
+#include <linux/qseecom.h>
+
 static char rr_str[][3] = {
 	[USER_UPLOAD_CAUSE_SMPL] = "SP",
 	[USER_UPLOAD_CAUSE_WTSR] = "WP",
@@ -404,7 +406,7 @@ static ssize_t sec_debug_rdx_bootdev_proc_write(struct file *file,
 			goto out;
 		}
 
-		pfiemap = phys_to_virt(sec_debug_rdx_bootdev_paddr);
+		pfiemap = phys_to_virt(sec_debug_rdx_bootdev_paddr) + SHA256_DIGEST_LENGTH;
 		paddr = virt_to_phys(&pfiemap->fm_extents[pfiemap->fm_mapped_extents]);
 		if (paddr <
 			sec_debug_rdx_bootdev_paddr + sec_debug_rdx_bootdev_size) {

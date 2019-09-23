@@ -2124,7 +2124,6 @@ int msm_venc_s_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 		break;
 	}
 	case V4L2_CID_MPEG_VIDC_VIDEO_VPE_CSC:
-		dprintk(VIDC_ERR, "V4L2_CID_MPEG_VIDC_VIDEO_VPE_CSC +\n");
 		if (ctrl->val != V4L2_MPEG_MSM_VIDC_ENABLE)
 			break;
 		temp_ctrl = TRY_GET_CTRL(V4L2_CID_MPEG_VIDC_VIDEO_COLOR_SPACE);
@@ -2135,16 +2134,13 @@ int msm_venc_s_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 		rc = msm_venc_set_csc(inst, color_primaries, custom_matrix);
 		if (rc)
 			dprintk(VIDC_ERR, "fail to set csc: %d\n", rc);
-		dprintk(VIDC_ERR, "V4L2_CID_MPEG_VIDC_VIDEO_VPE_CSC -\n", rc);
 		break;
 	case V4L2_CID_MPEG_VIDC_VIDEO_VPE_CSC_CUSTOM_MATRIX:
-		dprintk(VIDC_ERR, "V4L2_CID_MPEG_VIDC_VIDEO_VPE_CSC_CUSTOM_MATRIX +\n");
 		temp_ctrl = TRY_GET_CTRL(V4L2_CID_MPEG_VIDC_VIDEO_COLOR_SPACE);
 		color_primaries = temp_ctrl->val;
 		rc = msm_venc_set_csc(inst, color_primaries, ctrl->val);
 		if (rc)
 			dprintk(VIDC_ERR, "fail to set csc: %d\n", rc);
-		dprintk(VIDC_ERR, "V4L2_CID_MPEG_VIDC_VIDEO_VPE_CSC_CUSTOM_MATRIX -\n");
 		break;
 	case V4L2_CID_MPEG_VIDC_VIDEO_LOWLATENCY_MODE:
 	{
@@ -2273,7 +2269,7 @@ int msm_venc_s_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 #undef TRY_GET_CTRL
 
 	if (!rc && property_id) {
-		dprintk(VIDC_ERR,
+		dprintk(VIDC_DBG,
 			"Control: %x : Name = %s, ID = 0x%x Value = %d\n",
 			hash32_ptr(inst->session), ctrl->name,
 			ctrl->id, ctrl->val);
@@ -2657,7 +2653,7 @@ static int msm_venc_set_csc(struct msm_vidc_inst *inst,
 	u32 *bias_coeff = NULL;
 	u32 *csc_limit = NULL;
 	u32 *csc_matrix = NULL;
-	dprintk(VIDC_ERR, "msm_venc_set_csc +\n");
+
 	resources = &(inst->core->resources);
 	bias_coeff =
 		resources->csc_coeff_data->vpe_csc_custom_bias_coeff;
@@ -2688,7 +2684,7 @@ static int msm_venc_set_csc(struct msm_vidc_inst *inst,
 			HAL_PARAM_VPE_COLOR_SPACE_CONVERSION, &vpe_csc);
 	if (rc)
 		dprintk(VIDC_ERR, "Setting VPE coefficients failed\n");
-	dprintk(VIDC_ERR, "msm_venc_set_csc -\n");
+
 	return rc;
 }
 

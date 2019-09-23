@@ -2415,7 +2415,7 @@ static int venus_hfi_session_set_property(void *sess,
 	struct hal_session *session = sess;
 	struct venus_hfi_device *device;
 	int rc = 0;
-	dprintk(VIDC_ERR, "venus_hfi_session_set_property +\n");
+
 	if (!session || !session->device || !pdata) {
 		dprintk(VIDC_ERR, "Invalid Params\n");
 		return -EINVAL;
@@ -2443,15 +2443,14 @@ static int venus_hfi_session_set_property(void *sess,
 		rc = -EINVAL;
 		goto err_set_prop;
 	}
-	dprintk(VIDC_ERR, "venus_hfi_session_set_property::__iface_cmdq_write +\n");
+
 	if (__iface_cmdq_write(session->device, pkt)) {
 		rc = -ENOTEMPTY;
 		goto err_set_prop;
 	}
-	dprintk(VIDC_ERR, "venus_hfi_session_set_property::__iface_cmdq_write -\n");
+
 err_set_prop:
 	mutex_unlock(&device->lock);
-	dprintk(VIDC_ERR, "venus_hfi_session_set_property -\n");
 	return rc;
 }
 

@@ -3831,9 +3831,14 @@ static void clear_cover_mode(void *device_data)
 		}
 
 		if (info->fts_power_state != FTS_POWER_STATE_POWERDOWN && info->reinit_done) {
+			mutex_lock(&info->device_mutex);
 			if (info->flip_enable) {
 				fts_set_cover_type(info, true);
 				fts_set_scanmode(info, FTS_SCAN_MODE_SCAN_OFF);
+				fts_release_all_finger(info);
+#ifdef FTS_SUPPORT_TOUCH_KEY
+				fts_release_all_key(info);
+#endif
 			} else {
 				fts_set_cover_type(info, false);
 				if (info->fts_power_state == FTS_POWER_STATE_LOWPOWER)
@@ -3841,6 +3846,7 @@ static void clear_cover_mode(void *device_data)
 				else
 					fts_set_scanmode(info, info->scan_mode);
 			}
+			mutex_unlock(&info->device_mutex);
 		}
 
 		snprintf(buff, sizeof(buff), "OK");

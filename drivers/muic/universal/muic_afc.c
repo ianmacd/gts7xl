@@ -31,6 +31,9 @@
 #include "muic_i2c.h"
 #include <linux/ccic/s2mm005.h>
 #include "muic_apis.h"
+#if defined(CONFIG_MUIC_SUPPORT_KEYBOARDDOCK)
+#include "muic_vps.h"
+#endif
 #include "../../battery_v2/include/sec_charging_common.h"
 
 #if defined(CONFIG_MUIC_NOTIFIER)
@@ -322,7 +325,8 @@ int muic_restart_afc(int noti)
 	}
 	cancel_delayed_work(&gpmuic->afc_retry_work);
 	schedule_delayed_work(&gpmuic->afc_retry_work, msecs_to_jiffies(5000)); // 5sec
-
+	
+	muic_afc_delay_check_state(0);
 //12085272???
 #ifdef CONFIG_MUIC_SM5705_AFC_18W_TA_SUPPORT
 	pr_info("%s:%s pmuic->is_18w_ta = %d \n",MUIC_DEV_NAME, __func__,gpmuic->is_18w_ta);
@@ -474,7 +478,12 @@ static void muic_afc_delay_check_work(struct work_struct *work)
 
 	val1 = muic_i2c_read_byte(i2c, REG_DEVT1);
 	pr_info("%s:val1 = 0x%x \n", __func__, val1);
+#if defined(CONFIG_MUIC_SUPPORT_KEYBOARDDOCK)
+	if ((gpmuic->attached_dev == ATTACHED_DEV_TA_MUIC) && (val1 == 0x40
+		|| gpmuic->vps.s.chgtyp == CHGTYP_DEDICATED_CHARGER)) {
+#else
 	if ((gpmuic->attached_dev == ATTACHED_DEV_TA_MUIC) && (val1 == 0x40)) {
+#endif
 		pr_info("%s: DP_RESET\n", __func__);
 		afcops->afc_ctrl_reg(gpmuic->regmapdesc, AFCCTRL_DIS_AFC, 1);
 		msleep(60);

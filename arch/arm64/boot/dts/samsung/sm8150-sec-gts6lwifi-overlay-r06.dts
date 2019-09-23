@@ -5226,6 +5226,7 @@
 				label = "gpio_keys";
 				pinctrl-names = "default";
 				pinctrl-0 = <0x7f>;
+				gpio-key,wakeup_enable;
 				phandle = <0x110>;
 
 				vol_up {
