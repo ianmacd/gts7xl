@@ -9358,6 +9358,19 @@ list_destroy:
 	return ret;
 }
 
+/*
+ * enum hdd_block_shutdown - Control if driver allows modem shutdown
+ * @HDD_UNBLOCK_MODEM_SHUTDOWN: Unblock shutdown
+ * @HDD_BLOCK_MODEM_SHUTDOWN: Block shutdown
+ *
+ * On calling pld_block_shutdown API with the given values, modem
+ * graceful shutdown is blocked/unblocked.
+ */
+enum hdd_block_shutdown {
+       HDD_UNBLOCK_MODEM_SHUTDOWN,
+       HDD_BLOCK_MODEM_SHUTDOWN,
+};
+
 /**
  * ie_whitelist_attrs_init() - initialize ie whitelisting attributes
  * @hdd_ctx: pointer to hdd context
@@ -9409,9 +9422,15 @@ static void hdd_iface_change_callback(void *priv)
 
 	hdd_enter();
 	hdd_debug("Interface change timer expired close the modules!");
+	
+	/* Block the modem graceful shutdown till stop modules is completed */
+	pld_block_shutdown(hdd_ctx->parent_dev, HDD_BLOCK_MODEM_SHUTDOWN);
+	
 	ret = hdd_wlan_stop_modules(hdd_ctx, false);
 	if (ret)
 		hdd_err("Failed to stop modules");
+	
+	pld_block_shutdown(hdd_ctx->parent_dev, HDD_UNBLOCK_MODEM_SHUTDOWN);
 	hdd_exit();
 }
 
@@ -12548,6 +12567,11 @@ static void __hdd_bus_bw_compute_timer_start(struct hdd_context *hdd_ctx)
 void hdd_bus_bw_compute_timer_start(struct hdd_context *hdd_ctx)
 {
 	hdd_enter();
+
+	if (wlan_hdd_validate_context(hdd_ctx)) {
+		hdd_exit();
+		return;
+	}
 
 	if (hdd_bus_bw_compute_timer_is_running(hdd_ctx)) {
 		hdd_debug("Bandwidth compute timer already started");

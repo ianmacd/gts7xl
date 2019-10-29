@@ -2574,7 +2574,10 @@ static QDF_STATUS lim_tdls_setup_add_sta(tpAniSirGlobal pMac,
 	if (pStaDs && pAddStaReq->tdlsAddOper == TDLS_OPER_ADD) {
 		pe_err("TDLS entry for peer: "MAC_ADDRESS_STR " already exist, cannot add new entry",
 			MAC_ADDR_ARRAY(pAddStaReq->peermac.bytes));
-			return QDF_STATUS_E_FAILURE;
+	}
+	if (!pStaDs && pAddStaReq->tdlsAddOper == TDLS_OPER_UPDATE) {
+		pe_err("TDLS update peer is given without peer creation");
+		return QDF_STATUS_E_FAILURE;
 	}
 
 	if (pStaDs && pStaDs->staType != STA_ENTRY_TDLS_PEER) {
@@ -3146,17 +3149,16 @@ static void lim_check_aid_and_delete_peer(tpAniSirGlobal p_mac,
 				lim_send_deauth_mgmt_frame(p_mac,
 					eSIR_MAC_DEAUTH_LEAVING_BSS_REASON,
 					stads->staAddr, session_entry, false);
-
-				/* Delete TDLS peer */
-				qdf_mem_copy(mac_addr.bytes, stads->staAddr,
-					     QDF_MAC_ADDR_SIZE);
-
-				status = lim_tdls_del_sta(p_mac, mac_addr,
-							 session_entry, false);
-				if (status != QDF_STATUS_SUCCESS)
-					pe_debug("peer "MAC_ADDRESS_STR" not found",
-						MAC_ADDR_ARRAY(stads->staAddr));
 			}
+			/* Delete TDLS peer */
+			qdf_mem_copy(mac_addr.bytes, stads->staAddr,
+				     QDF_MAC_ADDR_SIZE);
+
+			status = lim_tdls_del_sta(p_mac, mac_addr,
+						  session_entry, false);
+			if (status != QDF_STATUS_SUCCESS)
+				pe_debug("peer " QDF_MAC_ADDR_STR " not found",
+					 QDF_MAC_ADDR_ARRAY(stads->staAddr));
 
 			dph_delete_hash_entry(p_mac,
 				stads->staAddr, stads->assocId,
@@ -3168,6 +3170,11 @@ skip:
 			CLEAR_BIT(session_entry->peerAIDBitmap[i], aid);
 		}
 	}
+}
+
+void lim_update_tdls_set_state_for_fw(tpPESession session_entry, bool value)
+{
+	session_entry->tdls_send_set_state_disable  = value;
 }
 
 /**
@@ -3192,12 +3199,24 @@ QDF_STATUS lim_delete_tdls_peers(tpAniSirGlobal mac_ctx,
 
 	lim_check_aid_and_delete_peer(mac_ctx, session_entry);
 
+	tgt_tdls_delete_all_peers_indication(mac_ctx->psoc,
+					     session_entry->smeSessionId);
+
 	if (lim_is_roam_synch_in_progress(session_entry))
 		return QDF_STATUS_SUCCESS;
+	/* In case of CSA, Only peers in lim and TDLS component
+	 * needs to be removed and set state disable command
+	 * should not be sent to fw as there is no way to enable
+	 * TDLS in FW after vdev restart.
+	 */
+	if (session_entry->tdls_send_set_state_disable) {
+		tgt_tdls_peers_deleted_notification(mac_ctx->psoc,
+						    session_entry->
+						    smeSessionId);
+	}
 
-	tgt_tdls_peers_deleted_notification(mac_ctx->psoc,
-					    session_entry->smeSessionId);
-
+	/* reset the set_state_disable flag */
+	session_entry->tdls_send_set_state_disable = true;
 	pe_debug("Exit");
 	return QDF_STATUS_SUCCESS;
 }

@@ -268,7 +268,8 @@ struct discard_entry {
 };
 
 /* default discard granularity of inner discard thread, unit: block count */
-#define DEFAULT_DISCARD_GRANULARITY		16
+// P190708-00895
+#define DEFAULT_DISCARD_GRANULARITY		1
 
 /* max discard pend list number */
 #define MAX_PLIST_NUM		512

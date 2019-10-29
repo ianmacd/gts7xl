@@ -842,7 +842,12 @@ void process_cc_attach(void * data,u8 *plug_attach_done)
 				usbpd_data->acc_type = CCIC_DOCK_TYPEC_ANALOG_EARPHONE;
 				process_check_accessory(usbpd_data);
 				return;
-			}
+			} else if(usbpd_data->pd_state == State_PE_Initial_detach && 
+				usbpd_data->acc_type == CCIC_DOCK_TYPEC_ANALOG_EARPHONE) {
+				dev_info(&i2c->dev, "Type-C Earjack removed\n");
+				schedule_delayed_work(&usbpd_data->acc_detach_work, msecs_to_jiffies(0));
+				return;				
+			}			
 		}
 	}
 #ifdef CONFIG_USB_NOTIFY_PROC_LOG

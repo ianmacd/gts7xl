@@ -1016,9 +1016,10 @@ static int sm5705_afc_ta_attach(struct regmap_desc *pdesc)
 		} else {
 			pr_info("%s:%s battery driver has not been initialized yet.\n", MUIC_DEV_NAME, __func__);
 		}
+
+		muic_dpreset_afc();
 		pmuic->attached_dev = ATTACHED_DEV_NONE_MUIC;
 		muic_notifier_detach_attached_dev(pmuic->attached_dev);
-		muic_dpreset_afc();
 		msleep(500);
 		pmuic->attached_dev = ATTACHED_DEV_TA_MUIC;
 		muic_notifier_attach_attached_dev(pmuic->attached_dev);

@@ -4546,61 +4546,6 @@ static bool msm_swap_gnd_mic(struct snd_soc_codec *codec, bool active)
 	return ret;
 }
 
-static int msm_afe_set_config(struct snd_soc_codec *codec)
-{
-	int ret = 0;
-	void *config_data = NULL;
-
-	if (!msm_codec_fn.get_afe_config_fn) {
-		dev_err(codec->dev, "%s: codec get afe config not init'ed\n",
-			__func__);
-		return -EINVAL;
-	}
-
-	config_data = msm_codec_fn.get_afe_config_fn(codec,
-			AFE_CDC_REGISTERS_CONFIG);
-	if (config_data) {
-		ret = afe_set_config(AFE_CDC_REGISTERS_CONFIG, config_data, 0);
-		if (ret) {
-			dev_err(codec->dev,
-				"%s: Failed to set codec registers config %d\n",
-				__func__, ret);
-			return ret;
-		}
-	}
-
-	config_data = msm_codec_fn.get_afe_config_fn(codec,
-			AFE_CDC_REGISTER_PAGE_CONFIG);
-	if (config_data) {
-		ret = afe_set_config(AFE_CDC_REGISTER_PAGE_CONFIG, config_data,
-				    0);
-		if (ret)
-			dev_err(codec->dev,
-				"%s: Failed to set cdc register page config\n",
-				__func__);
-	}
-
-	config_data = msm_codec_fn.get_afe_config_fn(codec,
-			AFE_SLIMBUS_SLAVE_CONFIG);
-	if (config_data) {
-		ret = afe_set_config(AFE_SLIMBUS_SLAVE_CONFIG, config_data, 0);
-		if (ret) {
-			dev_err(codec->dev,
-				"%s: Failed to set slimbus slave config %d\n",
-				__func__, ret);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
-static void msm_afe_clear_config(void)
-{
-	afe_clear_config(AFE_CDC_REGISTERS_CONFIG);
-	afe_clear_config(AFE_SLIMBUS_SLAVE_CONFIG);
-}
-
 static int msm_adsp_power_up_config(struct snd_soc_codec *codec,
 				    struct snd_card *card)
 {
@@ -4643,11 +4588,6 @@ static int msm_adsp_power_up_config(struct snd_soc_codec *codec,
 		goto err;
 	}
 
-	ret = msm_afe_set_config(codec);
-	if (ret)
-		pr_err("%s: Failed to set AFE config. err %d\n",
-			__func__, ret);
-
 	return 0;
 
 err:
@@ -4672,12 +4612,29 @@ static int sm8150_notifier_service_cb(struct notifier_block *this,
 {
 	int ret;
 	struct snd_soc_card *card = NULL;
-	const char *be_dl_name = LPASS_BE_SLIMBUS_0_RX;
+	const char *be_dl_name = LPASS_BE_SEC_TDM_RX_0;
 	struct snd_soc_pcm_runtime *rtd;
 	struct snd_soc_codec *codec;
 	struct msm_asoc_mach_data *pdata;
 
 	pr_debug("%s: Service opcode 0x%lx\n", __func__, opcode);
+
+	if (!spdev)
+		return -EINVAL;
+	
+	card = platform_get_drvdata(spdev);
+	rtd = snd_soc_get_pcm_runtime(card, be_dl_name);
+	if (!rtd) {
+		dev_err(card->dev,
+			"%s: snd_soc_get_pcm_runtime for %s failed!\n",
+			__func__, be_dl_name);
+		ret = -EINVAL;
+		goto err;
+	}
+	codec = rtd->codec;
+	
+	pdata = snd_soc_card_get_drvdata(card);
+	pdata->codec = codec;
 
 	switch (opcode) {
 	case AUDIO_NOTIFIER_SERVICE_DOWN:
@@ -4689,29 +4646,14 @@ static int sm8150_notifier_service_cb(struct notifier_block *this,
 		 */
 		if (is_initial_boot)
 			break;
-		msm_afe_clear_config();
+		snd_soc_card_change_online_state(codec->component.card, 0);
 		break;
 	case AUDIO_NOTIFIER_SERVICE_UP:
 		if (is_initial_boot) {
 			is_initial_boot = false;
 			break;
-		}
-		if (!spdev)
-			return -EINVAL;
-
-		card = platform_get_drvdata(spdev);
-		rtd = snd_soc_get_pcm_runtime(card, be_dl_name);
-		if (!rtd) {
-			dev_err(card->dev,
-				"%s: snd_soc_get_pcm_runtime for %s failed!\n",
-				__func__, be_dl_name);
-			ret = -EINVAL;
-			goto err;
-		}
-		codec = rtd->codec;
-
-		pdata = snd_soc_card_get_drvdata(card);
-		pdata->codec = codec;
+		}	
+		snd_soc_card_change_online_state(codec->component.card, 1);
 		schedule_work(&pdata->adsp_power_up_work);
 		break;
 	default:

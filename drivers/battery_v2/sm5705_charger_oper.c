@@ -190,6 +190,23 @@ out:
 	return 0;
 }
 EXPORT_SYMBOL(sm5705_charger_oper_push_event);
+
+int sm5705_charger_set_otg_boost(bool enable)
+{
+	if (oper_info.i2c == NULL) {
+		pr_err("sm5705-charger: %s: required sm5705 charger operation table initialize\n", __func__);
+		return -ENOENT;
+	}
+	
+	sm5705_charger_oper_set_BSTOUT(oper_info.i2c, BST_OUT_4500mV);
+	sm5705_charger_oper_set_OTG_CURRENT(oper_info.i2c, OTG_CURRENT_500mA);
+	pr_info("sm5705-charger: %s: enable=%d, BST_OUT: 0x%x, OTG_CURRENT: 0x%x\n", \
+			__func__, enable, BST_OUT_4500mV, OTG_CURRENT_500mA);
+
+	return 0;
+}
+EXPORT_SYMBOL(sm5705_charger_set_otg_boost);
+
 int sm5705_charger_oper_table_init(struct i2c_client *i2c)
 {
 	if (i2c == NULL) {

@@ -7236,6 +7236,9 @@ int msm_pci_probe(struct pci_dev *pci_dev,
 		return ret;
 	}
 
+	if (pcie_dev->rc_idx == 0x1)
+		pci_dev->no_d3hot = true;
+
 	return 0;
 }
 

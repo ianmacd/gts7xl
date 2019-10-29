@@ -131,6 +131,9 @@ static inline int pld_snoc_is_fw_rejuvenate(void)
 {
 	return 0;
 }
+static inline void pld_snoc_block_shutdown(bool status)
+{
+}
 
 #else
 int pld_snoc_register_driver(void);
@@ -303,6 +306,9 @@ static inline int pld_snoc_force_assert_target(struct device *dev)
 static inline int pld_snoc_is_fw_rejuvenate(void)
 {
 	return icnss_is_rejuvenate();
+}
+static inline void pld_snoc_block_shutdown(bool status)
+{
 }
 
 #endif

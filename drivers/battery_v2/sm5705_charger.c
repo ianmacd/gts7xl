@@ -826,6 +826,10 @@ static int sm5705_chg_set_property(struct power_supply *psy, enum power_supply_p
 		pr_info("POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL - otg_en=%d\n", val->intval);
 		psy_chg_set_charge_otg_control(charger, val->intval);
 		break;
+	case POWER_SUPPLY_PROP_BOOST_CURRENT:
+		pr_info("POWER_SUPPLY_PROP_BOOST_CURRENT - boost=%d\n", val->intval);
+		sm5705_charger_set_otg_boost(val->intval);
+		break;
 #endif
 	default:
 		pr_err("un-known Power-supply property type (psp=%d)\n", psp);
@@ -1136,6 +1140,11 @@ static int sm5705_otg_set_property(struct power_supply *psy, enum power_supply_p
 #endif
 		power_supply_changed(charger->psy_otg);
 		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
+		pr_info("POWER_SUPPLY_PROP_VOLTAGE_MAX - %s\n", (val->intval) ? "ON" : "OFF");
+
+		psy_do_property("sm5705-charger", set, POWER_SUPPLY_PROP_BOOST_CURRENT, value);
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -1144,6 +1153,7 @@ static int sm5705_otg_set_property(struct power_supply *psy, enum power_supply_p
 }
 static enum power_supply_property sm5705_otg_props[] = {
 	POWER_SUPPLY_PROP_ONLINE,
+	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 };
 
 /**

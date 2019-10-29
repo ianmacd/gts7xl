@@ -3383,6 +3383,10 @@ static int fts_stop_device(struct fts_ts_info *info, bool lpmode)
 		goto out;
 	}
 
+	info->touch_noise_status = 0;
+	info->touch_noise_reason = 0;
+	info->wet_mode = 0;
+
 	if (lpmode) {
 		input_info(true, &info->client->dev, "%s: lowpower flag:0x%02X\n", __func__, info->lowpower_flag);
 
@@ -3411,12 +3415,6 @@ static int fts_stop_device(struct fts_ts_info *info, bool lpmode)
 #ifdef FTS_SUPPORT_TOUCH_KEY
 		fts_release_all_key(info);
 #endif
-
-		info->hover_enabled = false;
-		info->hover_ready = false;
-		info->touch_noise_status = 0;
-		info->touch_noise_reason = 0;
-		info->wet_mode = 0;
 		info->fts_power_state = FTS_POWER_STATE_POWERDOWN;
 
 		if (info->board->power)

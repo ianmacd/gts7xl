@@ -799,10 +799,9 @@ static int pci_pm_suspend_noirq(struct device *dev)
 		}
 	}
 
-	/* if d3hot is not supported bail out */ 
-	if (pci_dev->no_d3hot) 
-		return 0; 
-
+	/* if d3hot is not supported bail out */
+	if (pci_dev->no_d3hot)
+		return 0;
 	if (!pci_dev->state_saved) {
 		pci_save_state(pci_dev);
 		if (pci_power_manageable(pci_dev))
@@ -853,6 +852,9 @@ static int pci_pm_resume(struct device *dev)
 	const struct dev_pm_ops *pm = dev->driver ? dev->driver->pm : NULL;
 	int error = 0;
 
+	if (pci_dev->no_d3hot) 
+		goto skip_pci_pm_restore; 
+
 	/*
 	 * This is necessary for the suspend error path in which resume is
 	 * called without restoring the standard config registers of the device.
@@ -860,6 +862,7 @@ static int pci_pm_resume(struct device *dev)
 	if (pci_dev->state_saved)
 		pci_restore_standard_config(pci_dev);
 
+skip_pci_pm_restore: 
 	if (pci_has_legacy_pm_support(pci_dev))
 		return pci_legacy_resume(dev);
 
@@ -1209,10 +1212,9 @@ static int pci_pm_runtime_suspend(struct device *dev)
 		return 0;
 	}
 
-	/* if d3hot is not supported bail out */ 
-	if (pci_dev->no_d3hot) 
-		return 0; 
-
+	/* if d3hot is not supported bail out */
+	if (pci_dev->no_d3hot)
+		return 0;
 	if (!pci_dev->state_saved) {
 		pci_save_state(pci_dev);
 		pci_finish_runtime_suspend(pci_dev);
