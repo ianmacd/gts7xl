@@ -5459,7 +5459,7 @@
 		target = <0xffffffff>;
 
 		__overlay__ {
-			reg = <0x0 0x86200000 0x0 0x5b00000>;
+			reg = <0x0 0x86200000 0x0 0x5fe4000>;
 		};
 	};
 
@@ -5467,7 +5467,7 @@
 		target = <0xffffffff>;
 
 		__overlay__ {
-			reg = <0x87900000 0x4400000>;
+			reg = <0x87900000 0x48e4000>;
 		};
 	};
 
@@ -5475,7 +5475,7 @@
 		target = <0xffffffff>;
 
 		__overlay__ {
-			reg = <0x87900000 0x4400000>;
+			reg = <0x87900000 0x48e4000>;
 		};
 	};
 
