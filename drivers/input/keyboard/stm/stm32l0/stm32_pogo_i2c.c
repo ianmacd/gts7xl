@@ -48,7 +48,7 @@ static void stm32_print_info(struct stm32_dev *stm32)
 {
 	struct irq_desc *desc = irq_to_desc(stm32->dev_irq);
 
-	input_info(true, &stm32->client->dev, "%s_v%d.%d.%d.%d, TC_v%02X%02X.%X, con:%d,%d, int:%d, depth:%d, rst:%d, fpga_dl:%d\n",
+	input_info(true, &stm32->client->dev, "%s_v%d.%d.%d.%d, TC_v%02X%02X.%X, con:%d,%d, int:%d, depth:%d, rst:%d, fpga_dl:%d, hall:%d\n",
 			stm32->dtdata->model_name,
 			stm32->ic_fw_ver.fw_major_ver, stm32->ic_fw_ver.fw_minor_ver,
 			stm32->ic_fw_ver.model_id, stm32->ic_fw_ver.hw_rev,
@@ -56,7 +56,7 @@ static void stm32_print_info(struct stm32_dev *stm32)
 			stm32->tc_fw_ver_of_ic.data_ver,
 			stm32->current_connect_state, stm32->connect_state,
 			gpio_get_value(stm32->dtdata->gpio_int), desc->depth,
-			stm32->reset_count, stm32->fpga_download_count);
+			stm32->reset_count, stm32->fpga_download_count, stm32->hall_closed);
 }
 
 static void stm32_print_info_work(struct work_struct *work)
@@ -754,6 +754,13 @@ static void stm32_check_ic_work(struct work_struct *work)
 #ifdef CONFIG_POGO_FPGA
 	fpga_rstn_high();
 #endif
+
+	if (stm32->hall_closed) {
+		input_info(true, &stm32->client->dev,
+				"%s: cover closed or fold backward\n", __func__);
+		return;
+	}
+
 	ret = stm32_read_version(stm32);
 	if (ret < 0) {
 		input_err(true, &stm32->client->dev,
@@ -870,8 +877,10 @@ static void stm32_dev_int_proc(struct stm32_dev *stm32)
 				"%s: wrong id %d, size %d\n", __func__, buff[2], payload_size);
 
 	/* release all event if hall ic event occured */
-	if (buff[2] == POGO_NOTIFIER_EVENTID_HALL)
+	if (buff[2] == POGO_NOTIFIER_EVENTID_HALL) {
 		pogo_notifier_notify(stm32, POGO_NOTIFIER_ID_RESET, 0, 0);
+		stm32->hall_closed = (event_data[0] != 2);
+	}
 
 	return;
 
@@ -1018,6 +1027,8 @@ static void stm32_keyboard_connect_work(struct work_struct *work)
 	struct stm32_dev *data = container_of((struct delayed_work *)work,
 			struct stm32_dev, keyboard_work);
 	int ret = 0;
+	char str_conn[16] = { 0 };
+	char *event[2] = { str_conn, NULL };
 
 	if (data->connect_state == data->current_connect_state) {
 		input_err(true, &data->client->dev,
@@ -1027,6 +1038,7 @@ static void stm32_keyboard_connect_work(struct work_struct *work)
 	}
 
 	input_info(true, &data->client->dev, "%s: %d\n", __func__, data->connect_state);
+	data->hall_closed = false;
 
 	mutex_lock(&data->dev_lock);
 	mutex_lock(&data->reset_lock);
@@ -1052,6 +1064,10 @@ static void stm32_keyboard_connect_work(struct work_struct *work)
 		data->current_connect_state = data->connect_state;
 
 	pogo_set_conn_state(data->current_connect_state);
+
+	snprintf(str_conn, 16, "CONNECT=%d", data->current_connect_state);
+	kobject_uevent_env(&data->sec_pogo->kobj, KOBJ_CHANGE, event);
+	input_info(true, &data->client->dev, "%s: send uevent : %s\n", __func__, event[0]);
 
 	if (!data->current_connect_state) {
 		cancel_delayed_work(&data->print_info_work);
@@ -1133,6 +1149,9 @@ static ssize_t pogo_get_fw_ver_ic(struct device *dev,
 	char buff[256] = { 0 };
 	int ret;
 
+	if (stm32->hall_closed || !stm32->current_connect_state || !stm32->connect_state)
+		return snprintf(buf, 3, "NG");
+
 #ifdef CONFIG_POGO_FPGA
 	fpga_rstn_control();
 	stm32_delay(20);
@@ -1180,6 +1199,9 @@ static ssize_t pogo_get_crc(struct device *dev,
 	struct stm32_dev *stm32 = dev_get_drvdata(dev);
 	char buff[256] = { 0 };
 	int ret;
+
+	if (stm32->hall_closed || !stm32->current_connect_state || !stm32->connect_state)
+		return snprintf(buf, 3, "NG");
 
 #ifdef CONFIG_POGO_FPGA
 	fpga_rstn_control();
@@ -1526,6 +1548,8 @@ static ssize_t pogo_get_tc_fw_ver_ic(struct device *dev,
 	char buff[256] = { 0 };
 	int ret;
 
+	mutex_lock(&stm32->dev_lock);
+
 #ifdef CONFIG_POGO_FPGA
 	fpga_rstn_control();
 	stm32_delay(20);
@@ -1536,6 +1560,9 @@ static ssize_t pogo_get_tc_fw_ver_ic(struct device *dev,
 				"%s: TC cmd is not support for this version\n", __func__);
 		goto NG;
 	}
+
+	if (stm32->hall_closed || !stm32->current_connect_state || !stm32->connect_state)
+		goto NG;
 
 	ret = stm32_read_tc_version(stm32);
 	if (ret < 0)
@@ -1551,16 +1578,20 @@ static ssize_t pogo_get_tc_fw_ver_ic(struct device *dev,
 				stm32->tc_fw_ver_of_ic.major_ver & 0xFF,
 				stm32->tc_fw_ver_of_ic.minor_ver & 0xFF);
 	else
-		goto NG;
+		snprintf(buff, sizeof(buff), "%s-TC_v0000",
+				stm32->dtdata->model_name);
 
 	input_info(true, &stm32->client->dev, "%s: %s\n", __func__, buff);
+	mutex_unlock(&stm32->dev_lock);
+
 	return snprintf(buf, sizeof(buff), buff);
 
 NG:
-	snprintf(buff, sizeof(buff), "%s-TC_v0000",
-			stm32->dtdata->model_name);
+	snprintf(buff, sizeof(buff), "NG");
 
 	input_info(true, &stm32->client->dev, "%s: %s\n", __func__, buff);
+	mutex_unlock(&stm32->dev_lock);
+
 	return snprintf(buf, sizeof(buff), buff);
 }
 
@@ -1570,6 +1601,9 @@ static ssize_t pogo_get_tc_crc(struct device *dev,
 	struct stm32_dev *stm32 = dev_get_drvdata(dev);
 	char buff[256] = { 0 };
 	int ret;
+
+	if (stm32->hall_closed || !stm32->current_connect_state || !stm32->connect_state)
+		return snprintf(buf, 3, "NG");
 
 #ifdef CONFIG_POGO_FPGA
 	fpga_rstn_control();
@@ -1698,7 +1732,7 @@ static ssize_t pogo_fw_update(struct device *dev,
 	struct stm32_dev *stm32 = dev_get_drvdata(dev);
 	int ret, param;
 
-	if (!stm32->current_connect_state)
+	if (stm32->hall_closed || !stm32->current_connect_state || !stm32->connect_state)
 		return -ENODEV;
 
 	ret = kstrtoint(buf, 10, &param);

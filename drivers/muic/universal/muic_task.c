@@ -614,6 +614,9 @@ static int muic_probe(struct i2c_client *i2c,
 	pmuic->retry_afc = false;
 	pmuic->afc_retry_count = 0;
 #endif
+#if defined(CONFIG_MUIC_SUPPORT_KEYBOARDDOCK)
+	pmuic->adc_rescan_count = 0;
+#endif
 #if defined(CONFIG_SEC_DEBUG)
 	pmuic->usb_to_ta_state = false;
 #endif

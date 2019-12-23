@@ -4073,6 +4073,11 @@ struct asm_sbc_enc_cfg_t {
 	uint32_t    sample_rate;
 };
 
+struct asm_ss_sbc_enc_cfg_t {
+	struct asm_sbc_enc_cfg_t custom_config;
+	struct afe_abr_enc_cfg_t abr_config;
+} __packed;
+
 #define ASM_MEDIA_FMT_AAC_AOT_LC            2
 #define ASM_MEDIA_FMT_AAC_AOT_SBR           5
 #define ASM_MEDIA_FMT_AAC_AOT_PS            29
@@ -4294,6 +4299,7 @@ struct asm_custom_enc_cfg_ssc_t {
 	 */
 	uint8_t     channel_mapping[8];
 	uint32_t    custom_size;
+	struct afe_abr_enc_cfg_t abr_config;
 } __packed;
 
 struct afe_enc_fmt_id_param_t {
@@ -4454,6 +4460,7 @@ struct asm_aac_dec_cfg_v2_t {
 
 union afe_enc_config_data {
 	struct asm_sbc_enc_cfg_t sbc_config;
+	struct asm_ss_sbc_enc_cfg_t ss_sbc_config;
 	struct asm_aac_enc_cfg_t aac_config;
 	struct asm_custom_enc_cfg_t  custom_config;
 	struct asm_celt_enc_cfg_t  celt_config;
@@ -4503,6 +4510,7 @@ struct afe_dec_media_fmt_t {
 #define AVS_PARAM_ID_PEER_MTU_ID 0x0001F101
 #define AVS_PARAM_ID_A2DP_SUSPEND_ID 0x0001F107
 #define AVS_ENCODER_PARAM_ID_ENC_BITRATE 0x0001322D
+#define AVS_PARAM_ID_ENC_FORMAT_ID 0x0001F105
 
 /*
  * Payload of the AVS_PARAM_ID_DYNAMIC_BITPOOL_ID parameter.
@@ -4526,6 +4534,18 @@ struct avs_enc_a2dp_suspend_param_t {
 	 * Any OpenDSP supported values
 	 */
 	uint32_t a2dp_suspend;
+};
+
+/*
+ * Payload of the AVS_PARAM_ID_ENC_FORMAT_ID parameter.
+ */
+struct avs_enc_format_param_t {
+    /*
+     * Supported values:
+     * #AVS_MODULE_ID_PACKETIZER_COP
+     * Any OpenDSP supported values
+     */
+    uint32_t enc_format;
 };
 
 /*
@@ -5873,6 +5893,10 @@ struct asm_mtu_param_t {
 
 struct asm_a2dp_suspend_param_t {
        u32 a2dp_suspend;
+}__packed;
+
+struct asm_enc_format_param_t {
+       u32 enc_format;
 }__packed;
 
 struct asm_custom_enc_cfg_t_v2 {

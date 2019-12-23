@@ -161,6 +161,8 @@ struct stm32_dev {
 	int					debug_level;
 	u32					fpga_download_count;
 	u32					reset_count;
+
+	volatile bool				hall_closed;
 };
 
 struct stm32_devicetree_data {

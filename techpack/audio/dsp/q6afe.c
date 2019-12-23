@@ -1346,6 +1346,128 @@ fail_cmd:
     return ret;
 }
 
+int afe_q6_update_enc_format(uint32_t enc_format)
+{
+    int ret = 0;
+    int index = 0;
+    u16 portId =0;
+
+    struct asm_enc_format_param_t enc_format_param;
+    struct param_hdr_v3 param_hdr;
+    u8 *packed_param_data = NULL;
+    int packed_data_size = 0;
+    u8 *param_data;
+
+    pr_info("%s: enc_format[%d]\n", __func__, enc_format);
+
+    index = q6audio_get_port_index(AFE_PORT_ID_QUATERNARY_MI2S_RX);
+    portId = q6audio_get_port_id(AFE_PORT_ID_QUATERNARY_MI2S_RX);
+    if (index < 0 || index >= AFE_MAX_PORTS) {
+        pr_err("%s: AFE port index[%d] invalid!\n",
+                __func__, index);
+        ret = -EINVAL;
+        goto fail_cmd;
+    }
+
+    memset(&enc_format_param, 0, sizeof(enc_format_param));
+    enc_format_param.enc_format = enc_format;
+
+    memset(&param_hdr, 0, sizeof(param_hdr));
+    param_hdr.module_id = AFE_MODULE_ID_ENCODER;
+    param_hdr.instance_id = INSTANCE_ID_0;
+    param_hdr.param_id = AVS_PARAM_ID_ENC_FORMAT_ID;
+    param_hdr.param_size = sizeof(struct asm_enc_format_param_t);
+
+    packed_data_size = sizeof(union param_hdrs) + param_hdr.param_size;
+
+    packed_param_data = kzalloc(packed_data_size, GFP_KERNEL);
+    if (packed_param_data == NULL)
+    {
+        pr_err("%s:\n packed_param_data return null", __func__);
+        return -ENOMEM;
+    }
+
+    param_data = (u8 *) &enc_format_param;
+    ret = q6common_pack_pp_params(packed_param_data, &param_hdr, param_data,
+                &packed_data_size);
+    if (ret) {
+        pr_err("%s: Failed to pack param header and data, error %d\n",
+                __func__, ret);
+        goto fail_cmd;
+    }
+
+    ret = q6afe_set_params(portId, index,
+                NULL, packed_param_data, packed_data_size);
+    if (ret ) {
+        pr_err("%s: Comamnd %d failed %d\n",
+                __func__, ASM_STREAM_CMD_SET_ENCDEC_PARAM, ret);
+        ret = -EINVAL;
+    }
+fail_cmd:
+    kfree(packed_param_data);
+    return ret;
+}
+
+int afe_q6_slimbus_update_dyn_bitrate(uint32_t bitrate)
+{
+    int ret = 0;
+    int index = 0;
+    u16 portId =0;
+
+    struct asm_bitrate_param_t dyn_bitrate;
+    struct param_hdr_v3 param_hdr;
+    u8 *packed_param_data = NULL;
+    int packed_data_size = 0;
+    u8 *param_data;
+
+    pr_info("%s: bitrate[%u] \n", __func__, bitrate);
+
+    index = q6audio_get_port_index(SLIMBUS_7_RX);
+    portId = q6audio_get_port_id(SLIMBUS_7_RX);
+    if (index < 0 || index >= AFE_MAX_PORTS) {
+        pr_err("%s: AFE port index[%d] invalid!\n",
+                   __func__, index);
+        ret = -EINVAL;
+        goto fail_cmd;
+    }
+
+    memset(&dyn_bitrate, 0, sizeof(dyn_bitrate));
+    dyn_bitrate.enc_bitrate = bitrate;
+
+    memset(&param_hdr, 0, sizeof(param_hdr));
+    param_hdr.module_id = AFE_MODULE_ID_ENCODER;
+    param_hdr.instance_id = INSTANCE_ID_0;
+    param_hdr.param_id = AVS_ENCODER_PARAM_ID_ENC_BITRATE;
+    param_hdr.param_size = sizeof(struct asm_bitrate_param_t/*asm_dyn_bitpool_cfg_v2*/);
+
+    packed_data_size = sizeof(union param_hdrs) + param_hdr.param_size;
+
+    packed_param_data = kzalloc(packed_data_size, GFP_KERNEL);
+    if (packed_param_data == NULL)
+    {
+         pr_err("%s:\n packed_param_data return null", __func__);
+         return -ENOMEM;
+    }
+
+   param_data = (u8 *) &dyn_bitrate;
+   ret = q6common_pack_pp_params(packed_param_data, &param_hdr, param_data, &packed_data_size);
+    if (ret) {
+        pr_err("%s: Failed to pack param header and data, error %d\n",
+                     __func__, ret);
+        goto fail_cmd;
+    }
+
+    ret = q6afe_set_params(portId, index, NULL, packed_param_data, packed_data_size);
+    if (ret ) {
+        pr_err("%s: Comamnd %d failed %d\n",
+                     __func__, ASM_STREAM_CMD_SET_ENCDEC_PARAM, ret);
+        ret = -EINVAL;
+    }
+fail_cmd:
+    kfree(packed_param_data);
+    return ret;
+}
+
 static int q6afe_pack_and_set_param_in_band(u16 port_id, int index,
 					    struct param_hdr_v3 param_hdr,
 					    u8 *param_data)
@@ -3860,7 +3982,9 @@ static int q6afe_send_dec_config(u16 port_id,
 	param_hdr.param_size = sizeof(struct avs_dec_depacketizer_id_param_t);
 	dec_depkt_id_param.dec_depacketizer_id =
 					       AFE_MODULE_ID_DEPACKETIZER_COP_V1;
-	if (cfg->format == ENC_CODEC_TYPE_LDAC)
+	if (cfg->format == ENC_CODEC_TYPE_LDAC ||
+				cfg->format == ASM_MEDIA_FMT_SBC_SS ||
+				cfg->format == ASM_MEDIA_FMT_SSC)
 		dec_depkt_id_param.dec_depacketizer_id =
 					       AFE_MODULE_ID_DEPACKETIZER_COP;
 	ret = q6afe_pack_and_set_param_in_band(port_id,
@@ -3901,6 +4025,8 @@ static int q6afe_send_dec_config(u16 port_id,
 			goto exit;
 		}
 		break;
+	case ASM_MEDIA_FMT_SBC_SS:
+	case ASM_MEDIA_FMT_SSC:
 	default:
 		pr_debug("%s:sending AFE_ENCDEC_PARAM_ID_DEC_TO_ENC_COMMUNICATION to DSP payload\n",
 			  __func__);
@@ -4064,7 +4190,9 @@ static int q6afe_send_enc_config(u16 port_id,
 		goto exit;
 	}
 
-	if (format == ASM_MEDIA_FMT_LDAC) {
+	if (format == ASM_MEDIA_FMT_LDAC ||
+				format == ASM_MEDIA_FMT_SBC_SS ||
+				format == ASM_MEDIA_FMT_SSC) {
 		param_hdr.param_size = sizeof(struct afe_enc_cfg_blk_param_t)
 					    - sizeof(struct afe_abr_enc_cfg_t);
 		enc_blk_param.enc_cfg_blk_size =
@@ -4207,16 +4335,24 @@ static int q6afe_send_enc_config(u16 port_id,
 		}
 	}
 
-	if ((format == ASM_MEDIA_FMT_LDAC &&
-	     cfg->ldac_config.abr_config.is_abr_enabled) ||
+	if ((format == ASM_MEDIA_FMT_LDAC && cfg->ldac_config.abr_config.is_abr_enabled) ||
+		(format == ASM_MEDIA_FMT_SBC_SS && cfg->ss_sbc_config.abr_config.is_abr_enabled) ||
+		(format == ASM_MEDIA_FMT_SSC && cfg->ssc_config.abr_config.is_abr_enabled) ||
 	     format == ASM_MEDIA_FMT_APTX_ADAPTIVE) {
 		pr_debug("%s:sending AFE_ENCODER_PARAM_ID_BIT_RATE_LEVEL_MAP to DSP payload",
 			__func__);
 		param_hdr.param_id = AFE_ENCODER_PARAM_ID_BIT_RATE_LEVEL_MAP;
 		param_hdr.param_size =
 			sizeof(struct afe_enc_level_to_bitrate_map_param_t);
-		map_param.mapping_table =
-			cfg->ldac_config.abr_config.mapping_info;
+		if (format == ASM_MEDIA_FMT_SBC_SS)
+			map_param.mapping_table =
+				cfg->ss_sbc_config.abr_config.mapping_info;
+		else if (format == ASM_MEDIA_FMT_SSC)
+			map_param.mapping_table =
+				cfg->ssc_config.abr_config.mapping_info;
+		else
+			map_param.mapping_table =
+				cfg->ldac_config.abr_config.mapping_info;
 		ret = q6afe_pack_and_set_param_in_band(port_id,
 						q6audio_get_port_index(port_id),
 						param_hdr,
@@ -4236,6 +4372,12 @@ static int q6afe_send_enc_config(u16 port_id,
 		if (format == ASM_MEDIA_FMT_APTX_ADAPTIVE)
 			imc_info_param.imc_info =
 			cfg->aptx_ad_config.abr_cfg.imc_info;
+		else if (format == ASM_MEDIA_FMT_SBC_SS)
+			imc_info_param.imc_info =
+			cfg->ss_sbc_config.abr_config.imc_info;
+		else if (format == ASM_MEDIA_FMT_SSC)
+			imc_info_param.imc_info =
+			cfg->ssc_config.abr_config.imc_info;
 		else
 			imc_info_param.imc_info =
 			cfg->ldac_config.abr_config.imc_info;

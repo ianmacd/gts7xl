@@ -284,13 +284,18 @@ int pogo_fpga_config(struct pogo_fpga *pogo_fpga)
 	int rc = 0;
 	struct spi_device *spi_client = pogo_fpga->spi_client;
 	uint8_t config_fw[5];
+	static bool first_download = true;
 
 	dev_info(&spi_client->dev, "%s ++\n", __func__);
 
 	if (pogo_fpga->image_data == NULL)
 		return -ENOMEM;
 
-	mutex_lock(&pogo_fpga->download_lock);
+	if (!mutex_trylock(&pogo_fpga->download_lock)) {
+		dev_info(&spi_client->dev, "%s: fw download is already in progress\n", __func__);
+		return 0;
+	}
+
 	if (!pogo_fpga->is_gpio_allocated) {
 		rc = gpio_request(pogo_fpga->pdata->fpga_cdone, "FPGA_CDONE");
 		if (rc) {
@@ -377,7 +382,12 @@ int pogo_fpga_config(struct pogo_fpga *pogo_fpga)
 	udelay(1000);	/* Wait for min 1000 microsec to clear internal configuration memory */
 
 	dev_info(&spi_client->dev, "%s : fw write start\n", __func__);
-	pogo_fpga_tx_data(pogo_fpga, pogo_fpga->image_data, pogo_fpga->image_size + TX_HEADER_100_DUMMY_CLOCK_SIZE);
+	rc = pogo_fpga_tx_data(pogo_fpga, pogo_fpga->image_data, pogo_fpga->image_size + TX_HEADER_100_DUMMY_CLOCK_SIZE);
+	if (rc < 0) {
+		dev_err(&spi_client->dev, "%s: failed to write fw, %d\n",
+				__func__, rc);
+		goto out;
+	}
 	dev_info(&spi_client->dev, "%s : fw write done\n", __func__);
 
 	gpio_set_value(pogo_fpga->pdata->fpga_gpio_spi_cs, 1);  
@@ -399,7 +409,12 @@ int pogo_fpga_config(struct pogo_fpga *pogo_fpga)
 	config_fw[2] = 0xFF;
 	config_fw[3] = 0xFF;
 	config_fw[4] = 0x80;
-	pogo_fpga_tx_data(pogo_fpga, config_fw, sizeof(config_fw));
+	rc = pogo_fpga_tx_data(pogo_fpga, config_fw, sizeof(config_fw));
+	if (rc < 0) {
+		dev_err(&spi_client->dev, "%s: failed to write cmd 0x%02X, %d\n",
+				__func__, config_fw[0], rc);
+		goto out;
+	}
 	memset(config_fw, 0, sizeof(config_fw));
 
 	config_fw[0] = 0x08;
@@ -407,7 +422,12 @@ int pogo_fpga_config(struct pogo_fpga *pogo_fpga)
 	config_fw[2] = 0xFF;
 	config_fw[3] = 0xFF;
 	config_fw[4] = 0x80;
-	pogo_fpga_tx_data(pogo_fpga, config_fw, sizeof(config_fw));
+	rc = pogo_fpga_tx_data(pogo_fpga, config_fw, sizeof(config_fw));
+	if (rc < 0) {
+		dev_err(&spi_client->dev, "%s: failed to write cmd 0x%02X, %d\n",
+				__func__, config_fw[0], rc);
+		goto out;
+	}
 	memset(config_fw, 0, sizeof(config_fw));
 
 	config_fw[0] = 0x10;
@@ -415,7 +435,12 @@ int pogo_fpga_config(struct pogo_fpga *pogo_fpga)
 	config_fw[2] = 0xFF;
 	config_fw[3] = 0xFF;
 	config_fw[4] = 0x80;
-	pogo_fpga_tx_data(pogo_fpga, config_fw, sizeof(config_fw));
+	rc = pogo_fpga_tx_data(pogo_fpga, config_fw, sizeof(config_fw));
+	if (rc < 0) {
+		dev_err(&spi_client->dev, "%s: failed to write cmd 0x%02X, %d\n",
+				__func__, config_fw[0], rc);
+		goto out;
+	}
 	memset(config_fw, 0, sizeof(config_fw));
 
 	udelay(1000);	/* Wait for min 1000 microsec to clear internal configuration memory */
@@ -431,8 +456,12 @@ int pogo_fpga_config(struct pogo_fpga *pogo_fpga)
 	gpio_set_value(pogo_fpga->pdata->fpga_gpio_reset, GPIO_LEVEL_LOW);
 	dev_info(&spi_client->dev, "reset %d\n", gpio_get_value(pogo_fpga->pdata->fpga_gpio_reset));
 	dev_info(&spi_client->dev, "CDONE %d\n", gpio_get_value(pogo_fpga->pdata->fpga_cdone));
-	dev_info(&spi_client->dev, "%s --\n", __func__);
 
+	if (!first_download)
+		msleep(500);
+	first_download = false;
+
+	dev_info(&spi_client->dev, "%s --\n", __func__);
 out:
 	mutex_unlock(&pogo_fpga->download_lock);
 	return rc;

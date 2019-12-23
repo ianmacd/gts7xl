@@ -123,6 +123,7 @@ static int check_event_type(enum otg_notify_events event)
 	case NOTIFY_EVENT_GAMEPAD_CONNECT:
 	case NOTIFY_EVENT_LANHUB_CONNECT:
 	case NOTIFY_EVENT_POWER_SOURCE:
+	case NOTIFY_EVENT_SEC_EARPHONE_CONNECT:
 		ret |= NOTIFY_EVENT_EXTRA;
 		break;
 	case NOTIFY_EVENT_VBUS:
@@ -235,6 +236,8 @@ const char *event_string(enum otg_notify_events event)
 		return "lanhub_connect";
 	case NOTIFY_EVENT_POWER_SOURCE:
 		return "power_role_source";
+	case NOTIFY_EVENT_SEC_EARPHONE_CONNECT:
+		return "sec_earphone_connect";
 	default:
 		return "undefined";
 	}
@@ -1030,6 +1033,10 @@ static void extra_notify_state(struct otg_notify *n,
 			u_notify->typec_status.power_role = HNOTIFY_SINK;
 		send_external_notify(EXTERNAL_NOTIFY_POWERROLE,
 				u_notify->typec_status.power_role);
+		break;
+	case NOTIFY_EVENT_SEC_EARPHONE_CONNECT:
+		if (n->vbus_change)
+			n->vbus_change(enable);
 		break;
 	default:
 		break;

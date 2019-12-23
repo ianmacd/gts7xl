@@ -4298,32 +4298,32 @@ static char DSI0_VIDEO_AUTO_MDNIE_1[] ={
 	0x30,
 	0xc3,
 	0xff, /* ascr_skin_Rr */
-	0x34, /* ascr_skin_Rg */
-	0x60, /* ascr_skin_Rb */
+	0x3a, /* ascr_skin_Rg */
+	0x64, /* ascr_skin_Rb */
 	0xff, /* ascr_skin_Yr */
-	0xf9, /* ascr_skin_Yg */
+	0xf7, /* ascr_skin_Yg */
 	0x00, /* ascr_skin_Yb */
-	0xd8, /* ascr_skin_Mr */
+	0xff, /* ascr_skin_Mr */
 	0x00, /* ascr_skin_Mg */
-	0xd9, /* ascr_skin_Mb */
+	0xff, /* ascr_skin_Mb */
 	0xff, /* ascr_skin_Wr */
 	0xff, /* ascr_skin_Wg */
 	0xff, /* ascr_skin_Wb */
 	0x00, /* ascr_Cr */
-	0xe0, /* ascr_Rr */
+	0xf0, /* ascr_Rr */
 	0xf2, /* ascr_Cg */
 	0x00, /* ascr_Rg */
 	0xff, /* ascr_Cb */
 	0x00, /* ascr_Rb */
-	0xd8, /* ascr_Mr */
-	0x3b, /* ascr_Gr */
+	0xff, /* ascr_Mr */
+	0x00, /* ascr_Gr */
 	0x00, /* ascr_Mg */
 	0xff, /* ascr_Gg */
-	0xd9, /* ascr_Mb */
+	0xff, /* ascr_Mb */
 	0x00, /* ascr_Gb */
 	0xff, /* ascr_Yr */
-	0x14, /* ascr_Br */
-	0xf9, /* ascr_Yg */
+	0x00, /* ascr_Br */
+	0xf7, /* ascr_Yg */
 	0x00, /* ascr_Bg */
 	0x00, /* ascr_Yb */
 	0xff, /* ascr_Bb */
@@ -4354,7 +4354,7 @@ static char DSI0_VIDEO_AUTO_MDNIE_2[] ={
 	0x17, /* lce_black reduct_slope 0 0000 */
 	0x03, /* lce_dark_th 000 */
 	0x96, /* lce_min_ref_offset */
-	0x04, /* nr fa de cs gamma 0 0000 */
+	0x06, /* nr fa de cs gamma 0 0000 */
 	0xff, /* nr_mask_th */
 	0x00, /* de_gain 10 */
 	0x10,
@@ -5311,32 +5311,32 @@ static char DSI0_CAMERA_AUTO_MDNIE_1[] ={
 	0x30,
 	0xc3,
 	0xff, /* ascr_skin_Rr */
-	0x34, /* ascr_skin_Rg */
-	0x60, /* ascr_skin_Rb */
+	0x3a, /* ascr_skin_Rg */
+	0x64, /* ascr_skin_Rb */
 	0xff, /* ascr_skin_Yr */
-	0xf9, /* ascr_skin_Yg */
+	0xf7, /* ascr_skin_Yg */
 	0x00, /* ascr_skin_Yb */
-	0xd8, /* ascr_skin_Mr */
+	0xff, /* ascr_skin_Mr */
 	0x00, /* ascr_skin_Mg */
-	0xd9, /* ascr_skin_Mb */
+	0xff, /* ascr_skin_Mb */
 	0xff, /* ascr_skin_Wr */
 	0xff, /* ascr_skin_Wg */
 	0xff, /* ascr_skin_Wb */
 	0x00, /* ascr_Cr */
-	0xe0, /* ascr_Rr */
+	0xf0, /* ascr_Rr */
 	0xf2, /* ascr_Cg */
 	0x00, /* ascr_Rg */
 	0xff, /* ascr_Cb */
 	0x00, /* ascr_Rb */
-	0xd8, /* ascr_Mr */
-	0x3b, /* ascr_Gr */
+	0xff, /* ascr_Mr */
+	0x00, /* ascr_Gr */
 	0x00, /* ascr_Mg */
 	0xff, /* ascr_Gg */
-	0xd9, /* ascr_Mb */
+	0xff, /* ascr_Mb */
 	0x00, /* ascr_Gb */
 	0xff, /* ascr_Yr */
-	0x14, /* ascr_Br */
-	0xf9, /* ascr_Yg */
+	0x00, /* ascr_Br */
+	0xf7, /* ascr_Yg */
 	0x00, /* ascr_Bg */
 	0x00, /* ascr_Yb */
 	0xff, /* ascr_Bb */
@@ -6154,32 +6154,32 @@ static char DSI0_GALLERY_AUTO_MDNIE_1[] = {
 	0x30,
 	0xc3,
 	0xff, /* ascr_skin_Rr */
-	0x34, /* ascr_skin_Rg */
-	0x60, /* ascr_skin_Rb */
+	0x3a, /* ascr_skin_Rg */
+	0x64, /* ascr_skin_Rb */
 	0xff, /* ascr_skin_Yr */
-	0xf9, /* ascr_skin_Yg */
+	0xf7, /* ascr_skin_Yg */
 	0x00, /* ascr_skin_Yb */
-	0xd8, /* ascr_skin_Mr */
+	0xff, /* ascr_skin_Mr */
 	0x00, /* ascr_skin_Mg */
-	0xd9, /* ascr_skin_Mb */
+	0xff, /* ascr_skin_Mb */
 	0xff, /* ascr_skin_Wr */
 	0xff, /* ascr_skin_Wg */
 	0xff, /* ascr_skin_Wb */
 	0x00, /* ascr_Cr */
-	0xe0, /* ascr_Rr */
+	0xf0, /* ascr_Rr */
 	0xf2, /* ascr_Cg */
 	0x00, /* ascr_Rg */
 	0xff, /* ascr_Cb */
 	0x00, /* ascr_Rb */
-	0xd8, /* ascr_Mr */
-	0x3b, /* ascr_Gr */
+	0xff, /* ascr_Mr */
+	0x00, /* ascr_Gr */
 	0x00, /* ascr_Mg */
 	0xff, /* ascr_Gg */
-	0xd9, /* ascr_Mb */
+	0xff, /* ascr_Mb */
 	0x00, /* ascr_Gb */
 	0xff, /* ascr_Yr */
-	0x14, /* ascr_Br */
-	0xf9, /* ascr_Yg */
+	0x00, /* ascr_Br */
+	0xf7, /* ascr_Yg */
 	0x00, /* ascr_Bg */
 	0x00, /* ascr_Yb */
 	0xff, /* ascr_Bb */
@@ -7839,32 +7839,32 @@ static char DSI0_BROWSER_AUTO_MDNIE_1[] = {
 	0x30,
 	0xc3,
 	0xff, /* ascr_skin_Rr */
-	0x34, /* ascr_skin_Rg */
-	0x60, /* ascr_skin_Rb */
+	0x3a, /* ascr_skin_Rg */
+	0x64, /* ascr_skin_Rb */
 	0xff, /* ascr_skin_Yr */
-	0xf9, /* ascr_skin_Yg */
+	0xf7, /* ascr_skin_Yg */
 	0x00, /* ascr_skin_Yb */
-	0xd8, /* ascr_skin_Mr */
+	0xff, /* ascr_skin_Mr */
 	0x00, /* ascr_skin_Mg */
-	0xd9, /* ascr_skin_Mb */
+	0xff, /* ascr_skin_Mb */
 	0xff, /* ascr_skin_Wr */
 	0xff, /* ascr_skin_Wg */
 	0xff, /* ascr_skin_Wb */
 	0x00, /* ascr_Cr */
-	0xe0, /* ascr_Rr */
+	0xf0, /* ascr_Rr */
 	0xf2, /* ascr_Cg */
 	0x00, /* ascr_Rg */
 	0xff, /* ascr_Cb */
 	0x00, /* ascr_Rb */
-	0xd8, /* ascr_Mr */
-	0x3b, /* ascr_Gr */
+	0xff, /* ascr_Mr */
+	0x00, /* ascr_Gr */
 	0x00, /* ascr_Mg */
 	0xff, /* ascr_Gg */
-	0xd9, /* ascr_Mb */
+	0xff, /* ascr_Mb */
 	0x00, /* ascr_Gb */
 	0xff, /* ascr_Yr */
-	0x14, /* ascr_Br */
-	0xf9, /* ascr_Yg */
+	0x00, /* ascr_Br */
+	0xf7, /* ascr_Yg */
 	0x00, /* ascr_Bg */
 	0x00, /* ascr_Yb */
 	0xff, /* ascr_Bb */
@@ -9520,32 +9520,32 @@ static unsigned char DSI0_TDMB_AUTO_MDNIE_1[] = {
 	0x30,
 	0xc3,
 	0xff, /* ascr_skin_Rr */
-	0x34, /* ascr_skin_Rg */
-	0x60, /* ascr_skin_Rb */
+	0x3a, /* ascr_skin_Rg */
+	0x64, /* ascr_skin_Rb */
 	0xff, /* ascr_skin_Yr */
-	0xf9, /* ascr_skin_Yg */
+	0xf7, /* ascr_skin_Yg */
 	0x00, /* ascr_skin_Yb */
-	0xd8, /* ascr_skin_Mr */
+	0xff, /* ascr_skin_Mr */
 	0x00, /* ascr_skin_Mg */
-	0xd9, /* ascr_skin_Mb */
+	0xff, /* ascr_skin_Mb */
 	0xff, /* ascr_skin_Wr */
 	0xff, /* ascr_skin_Wg */
 	0xff, /* ascr_skin_Wb */
 	0x00, /* ascr_Cr */
-	0xe0, /* ascr_Rr */
+	0xf0, /* ascr_Rr */
 	0xf2, /* ascr_Cg */
 	0x00, /* ascr_Rg */
 	0xff, /* ascr_Cb */
 	0x00, /* ascr_Rb */
-	0xd8, /* ascr_Mr */
-	0x3b, /* ascr_Gr */
+	0xff, /* ascr_Mr */
+	0x00, /* ascr_Gr */
 	0x00, /* ascr_Mg */
 	0xff, /* ascr_Gg */
-	0xd9, /* ascr_Mb */
+	0xff, /* ascr_Mb */
 	0x00, /* ascr_Gb */
 	0xff, /* ascr_Yr */
-	0x14, /* ascr_Br */
-	0xf9, /* ascr_Yg */
+	0x00, /* ascr_Br */
+	0xf7, /* ascr_Yg */
 	0x00, /* ascr_Bg */
 	0x00, /* ascr_Yb */
 	0xff, /* ascr_Bb */

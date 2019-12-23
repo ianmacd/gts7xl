@@ -46,6 +46,7 @@ enum otg_notify_events {
 	NOTIFY_EVENT_GAMEPAD_CONNECT,
 	NOTIFY_EVENT_LANHUB_CONNECT,
 	NOTIFY_EVENT_POWER_SOURCE,
+	NOTIFY_EVENT_SEC_EARPHONE_CONNECT,
 	NOTIFY_EVENT_VBUSPOWER,
 	NOTIFY_EVENT_POGO,
 	NOTIFY_EVENT_VIRTUAL,
@@ -132,6 +133,7 @@ struct otg_notify {
 	int (*pre_gpio)(int gpio, int use);
 	int (*post_gpio)(int gpio, int use);
 	int (*vbus_drive)(bool);
+	int (*vbus_change)(bool);
 	int (*set_host)(bool);
 	int (*set_peripheral)(bool);
 	int (*set_charger)(bool);

@@ -886,6 +886,22 @@ static void SEC_ufs_update_h8_info(struct ufs_hba *hba, bool hibern8_enter)
 	struct SEC_UFS_TW_info *tw_info = &(hba->SEC_tw_info);
 	u64 calc_h8_time_ms = 0;
 
+	/*
+	 * I/O end in UFS_ACTIVE_PWR_MODE :
+	 *   -> 10ms : Auto-H8
+	 *   -> 30~50ms : call hibern8_enter in clk gating
+	 *   -> 3s : runtime PM suspend
+	 *      -> ufshcd_suspend : run H8 exit ->  SSU : UFS_SLEEP_PWR_MODE -> H8 enter
+	 * runtime PM resume : H8 exit -> SSU : UFS_ACTIVE_PWR_MODE -> I/O
+	 *
+	 * system PM suspend :
+	 *   if runtime suspended -> runtime PM resume
+	 *   ufshcd_suspend : run H8 exit(if h8 state)
+	 *      ->  SSU : UFS_SLEEP_PWR_MODE -> H8 enter
+	 */
+	if (!ufshcd_is_ufs_dev_active(hba))
+		return;
+
 	if (unlikely(((s64)tw_info->hibern8_enter_count < 0) || ((s64)tw_info->hibern8_amount_ms < 0)))
 		return;
 
@@ -893,6 +909,11 @@ static void SEC_ufs_update_h8_info(struct ufs_hba *hba, bool hibern8_enter)
 		tw_info->hibern8_enter_ts = ktime_get();
 	} else {
 		calc_h8_time_ms = (u64)ktime_ms_delta(ktime_get(), tw_info->hibern8_enter_ts);
+#if defined(CONFIG_SCSI_UFS_QCOM)
+		if (ufshcd_is_auto_hibern8_supported(hba)) {
+			calc_h8_time_ms += (u64)(hba->clk_gating.delay_ms - hba->hibern8_on_idle.delay_ms);
+		}
+#endif
 
 		if (calc_h8_time_ms > 99) {
 			tw_info->hibern8_enter_count_100ms++;

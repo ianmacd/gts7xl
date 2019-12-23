@@ -590,7 +590,9 @@ static int _sde_encoder_phys_cmd_handle_ppdone_timeout(
 	SS_XLOG(cmd_enc->pp_timeout_report_cnt);
 
 	if (cmd_enc->pp_timeout_report_cnt < 10) {
-		pr_err("%s (%d): ignore pp\n", __func__, __LINE__);
+		/* request a ctl reset before the next kickoff */
+		phys_enc->enable_state = SDE_ENC_ERR_NEEDS_HW_RESET;
+		pr_err("%s (%d): ignore pp & phy_hw_reset\n", __func__, __LINE__);
 		goto exit;
 	}
 

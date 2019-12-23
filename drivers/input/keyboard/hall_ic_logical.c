@@ -100,9 +100,12 @@ static int logical_hallic_notifier_handler(struct notifier_block *nb,
 		} else if (hall_status == E_LID_NORMAL) {
 			hall_logical_status = 1;
 			input_report_switch(logical_hall_dev->input, SW_FLIP, hall_logical_status);
+			input_report_switch(logical_hall_dev->input, SW_HALL_LOGICAL, 0);
 			input_sync(logical_hall_dev->input);
 		} else if (hall_status == E_LID_360) {
 			hall_logical_status = 2;
+			input_report_switch(logical_hall_dev->input, SW_HALL_LOGICAL, 1);
+			input_sync(logical_hall_dev->input);
 		}
 		
 		break;
@@ -154,6 +157,7 @@ static int hall_logical_probe(struct platform_device *pdev)
 
 	input->evbit[0] |= BIT_MASK(EV_SW);
 	input_set_capability(input, EV_SW, SW_FLIP);
+	input_set_capability(input, EV_SW, SW_HALL_LOGICAL);
 
 	input->open = hall_logical_open;
 	input->close = hall_logical_close;
