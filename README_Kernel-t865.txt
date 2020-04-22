@@ -2,8 +2,11 @@
 1. How to Build
         - get Toolchain
                 From android git serveru, codesourcery and etc ..
-                - gcc-cfp/gcc-cfp-single/aarch64-linux-android-4.9/bin/aarch64-linux-android-
+                - gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
 
+                From Qualcomm developer network (https://developer.qualcomm.com/software/snapdragon-llvm-compiler-android/tools)
+                 - llvm-arm-toolchain-ship/8.0/
+                 
         - make output folder 
                 EX) OUTPUT_DIR=out
                 $ mkdir out
@@ -15,6 +18,9 @@
                 edit "REAL_CC" to right toolchain path(You downloaded).
                         EX)  CC=<android platform directory you download>/android/vendor/qcom/proprietary/llvm-arm-toolchain-ship/6.0/bin/clang
                 edit "CLANG_TRIPLE" to right path(You downloaded).
+                        EX) CLANG_TRIPLE=aarch64-linux-gnu-
+                edit "CFP_CC" to right toolchain path(You downloaded).
+                        EX) CFP_CC=<android platform directory you download>/android/vendor/qcom/proprietary/llvm-arm-toolchain-ship/6.0-cfp/bin/clang
 
         - to Build
                 $ export ARCH=arm64
