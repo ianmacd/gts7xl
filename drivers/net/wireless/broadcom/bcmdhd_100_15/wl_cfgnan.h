@@ -1,7 +1,7 @@
 /*
  * Neighbor Awareness Networking
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_cfgnan.h 827415 2019-06-26 05:45:10Z $
+ * $Id: wl_cfgnan.h 854674 2019-12-10 03:31:41Z $
  */
 
 #ifndef _wl_cfgnan_h_
@@ -165,7 +165,10 @@
 #define NAN_SVC_INST_SIZE 32u
 #define NAN_START_STOP_TIMEOUT	5000
 #define NAN_MAX_NDP_PEER 8u
-#define NAN_DISABLE_CMD_DELAY	3000u
+#define NAN_DISABLE_CMD_DELAY	2000u
+
+#define NAN_NMI_RAND_PVT_CMD_VENDOR		(1 << 31)
+#define NAN_NMI_RAND_CLUSTER_MERGE_ENAB		(1 << 30)
 
 #ifdef WL_NAN_DEBUG
 #define NAN_MUTEX_LOCK() {WL_DBG(("Mutex Lock: Enter: %s\n", __FUNCTION__)); \
@@ -205,6 +208,7 @@
 #define	NAN_ATTR_IF_ADDR_CONFIG			(1<<26)
 #define	NAN_ATTR_OUI_CONFIG			(1<<27)
 #define	NAN_ATTR_SUB_SID_BEACON_CONFIG		(1<<28)
+#define NAN_ATTR_DISC_BEACON_INTERVAL		(1<<29)
 #define NAN_IOVAR_NAME_SIZE	4u
 #define NAN_XTLV_ID_LEN_SIZE OFFSETOF(bcm_xtlv_t, data)
 #define NAN_RANGING_INDICATE_CONTINUOUS_MASK   0x01
@@ -214,15 +218,14 @@
 
 #define NAN_RNG_GEOFENCE_MAX_RETRY_CNT	3u
 
-typedef uint32 nan_data_path_id;
+/*
+* Discovery Beacon Interval config,
+* Default value is 128 msec in 2G DW and 176 msec in 2G/5G DW.
+*/
+#define NAN_DISC_BCN_INTERVAL_2G_DEF 128u
+#define NAN_DISC_BCN_INTERVAL_5G_DEF 176u
 
-typedef enum nan_stop_reason_code {
-	NAN_CONCURRENCY_CONFLICT = 0,
-	NAN_USER_INITIATED = 1,
-	NAN_BUS_IS_DOWN = 2,
-	NAN_DEINITIALIZED = 3,
-	NAN_COUNTRY_CODE_CHANGE = 4
-} nan_stop_reason_code_t;
+typedef uint32 nan_data_path_id;
 
 typedef enum nan_range_status {
 	NAN_RANGING_INVALID = 0,
@@ -501,6 +504,9 @@ typedef struct nan_config_cmd_data {
 	uint8 disc_ind_cfg;	/* Discovery Ind cfg */
 	uint8 csid;	/* cipher suite type */
 	uint32 nmi_rand_intvl; /* nmi randomization interval */
+	uint8 enable_merge;
+	wl_nan_disc_bcn_interval_t disc_bcn_interval;
+	uint32 dw_early_termination;
 } nan_config_cmd_data_t;
 
 typedef struct nan_event_hdr {
@@ -610,7 +616,11 @@ typedef struct nan_hal_capabilities {
 	bool is_ndp_security_supported;
 	uint32 max_sdea_service_specific_info_len;
 	uint32 max_subscribe_address;
+#if defined(ANDROID_PLATFORM_VERSION)
+#if (ANDROID_PLATFORM_VERSION > 9)
 	uint32 ndpe_attr_supported;
+#endif /* ANDROID_PLATFORM_VERSION */
+#endif /* ANDROID_PLATFORM_VERSION > 9 */
 } nan_hal_capabilities_t;
 
 typedef struct _nan_hal_resp {
@@ -669,6 +679,8 @@ extern int wl_cfgnan_set_vars_cbfn(void *ctx, const uint8 *tlv_buf,
 	uint16 type, uint16 len);
 extern int wl_cfgnan_config_eventmask(struct net_device *ndev, struct bcm_cfg80211 *cfg,
 	uint8 event_ind_flag, bool disable_events);
+extern int wl_cfgnan_check_nan_disable_pending(struct bcm_cfg80211 *cfg,
+	bool force_disable, bool is_sync_reqd);
 extern int wl_cfgnan_start_handler(struct net_device *ndev,
 	struct bcm_cfg80211 *cfg, nan_config_cmd_data_t *cmd_data, uint32 nan_attr_mask);
 extern int wl_cfgnan_stop_handler(struct net_device *ndev, struct bcm_cfg80211 *cfg);
@@ -747,6 +759,7 @@ void wl_cfgnan_data_set_peer_dp_state(struct bcm_cfg80211 *cfg,
 int wl_cfgnan_terminate_directed_rtt_sessions(struct net_device *ndev, struct bcm_cfg80211 *cfg);
 void wl_cfgnan_reset_geofence_ranging(struct bcm_cfg80211 *cfg,
 	nan_ranging_inst_t * rng_inst, int sched_reason);
+void wl_cfgnan_reset_geofence_ranging_for_cur_target(dhd_pub_t *dhd, int sched_reason);
 void wl_cfgnan_process_range_report(struct bcm_cfg80211 *cfg,
 	wl_nan_ev_rng_rpt_ind_t *range_res);
 #endif /* RTT_SUPPORT */
@@ -759,6 +772,8 @@ extern int wl_cfgnan_get_status(struct net_device *ndev, wl_nan_conf_status_t *n
 extern void wl_cfgnan_update_dp_info(struct bcm_cfg80211 *cfg, bool add,
 	nan_data_path_id ndp_id);
 nan_status_type_t wl_cfgvendor_brcm_to_nanhal_status(int32 vendor_status);
+int wl_cfgnan_set_enable_merge(struct net_device *ndev,
+	struct bcm_cfg80211 *cfg, uint8 enable, uint32 *status);
 
 typedef enum {
 	NAN_ATTRIBUTE_HEADER                            = 100,
@@ -885,7 +900,13 @@ typedef enum {
 	NAN_ATTRIBUTE_EVENT_MASK			= 218,
 	NAN_ATTRIBUTE_SUB_SID_BEACON                    = 219,
 	NAN_ATTRIBUTE_RANDOMIZATION_INTERVAL            = 220,
-	NAN_ATTRIBUTE_CMD_RESP_DATA			= 221
+	NAN_ATTRIBUTE_CMD_RESP_DATA			= 221,
+	NAN_ATTRIBUTE_CMD_USE_NDPE			= 222,
+	NAN_ATTRIBUTE_ENABLE_MERGE			= 223,
+	NAN_ATTRIBUTE_DISCOVERY_BEACON_INTERVAL		= 224,
+	NAN_ATTRIBUTE_NSS				= 225,
+	NAN_ATTRIBUTE_ENABLE_RANGING			= 226,
+	NAN_ATTRIBUTE_DW_EARLY_TERM			= 227
 } NAN_ATTRIBUTE;
 
 enum geofence_suspend_reason {

@@ -18,11 +18,13 @@ else ifeq ($(CONFIG_SEC_WINNERLTE_PROJECT), y)
 include $(srctree)/techpack/audio/config/sm8150_winner.conf
 else ifeq ($(filter y,$(CONFIG_SEC_WINNERX_PROJECT) $(CONFIG_SEC_ZODIAC_PROJECT)),y)
 include $(srctree)/techpack/audio/config/sm8150_winner.conf
+else ifeq ($(CONFIG_SEC_BLOOMQ_PROJECT), y)
+include $(srctree)/techpack/audio/config/sm8150_bloom.conf
 else ifeq ($(CONFIG_SEC_BOLTQ5G_PROJECT), y)
 include $(srctree)/techpack/audio/config/sm8150_boltq5g.conf
-else ifeq ($(filter y,$(CONFIG_SEC_D1Q_PROJECT) $(CONFIG_SEC_D2Q_PROJECT) $(CONFIG_SEC_D2XQ_PROJECT)),y)
+else ifeq ($(filter y,$(CONFIG_SEC_D1Q_PROJECT) $(CONFIG_SEC_D2Q_PROJECT) $(CONFIG_SEC_D2XQ_PROJECT) $(CONFIG_SEC_D2XQ2_PROJECT)),y)
 include $(srctree)/techpack/audio/config/sm8150_davinciq.conf
-else ifeq ($(filter y,$(CONFIG_SEC_GTS5L_PROJECT) $(CONFIG_SEC_GTS5LWIFI_PROJECT) $(CONFIG_SEC_GTS6L_PROJECT) $(CONFIG_SEC_GTS6LWIFI_PROJECT)),y)
+else ifeq ($(filter y,$(CONFIG_SEC_GTS6L_PROJECT) $(CONFIG_SEC_GTS6LWIFI_PROJECT) $(CONFIG_SEC_GTS6X_PROJECT)),y)
 include $(srctree)/techpack/audio/config/sm8150_gts6l.conf
 else ifeq ($(CONFIG_SEC_R3Q_PROJECT), y)
 include $(srctree)/techpack/audio/config/sm8150_r3.conf
@@ -70,13 +72,16 @@ LINUXINCLUDE    += \
 else ifeq ($(filter y,$(CONFIG_SEC_WINNERX_PROJECT) $(CONFIG_SEC_ZODIAC_PROJECT)),y)
 LINUXINCLUDE    += \
                 -include $(srctree)/techpack/audio/config/sm8150_winner.h
+else ifeq ($(CONFIG_SEC_BLOOMQ_PROJECT) ,y)
+LINUXINCLUDE    += \
+                -include $(srctree)/techpack/audio/config/sm8150_bloom.h
 else ifeq ($(CONFIG_SEC_BOLTQ5G_PROJECT), y)
 LINUXINCLUDE	+= \
                 -include $(srctree)/techpack/audio/config/sm8150_boltq5g.h
-else ifeq ($(filter y,$(CONFIG_SEC_D1Q_PROJECT) $(CONFIG_SEC_D2Q_PROJECT) $(CONFIG_SEC_D2XQ_PROJECT)),y)
+else ifeq ($(filter y,$(CONFIG_SEC_D1Q_PROJECT) $(CONFIG_SEC_D2Q_PROJECT) $(CONFIG_SEC_D2XQ_PROJECT) $(CONFIG_SEC_D2XQ2_PROJECT)),y)
 LINUXINCLUDE	+= \
                 -include $(srctree)/techpack/audio/config/sm8150_davinciq.h
-else ifeq ($(filter y,$(CONFIG_SEC_GTS5L_PROJECT) $(CONFIG_SEC_GTS5LWIFI_PROJECT) $(CONFIG_SEC_GTS6L_PROJECT) $(CONFIG_SEC_GTS6LWIFI_PROJECT)),y)
+else ifeq ($(filter y,$(CONFIG_SEC_GTS6L_PROJECT) $(CONFIG_SEC_GTS6LWIFI_PROJECT) $(CONFIG_SEC_GTS6X_PROJECT)),y)
 LINUXINCLUDE	+= \
                 -include $(srctree)/techpack/audio/config/sm8150_gts6l.h
 else ifeq ($(CONFIG_SEC_R3Q_PROJECT), y)

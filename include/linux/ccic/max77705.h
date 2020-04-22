@@ -180,6 +180,23 @@
 #define BIT_PD_PSRDY			BIT(4)
 #define BIT_FCT_ID				BITS(3, 0)
 
+
+/** opcode reg **/
+
+/*
+ * CC Control1 Write
+ */
+#define BIT_CCSrcCurCh			BIT(7)
+#define BIT_CCSrcCur			BITS(6, 5)
+#define BIT_CCSrcSnk			BIT(4)
+#define BIT_CCSnkSrc			BIT(3)
+#define BIT_CCDbgEn				BIT(2)
+#define BIT_CCAudEn				BIT(1)
+#define BIT_CCDetEn				BIT(0)
+
+
+
+
 /*
  * max77766 role
  */
@@ -381,7 +398,9 @@ enum max77705_usbc_SYSMsg {
 	SYSMSG_SBUx_GND_SHORT = 0x62,
 	SYSMSG_SBUx_5V_SHORT = 0x63,
 
+#ifdef CONFIG_MAX77705_GRL_ENABLE
 	SYSMSG_SET_GRL = 0x64,
+#endif
 
 	SYSMSG_PD_CCx_5V_SHORT = 0x65,
 	SYSMSG_PD_SBUx_5V_SHORT = 0x66,
@@ -395,6 +414,15 @@ enum max77705_usbc_SYSMsg {
 	SYSERROR_POWER_NEGO = 0x80,
 	SYSERROR_CCRP_HIGH = 0x90, /* PD Charger Connected while Water state */
 	SYSERROR_CCRP_LOW = 0x91, /* PD Charger Disconnected while Water state */
+
+	/* TypeC earphone is attached during PD charging */
+	SYSMSG_10K_TO_22K = 0xB0,
+	SYSMSG_10K_TO_56K = 0xB1,
+	SYSMSG_22K_TO_56K = 0xB2,
+	/* TypeC earphone is detached during PD charging */
+	SYSMSG_56K_TO_22K = 0xB3,
+	SYSMSG_56K_TO_10K = 0xB4,
+	SYSMSG_22K_TO_10K = 0xB5,
 };
 
 enum max77705_pdmsg {
@@ -439,6 +467,7 @@ enum max77705_pdmsg {
 	Battery_Capabilities_Received = 0x37,
 	Battery_Status_Received = 0x38,
 	Manufacturer_Info_Received = 0x39,
+	Alert_Message = 0x3e,
 	VDM_NAK_Recevied = 0x40,
 	VDM_BUSY_Recevied = 0x41,
 	VDM_ACK_Recevied = 0x42,
@@ -543,10 +572,16 @@ typedef enum {
 	OPCODE_SAMSUNG_ACC_COMMAND_RECIEVED,
 	OPCODE_SAMSUNG_ACC_COMMAND_RESPOND,
 	OPCODE_SAMSUNG_SECURE_KEY_REVOCATION,
+	OPCODE_SAMSUNG_FACTORY_TEST = 0x54,
 	OPCODE_SET_ALTERNATEMODE = 0x55,
 	OPCODE_SAMSUNG_FW_AUTOIBUS = 0x57,
 	OPCODE_READ_SELFTEST = 0x59,
+	OPCODE_SAMSUNG_READ_MESSAGE = 0x5D,
+#ifdef CONFIG_MAX77705_GRL_ENABLE
 	OPCODE_GRL_COMMAND = 0x70,
+#else
+	OPCODE_FW_OPCODE_CLEAR = 0x70,
+#endif
 	OPCODE_RAM_TEST_COMMAND = 0xD1,
 	OPCODE_NONE = 0xff,
 } max77705_opcode_list;

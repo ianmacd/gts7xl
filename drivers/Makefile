@@ -47,6 +47,8 @@ obj-$(CONFIG_DMADEVICES)	+= dma/
 # SOC specific infrastructure drivers.
 obj-y				+= soc/
 
+obj-y				+= samsung/
+
 obj-$(CONFIG_VIRTIO)		+= virtio/
 obj-$(CONFIG_XEN)		+= xen/
 
@@ -197,9 +199,8 @@ obj-$(CONFIG_SENSORS_TCS3407)	+= optics/
 obj-$(CONFIG_SENSORS_SFH7832)	+= optics/
 obj-$(CONFIG_ADSP_FACTORY)      += adsp_factory/
 obj-$(CONFIG_ESOC)              += esoc/
-
-# CONFIG_SEC_DEBUG
-obj-y				+= debug/
+# GNSS driver
+obj-$(CONFIG_GNSS_SIRF)		+= gnsssirf/
 
 ifeq ($(CONFIG_BATTERY_SAMSUNG_V2), y)
 	obj-$(CONFIG_BATTERY_SAMSUNG)	+= battery_v2/
@@ -222,7 +223,7 @@ obj-y				+= motor/
 
 # FIVE TEE driver
 obj-$(CONFIG_FIVE_TEE_DRIVER)	+= five/
-obj-$(CONFIG_ICD)		+= icdrv/
+obj-$(CONFIG_ICD)		+= security/samsung/icdrv/
 
 # uH
 obj-$(CONFIG_UH)        += uh/

@@ -1,7 +1,7 @@
 /*
  * Linux DHD Bus Module for PCIE
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_pcie_linux.c 821650 2019-05-24 10:41:54Z $
+ * $Id: dhd_pcie_linux.c 828851 2019-07-05 03:55:45Z $
  */
 
 /* include files */
@@ -67,6 +67,10 @@
 #define AUTO_SUSPEND_TIMEOUT 1000
 #endif /* AUTO_SUSPEND_TIMEOUT */
 #endif /* DHD_PCIE_NATIVE_RUNTIMEPM */
+
+#ifdef DHD_PCIE_RUNTIMEPM
+#define RPM_WAKE_UP_TIMEOUT 10000 /* ms */
+#endif /* DHD_PCIE_RUNTIMEPM */
 
 #include <linux/irq.h>
 #ifdef USE_SMMU_ARCH_MSM
@@ -2837,7 +2841,7 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 				dhd_bus_start_queue(bus);
 				DHD_GENERAL_UNLOCK(dhd, flags);
 				smp_wmb();
-				wake_up_interruptible(&bus->rpm_queue);
+				wake_up(&bus->rpm_queue);
 				return FALSE;
 			}
 
@@ -2848,7 +2852,7 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 			dhd_bus_start_queue(bus);
 			DHD_GENERAL_UNLOCK(dhd, flags);
 
-			wait_event_interruptible(bus->rpm_queue, bus->bus_wake);
+			wait_event(bus->rpm_queue, bus->bus_wake);
 
 			DHD_GENERAL_LOCK(dhd, flags);
 			DHD_BUS_BUSY_CLEAR_RPM_SUSPEND_DONE(dhd);
@@ -2867,7 +2871,7 @@ bool dhd_runtimepm_state(dhd_pub_t *dhd)
 			DHD_GENERAL_UNLOCK(dhd, flags);
 
 			smp_wmb();
-			wake_up_interruptible(&bus->rpm_queue);
+			wake_up(&bus->rpm_queue);
 			DHD_ERROR(("%s : runtime resume ended \n", __FUNCTION__));
 			return TRUE;
 		} else {
@@ -2911,7 +2915,7 @@ bool dhd_runtime_bus_wake(dhd_bus_t *bus, bool wait, void *func_addr)
 
 			DHD_ERROR(("Runtime Resume is called in %pf\n", func_addr));
 			smp_wmb();
-			wake_up_interruptible(&bus->rpm_queue);
+			wake_up(&bus->rpm_queue);
 		/* No need to wake up the RPM state thread */
 		} else if (DHD_BUS_BUSY_CHECK_RPM_RESUME_IN_PROGRESS(bus->dhd)) {
 			DHD_GENERAL_UNLOCK(bus->dhd, flags);
@@ -2919,7 +2923,11 @@ bool dhd_runtime_bus_wake(dhd_bus_t *bus, bool wait, void *func_addr)
 
 		/* If wait is TRUE, function with wait = TRUE will be wait in here  */
 		if (wait) {
-			wait_event_interruptible(bus->rpm_queue, bus->runtime_resume_done);
+			if (!wait_event_timeout(bus->rpm_queue, bus->runtime_resume_done,
+					msecs_to_jiffies(RPM_WAKE_UP_TIMEOUT))) {
+				DHD_ERROR(("%s: RPM_WAKE_UP_TIMEOUT error\n", __FUNCTION__));
+				return FALSE;
+			}
 		} else {
 			DHD_INFO(("%s: bus wakeup but no wait until resume done\n", __FUNCTION__));
 		}

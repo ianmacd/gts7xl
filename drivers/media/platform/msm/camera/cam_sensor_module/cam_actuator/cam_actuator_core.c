@@ -21,8 +21,13 @@
 #include "cam_ois_core.h"
 #include "cam_ois_mcu_stm32g.h"
 #endif
+#if defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
+#include "cam_ois_core.h"
+#include "cam_sensor_i2c.h"
+#include "cam_ois_rumba_s4.h"
+#endif
 
-#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32) || defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
 extern struct cam_ois_ctrl_t *g_o_ctrl;
 #endif
 
@@ -131,6 +136,13 @@ int32_t cam_actuator_power_up(struct cam_actuator_ctrl_t *a_ctrl)
 			"failed in actuator power up rc %d", rc);
 		return rc;
 	}
+  
+#if defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
+	//skip actuator power up and cci1 init , sensor has been power up and ois has init cci1 master 1
+	a_ctrl->io_master_info.cci_client->cci_subdev =
+	cam_cci_get_subdev(a_ctrl->io_master_info.cci_client->cci_device);	
+	return rc;
+#endif
 
 	rc = camera_io_init(&a_ctrl->io_master_info);
 	if (rc < 0)
@@ -162,8 +174,8 @@ int32_t cam_actuator_power_down(struct cam_actuator_ctrl_t *a_ctrl)
 	}
 	CAM_INFO(CAM_ACTUATOR, "ABOUT TO POWER DOWN at slot:%d", soc_info->index);
 
-#if defined(CONFIG_SENSOR_RETENTION)
-	rc = cam_sensor_util_power_down(power_info, soc_info, 0);
+#if defined(CONFIG_SAMSUNG_FORCE_DISABLE_REGULATOR)
+	rc = cam_sensor_util_power_down(power_info, soc_info, FALSE);
 #else
 	rc = cam_sensor_util_power_down(power_info, soc_info);
 #endif
@@ -171,6 +183,10 @@ int32_t cam_actuator_power_down(struct cam_actuator_ctrl_t *a_ctrl)
 		CAM_ERR(CAM_ACTUATOR, "power down the core is failed:%d", rc);
 		return rc;
 	}
+
+#if defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
+	return rc;
+#endif
 
 	camera_io_release(&a_ctrl->io_master_info);
 
@@ -277,7 +293,7 @@ int32_t cam_actuator_apply_settings(struct cam_actuator_ctrl_t *a_ctrl,
 {
 	struct i2c_settings_list *i2c_list;
 	int32_t rc = 0;
-#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32) || defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
 	int i = 0;
 	int size = 0;
 	int position = 0;
@@ -366,7 +382,7 @@ int32_t cam_actuator_apply_settings(struct cam_actuator_ctrl_t *a_ctrl,
 				"Success:request ID: %d",
 				i2c_set->request_id);
 		}
-#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32) || defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
 		if (a_ctrl->soc_info.index != 1) { //not apply on front case
 			size = i2c_list->i2c_settings.size;
 			for (i = 0; i < size; i++) {
@@ -379,9 +395,15 @@ int32_t cam_actuator_apply_settings(struct cam_actuator_ctrl_t *a_ctrl,
 
 			if (g_o_ctrl != NULL) {
 				mutex_lock(&(g_o_ctrl->ois_mutex));
-				if (position >= 0 && position < 512)
+				if (position >= 0 && position < 512){
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
 					// 1bit right shift af position, because OIS use 8bit af position
 					cam_ois_shift_calibration(g_o_ctrl, (position >> 1), a_ctrl->soc_info.index);
+#else
+					// Rumba OIS uses 9bit af position
+					cam_ois_shift_calibration(g_o_ctrl, position, a_ctrl->soc_info.index);
+#endif
+				}
 				else
 					CAM_ERR(CAM_ACTUATOR, "Position is invalid %d \n", position);
 				mutex_unlock(&(g_o_ctrl->ois_mutex));
@@ -875,6 +897,8 @@ int32_t cam_actuator_driver_cmd(struct cam_actuator_ctrl_t *a_ctrl,
 		bridge_params.media_entity_flag = 0;
 		bridge_params.priv = a_ctrl;
 
+		bridge_params.dev_id = CAM_ACTUATOR;
+
 		actuator_acq_dev.device_handle =
 			cam_create_device_hdl(&bridge_params);
 		a_ctrl->bridge_intf.device_hdl = actuator_acq_dev.device_handle;
@@ -1170,7 +1194,7 @@ int16_t cam_actuator_init(struct cam_actuator_ctrl_t *a_ctrl,
 			"Failed to random write 0x611F I2C settings: %d",
 			rc);
 	usleep_range(1000, 1000);
-	
+
 	memset(reg_setting.reg_setting, 0, sizeof(struct cam_sensor_i2c_reg_array));
 	size = 0;
 	rc = 0;
@@ -1188,7 +1212,7 @@ int16_t cam_actuator_init(struct cam_actuator_ctrl_t *a_ctrl,
 			"Failed to random write 0x00FA I2C settings: %d",
 			rc);
 	usleep_range(1000, 1000);
-	
+
 	memset(reg_setting.reg_setting, 0, sizeof(struct cam_sensor_i2c_reg_array));
 	size = 0;
 	rc = 0;
@@ -1407,7 +1431,8 @@ int16_t cam_actuator_move_for_ois_test(struct cam_actuator_ctrl_t *a_ctrl)
 	}
 	memset(reg_setting.reg_setting, 0, sizeof(struct cam_sensor_i2c_reg_array));
 
-#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)
+#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)\
+	|| defined(CONFIG_SEC_D2XQ2_PROJECT)
 	/* Init setting for ak7377 */
 	/* SET Standby Mode */
 	reg_setting.reg_setting[size].reg_addr = 0x02;
@@ -1446,6 +1471,60 @@ int16_t cam_actuator_move_for_ois_test(struct cam_actuator_ctrl_t *a_ctrl)
 		kfree(reg_setting.reg_setting);
 		reg_setting.reg_setting = NULL;
 	}
+
+	return rc;
+}
+#endif
+
+#if defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
+/***** for only ois selftest , set the actuator initial position to 256 *****/
+int16_t cam_actuator_move_for_ois_test(struct cam_actuator_ctrl_t *a_ctrl)
+{
+	struct cam_sensor_i2c_reg_setting reg_setting;
+	struct cam_sensor_i2c_reg_array reg_arr;
+	int rc = 0;
+
+	memset(&reg_setting, 0, sizeof(reg_setting));
+	memset(&reg_arr, 0, sizeof(reg_arr));
+	if (a_ctrl == NULL) {
+		CAM_ERR(CAM_ACTUATOR, "failed. a_ctrl is NULL");
+		return -EINVAL;
+	}
+
+	reg_setting.size = 1;
+	reg_setting.addr_type = CAMERA_SENSOR_I2C_TYPE_BYTE;
+	reg_setting.data_type = CAMERA_SENSOR_I2C_TYPE_BYTE;
+	reg_setting.reg_setting = &reg_arr;
+
+	/* SET Position MSB - 0x00 */
+	reg_arr.reg_addr = 0x00;
+	reg_arr.reg_data = 0x80;
+	rc = camera_io_dev_write(&a_ctrl->io_master_info,
+		&reg_setting);
+	if (rc < 0)
+		CAM_ERR(CAM_ACTUATOR,
+			"Failed to random write I2C settings: %d",
+			rc);
+
+	/* SET Position LSB - 0x00 */
+	reg_arr.reg_addr = 0x01;
+	reg_arr.reg_data = 0x00;
+	rc = camera_io_dev_write(&a_ctrl->io_master_info,
+		&reg_setting);
+	if (rc < 0)
+		CAM_ERR(CAM_ACTUATOR,
+			"Failed to random write I2C settings: %d",
+			rc);
+
+	/* SET Active Mode */
+	reg_arr.reg_addr = 0x02;
+	reg_arr.reg_data = 0x00;
+	rc = camera_io_dev_write(&a_ctrl->io_master_info,
+		&reg_setting);
+	if (rc < 0)
+		CAM_ERR(CAM_ACTUATOR,
+			"Failed to random write I2C settings: %d",
+			rc);
 
 	return rc;
 }

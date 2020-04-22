@@ -30,16 +30,6 @@ config CHARGING_VZWCONCEPT
 	help
 	 Say Y to include support for the VZW concepts.
 
-config BATTERY_SWELLING
-	bool "prevent battery swelling"
-	help
-	 Say Y to include support for prevent battery swelling
-
-config BATTERY_SWELLING_SELF_DISCHARGING
-	bool "prevent battery swelling with self discharging"
-	help
-	 Say Y to include support for prevent battery swelling with self discharging
-
 config CALC_TIME_TO_FULL
 	tristate "calculate time to full"
 	default n
@@ -193,7 +183,6 @@ config SW_SELF_DISCHARGING
 config BATTERY_AGE_FORECAST
 	tristate "battery age forecast"
 	default n
-	depends on BATTERY_SWELLING
 	help
 	  Say Y to use calc time to full function.
 
@@ -258,3 +247,9 @@ config ISDB_CHARGING_CONTROL
     depends on I2C
     help
 	  Say Y here to enable support for isdb
+
+config PREVENT_USB_CONN_OVERHEAT
+    bool "enable prevent usb conn overheat"
+    default n
+    help
+	  Say Y to enable CONFIG_PREVENT_USB_CONN_OVERHEAT

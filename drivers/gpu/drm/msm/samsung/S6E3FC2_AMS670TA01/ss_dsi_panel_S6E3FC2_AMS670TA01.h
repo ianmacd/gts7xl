@@ -36,15 +36,14 @@ Copyright (C) 2012, Samsung Electronics. All rights reserved.
 #define HBM_ELVSS_INTERPOLATION_VALUE 404 /*BL control register is 10 bit*/
 
 static unsigned int elvss_table[HBM_ELVSS_INTERPOLATION_VALUE + 1] = {
-	[0 ... 49]	=	0x90,
-	[50 ... 97]	=	0x99,
-	[98 ... 148]	=	0x97,
-	[149 ... 196]	=	0x96,
-	[197 ... 247]	=	0x95,
-	[248 ... 299]	=	0x93,
-	[300 ... 347]	=	0x92,
-	[348 ... 402]	=	0x91,
-	[403 ... 404]	=	0x90,
+	[0 ... 49]	=	0x98,
+	[50 ... 100]	=	0x97,
+	[101 ... 148]	=	0x96,
+	[149 ... 200]	=	0x95,
+	[201 ... 247]	=	0x93,
+	[248 ... 299]	=	0x92,
+	[300 ... 350]	=	0x91,
+	[351 ... 404]	=	0x90,
 };
 
 #endif

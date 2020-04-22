@@ -38,8 +38,18 @@
 
 #define PP_TIMEOUT_MAX_TRIALS	4
 
+#if 0 // KR_TODO : dont need
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+/*
+ * Incase of AOD, 1frame takes 33ms(30FPS)
+ * So we need to wait more time than normal case
+ */
+#define CTL_START_TIMEOUT_MS	100
+#else
 /* wait for 2 vyncs only */
 #define CTL_START_TIMEOUT_MS	32
+#endif
+#endif
 
 /*
  * Tearcheck sync start and continue thresholds are empirically found
@@ -559,6 +569,38 @@ static int _sde_encoder_phys_cmd_handle_ppdone_timeout(
 	cmd_enc->pp_timeout_report_cnt++;
 	pending_kickoff_cnt = atomic_read(&phys_enc->pending_kickoff_cnt);
 
+#if defined(CONFIG_DISPLAY_SAMSUNG)
+	SS_XLOG(cmd_enc->pp_timeout_report_cnt);
+	phys_enc->sde_kms->base.funcs->ss_callback(PRIMARY_DISPLAY_NDX,
+		SS_EVENT_CHECK_TE, (void *)phys_enc);
+	inc_dpui_u32_field(DPUI_KEY_QCT_PPTO, 1);
+	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->hw_pp->idx - PINGPONG_0,
+		cmd_enc->pp_timeout_report_cnt,
+		pending_kickoff_cnt,
+		frame_event);
+#if 1
+	if (sec_debug_is_enabled()) // Debug Level MID or HIGH
+	{
+		SDE_ERROR_CMDENC(cmd_enc,
+			"pp:%d kickoff timed out ctl %d koff_cnt %d\n",
+			phys_enc->hw_pp->idx - PINGPONG_0,
+			phys_enc->hw_ctl->idx - CTL_0,
+			pending_kickoff_cnt);
+		SDE_DBG_DUMP("all", "dbg_bus", "vbif_dbg_bus", "panic");
+	}
+#endif
+	/* decrement the kickoff_cnt before checking for ESD status */
+	atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
+
+	pr_err("%s (%d): pp_timeout_report_cnt: %d\n", __func__, __LINE__, cmd_enc->pp_timeout_report_cnt);
+	if (cmd_enc->pp_timeout_report_cnt < 10) {
+		/* request a ctl reset before the next kickoff */
+		phys_enc->enable_state = SDE_ENC_ERR_NEEDS_HW_RESET;
+		pr_err("%s (%d): ignore pp & phy_hw_reset\n", __func__, __LINE__);
+		goto exit;
+	}
+#endif
+
 	if (sde_encoder_phys_cmd_is_master(phys_enc)) {
 		 /* trigger the retire fence if it was missed */
 		if (atomic_add_unless(&phys_enc->pending_retire_fence_cnt,
@@ -577,37 +619,6 @@ static int _sde_encoder_phys_cmd_handle_ppdone_timeout(
 
 	/* decrement the kickoff_cnt before checking for ESD status */
 	atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
-#if defined(CONFIG_DISPLAY_SAMSUNG)
-	/*
-	 * PP Done Timeout Samsung Policy
-	 *
-	 * Under 10 => Skip
-	 * Over 10 => Recovery
-	 *
-	 */
-
-	pr_err("%s (%d): pp_timeout_report_cnt: %d\n", __func__, __LINE__, cmd_enc->pp_timeout_report_cnt);
-	SS_XLOG(cmd_enc->pp_timeout_report_cnt);
-
-	if (cmd_enc->pp_timeout_report_cnt < 10) {
-		/* request a ctl reset before the next kickoff */
-		phys_enc->enable_state = SDE_ENC_ERR_NEEDS_HW_RESET;
-		pr_err("%s (%d): ignore pp & phy_hw_reset\n", __func__, __LINE__);
-		goto exit;
-	}
-
-	SDE_ERROR_CMDENC(cmd_enc,
-		"pp:%d kickoff timed out ctl %d koff_cnt %d\n",
-		phys_enc->hw_pp->idx - PINGPONG_0,
-		phys_enc->hw_ctl->idx - CTL_0,
-		pending_kickoff_cnt);
-
-	SDE_EVT32(DRMID(phys_enc->parent), SDE_EVTLOG_FATAL);
-#if 0
-	if (sec_debug_is_enabled()) // Debug Level MID or HIGH
-		SDE_DBG_DUMP("all", "dbg_bus", "vbif_dbg_bus", "panic");
-#endif
-#endif
 
 	/* check if panel is still sending TE signal or not */
 	if (sde_connector_esd_status(phys_enc->connector) ||
@@ -1109,7 +1120,7 @@ static void sde_encoder_phys_cmd_tearcheck_config(
 	 * Only caveat is if due to error, we hit wrap-around.
 	 */
 #if defined(CONFIG_DISPLAY_SAMSUNG)
-	tc_cfg.sync_cfg_height = 0x31A2; // 64ms based on 898Mhz
+	tc_cfg.sync_cfg_height = mode->vtotal * 3;// 3* 16.6ms based on mode->vtotal
 #else
 	tc_cfg.sync_cfg_height = 0xFFF0;
 #endif
@@ -1174,8 +1185,8 @@ static void _sde_encoder_phys_cmd_pingpong_config(
 			phys_enc->hw_pp->idx - PINGPONG_0);
 	drm_mode_debug_printmodeline(&phys_enc->cached_mode);
 
-	if (!_sde_encoder_phys_is_ppsplit_slave(phys_enc))
-		_sde_encoder_phys_cmd_update_intf_cfg(phys_enc);
+	_sde_encoder_phys_cmd_update_intf_cfg(phys_enc);
+
 	sde_encoder_phys_cmd_tearcheck_config(phys_enc);
 }
 
@@ -1191,18 +1202,8 @@ static void sde_encoder_phys_cmd_enable_helper(
 
 	_sde_encoder_phys_cmd_pingpong_config(phys_enc);
 
-	/*
-	 * For pp-split, skip setting the flush bit for the slave intf, since
-	 * both intfs use same ctl and HW will only flush the master.
-	 */
-	if (_sde_encoder_phys_is_ppsplit(phys_enc) &&
-		!sde_encoder_phys_cmd_is_master(phys_enc))
-		goto skip_flush;
-
 	_sde_encoder_phys_cmd_update_flush_mask(phys_enc);
 
-skip_flush:
-	return;
 }
 
 static void sde_encoder_phys_cmd_enable(struct sde_encoder_phys *phys_enc)
@@ -1498,9 +1499,11 @@ static int _sde_encoder_phys_cmd_wait_for_ctl_start(
 		if (ctl && ctl->ops.get_start_state)
 			frame_pending = ctl->ops.get_start_state(ctl);
 
-		if (frame_pending)
+		if (frame_pending) {
 			SDE_ERROR_CMDENC(cmd_enc,
 					"ctl start interrupt wait failed\n");
+			SDE_DBG_DUMP("all", "dbg_bus", "vbif_dbg_bus","panic");
+		}
 		else
 			ret = 0;
 

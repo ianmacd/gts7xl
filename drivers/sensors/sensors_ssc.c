@@ -33,8 +33,7 @@
 #endif
 
 #include <soc/qcom/subsystem_restart.h>
-#if defined(CONFIG_SEC_FACTORY) &&  (defined(CONFIG_SEC_WINNERLTE_PROJECT) || \
-        defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT))
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_DUAL_6AXIS)
 static bool pretest = false;
 #endif
 
@@ -209,14 +208,14 @@ static void slpi_load_fw(struct work_struct *slpi_ldr_work)
 		}
 	} else
 #endif
-        {
+	{
 		priv->pil_h = subsystem_get_with_fwname("slpi", firmware_name);
 		if (IS_ERR(priv->pil_h)) {
 			dev_err(&pdev->dev, "%s: pil get failed,\n",
 				__func__);
 			goto fail;
 		}
-        }
+	}
 
 	dev_dbg(&pdev->dev, "%s: SLPI image is loaded\n", __func__);
 	return;
@@ -261,8 +260,7 @@ static ssize_t slpi_ssr_store(struct kobject *kobj,
 
 	if (kstrtoint(buf, 10, &ssr_cmd) < 0)
 		return -EINVAL;
-#if defined(CONFIG_SEC_FACTORY) &&  (defined(CONFIG_SEC_WINNERLTE_PROJECT) || \
-        defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT))
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_DUAL_6AXIS)
 	if (ssr_cmd == SET_PRETEST_SSR) {
 		pr_info("Set Pretest SSR. slpi will be restarted!!\n");
 		pretest = true;
@@ -298,8 +296,7 @@ static ssize_t slpi_ssr_store(struct kobject *kobj,
 	return count;
 }
 
-#if defined(CONFIG_SEC_FACTORY) &&  (defined(CONFIG_SEC_WINNERLTE_PROJECT) || \
-        defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT))
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_DUAL_6AXIS)
 bool is_pretest(void)
 {
 	return pretest;

@@ -40,8 +40,7 @@ static inline pmd_t *pmd_alloc_one(struct mm_struct *mm, unsigned long addr)
 	/* FIXME not zeroing the page */
 	pmd_t *rkp_ropage = NULL;
 
-	rkp_ropage = (pmd_t *)rkp_ro_alloc();
-	if (rkp_ropage)
+	if (mm == &init_mm && (rkp_ropage = (pmd_t *)rkp_ro_alloc()))
 		return rkp_ropage;
 	else
 #endif

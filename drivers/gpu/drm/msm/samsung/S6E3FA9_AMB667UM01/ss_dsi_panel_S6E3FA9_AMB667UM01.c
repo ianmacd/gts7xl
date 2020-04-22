@@ -57,6 +57,20 @@ static int samsung_panel_on_pre(struct samsung_display_driver_data *vdd)
 
 static int samsung_panel_on_post(struct samsung_display_driver_data *vdd)
 {
+	/*
+	 * self mask is enabled from bootloader.
+	 * so skip self mask setting during splash booting.
+	 */
+	if (!vdd->samsung_splash_enabled) {
+		if (vdd->self_disp.self_mask_img_write)
+			vdd->self_disp.self_mask_img_write(vdd);
+	} else {
+		LCD_INFO("samsung splash enabled.. skip image write\n");
+	}
+
+	if (vdd->self_disp.self_mask_on)
+		vdd->self_disp.self_mask_on(vdd, true);
+
 	return true;
 }
 
@@ -87,10 +101,7 @@ static char ss_panel_revision(struct samsung_display_driver_data *vdd)
 #define get_bit(value, shift, width)	((value >> shift) & (GENMASK(width - 1, 0)))
 static struct dsi_panel_cmd_set * mdss_brightness_gamma_mode2(struct samsung_display_driver_data *vdd, int *level_key)
 {
-	//struct samsung_display_driver_data *vdd = check_valid_ctrl(ctrl);
 	struct dsi_panel_cmd_set *pcmds;
-
-	LCD_INFO(" ++ \n");
 
 	if (IS_ERR_OR_NULL(vdd)) {
 	        LCD_ERR(": Invalid data vdd : 0x%zx", (size_t)vdd);
@@ -102,25 +113,22 @@ static struct dsi_panel_cmd_set * mdss_brightness_gamma_mode2(struct samsung_dis
 	if(vdd->br.cd_idx <= MAX_BL_PF_LEVEL){
 		LCD_INFO("Normal : cd_idx [%d] \n", vdd->br.cd_idx);
 		pcmds->cmds[0].msg.tx_buf[1] = vdd->finger_mask_updated? 0x20 : 0x28;	/* Normal Smooth transition : 0x28 */
-		pcmds->cmds[1].msg.tx_buf[7] = 0x90;					/* ELVSS Value for normal brgihtness */
+		pcmds->cmds[1].msg.tx_buf[1] = vdd->temperature > 0 ?	vdd->temperature : (char)(BIT(7) | (-1*vdd->temperature));
+		pcmds->cmds[1].msg.tx_buf[3] = 0x10;					/* ELVSS Value for Normal Mode brgihtness */
+		pcmds->cmds[2].msg.tx_buf[1] = get_bit(vdd->br.cd_level, 8, 2);
+		pcmds->cmds[2].msg.tx_buf[2] = get_bit(vdd->br.cd_level, 0, 8);
 	}
 	else{
 		LCD_INFO("HBM : cd_idx [%d] \n", vdd->br.cd_idx);
 		pcmds->cmds[0].msg.tx_buf[1] = vdd->finger_mask_updated? 0xE0 : 0xE8;	/* HBM Smooth transition : 0xE8 */
-		pcmds->cmds[1].msg.tx_buf[7] = elvss_table[vdd->br.cd_level];		/* ELVSS Value for HBM brgihtness */
+		pcmds->cmds[1].msg.tx_buf[1] = vdd->temperature > 0 ?	vdd->temperature : (char)(BIT(7) | (-1*vdd->temperature));
+		pcmds->cmds[1].msg.tx_buf[3] = elvss_table[vdd->br.cd_level];		/* ELVSS Value for HBM brgihtness */
+		pcmds->cmds[2].msg.tx_buf[1] = get_bit(vdd->br.cd_level, 8, 2);
+		pcmds->cmds[2].msg.tx_buf[2] = get_bit(vdd->br.cd_level, 0, 8);
 	}
-
-	/* B7 9th para:(Normal Elvss Offset),10th para:(HBM Elvss Offset) OTP, 47th para:TSET */
-	pcmds->cmds[1].msg.tx_buf[9]  = vdd->br.elvss_value1;
-	pcmds->cmds[1].msg.tx_buf[10] = vdd->br.elvss_value2;
-	pcmds->cmds[1].msg.tx_buf[47] = vdd->temperature > 0 ?	vdd->temperature : (char)(BIT(7) | (-1*vdd->temperature));
-
-	pcmds->cmds[2].msg.tx_buf[1]  = get_bit(vdd->br.cd_level, 8, 2);
-	pcmds->cmds[2].msg.tx_buf[2]  = get_bit(vdd->br.cd_level, 0, 8);
 
 	*level_key = LEVEL1_KEY;
 
-	LCD_INFO(" -- \n");
 	return pcmds;
 }
 
@@ -184,6 +192,35 @@ static int ss_manufacture_date_read(struct samsung_display_driver_data *vdd)
 	return true;
 }
 
+static int ss_ddi_id_read(struct samsung_display_driver_data *vdd)
+{
+	char ddi_id[5];
+	int loop;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("Invalid data vdd : 0x%zx", (size_t)vdd);
+		return false;
+	}
+
+	/* Read mtp (D6h 1~5th) for CHIP ID */
+	if (ss_get_cmds(vdd, RX_DDI_ID)->count) {
+		ss_panel_data_read(vdd, RX_DDI_ID, ddi_id, LEVEL1_KEY);
+
+		for (loop = 0; loop < 5; loop++)
+			vdd->ddi_id_dsi[loop] = ddi_id[loop];
+
+		LCD_INFO("DSI%d : %02x %02x %02x %02x %02x\n", vdd->ndx,
+			vdd->ddi_id_dsi[0], vdd->ddi_id_dsi[1],
+			vdd->ddi_id_dsi[2], vdd->ddi_id_dsi[3],
+			vdd->ddi_id_dsi[4]);
+	} else {
+		LCD_ERR("DSI%d no ddi_id_rx_cmds cmds", vdd->ndx);
+		return false;
+	}
+
+	return true;
+}
+
 #undef COORDINATE_DATA_SIZE
 #define COORDINATE_DATA_SIZE 6
 
@@ -197,27 +234,27 @@ static char coordinate_data_1[][COORDINATE_DATA_SIZE] = {
 	{0xff, 0x00, 0xff, 0x00, 0xff, 0x00}, /* dummy */
 	{0xff, 0x00, 0xfb, 0x00, 0xfb, 0x00}, /* Tune_1 */
 	{0xff, 0x00, 0xfc, 0x00, 0xff, 0x00}, /* Tune_2 */
-	{0xfb, 0x00, 0xf9, 0x00, 0xff, 0x00}, /* Tune_3 */
-	{0xff, 0x00, 0xfe, 0x00, 0xfc, 0x00}, /* Tune_4 */
+	{0xfa, 0x00, 0xf9, 0x00, 0xff, 0x00}, /* Tune_3 */
+	{0xff, 0x00, 0xfd, 0x00, 0xfb, 0x00}, /* Tune_4 */
 	{0xff, 0x00, 0xff, 0x00, 0xff, 0x00}, /* Tune_5 */
-	{0xfb, 0x00, 0xfc, 0x00, 0xff, 0x00}, /* Tune_6 */
+	{0xfa, 0x00, 0xfb, 0x00, 0xff, 0x00}, /* Tune_6 */
 	{0xfd, 0x00, 0xff, 0x00, 0xfa, 0x00}, /* Tune_7 */
 	{0xfc, 0x00, 0xff, 0x00, 0xfc, 0x00}, /* Tune_8 */
-	{0xfb, 0x00, 0xff, 0x00, 0xff, 0x00}, /* Tune_9 */
+	{0xfa, 0x00, 0xfd, 0x00, 0xff, 0x00}, /* Tune_9 */
 };
 
 /* sRGB/Adobe RGB Mode */
 static char coordinate_data_2[][COORDINATE_DATA_SIZE] = {
-	{0xff, 0x00, 0xf7, 0x00, 0xef, 0x00}, /* dummy */
-	{0xff, 0x00, 0xf4, 0x00, 0xec, 0x00}, /* Tune_1 */
-	{0xff, 0x00, 0xf5, 0x00, 0xef, 0x00}, /* Tune_2 */
-	{0xff, 0x00, 0xf6, 0x00, 0xf3, 0x00}, /* Tune_3 */
-	{0xff, 0x00, 0xf7, 0x00, 0xed, 0x00}, /* Tune_4 */
-	{0xff, 0x00, 0xf7, 0x00, 0xef, 0x00}, /* Tune_5 */
-	{0xff, 0x00, 0xf8, 0x00, 0xf2, 0x00}, /* Tune_6 */
-	{0xff, 0x00, 0xfa, 0x00, 0xed, 0x00}, /* Tune_7 */
-	{0xff, 0x00, 0xfa, 0x00, 0xef, 0x00}, /* Tune_8 */
-	{0xff, 0x00, 0xfb, 0x00, 0xf3, 0x00}, /* Tune_9 */
+	{0xff, 0x00, 0xfc, 0x00, 0xf6, 0x00}, /* dummy */
+	{0xff, 0x00, 0xfa, 0x00, 0xf3, 0x00}, /* Tune_1 */
+	{0xff, 0x00, 0xfa, 0x00, 0xf6, 0x00}, /* Tune_2 */
+	{0xff, 0x00, 0xfb, 0x00, 0xfa, 0x00}, /* Tune_3 */
+	{0xff, 0x00, 0xfc, 0x00, 0xf3, 0x00}, /* Tune_4 */
+	{0xff, 0x00, 0xfc, 0x00, 0xf6, 0x00}, /* Tune_5 */
+	{0xff, 0x00, 0xfe, 0x00, 0xfb, 0x00}, /* Tune_6 */
+	{0xff, 0x00, 0xfd, 0x00, 0xf3, 0x00}, /* Tune_7 */
+	{0xff, 0x00, 0xff, 0x00, 0xf7, 0x00}, /* Tune_8 */
+	{0xfd, 0x00, 0xff, 0x00, 0xf9, 0x00}, /* Tune_9 */
 };
 
 static char (*coordinate_data_multi[MAX_MODE])[COORDINATE_DATA_SIZE] = {
@@ -335,55 +372,73 @@ static int dsi_update_mdnie_data(struct samsung_display_driver_data *vdd)
 	mdnie_data->DSI_UI_DYNAMIC_MDNIE_2 = DSI0_UI_DYNAMIC_MDNIE_2;
 	mdnie_data->DSI_UI_STANDARD_MDNIE_2 = DSI0_UI_STANDARD_MDNIE_2;
 	mdnie_data->DSI_UI_AUTO_MDNIE_2 = DSI0_UI_AUTO_MDNIE_2;
-	mdnie_data->DSI_VIDEO_DYNAMIC_MDNIE_2 = NULL;
-	mdnie_data->DSI_VIDEO_STANDARD_MDNIE_2 = NULL;
-	mdnie_data->DSI_VIDEO_AUTO_MDNIE_2 = NULL;
+	mdnie_data->DSI_VIDEO_DYNAMIC_MDNIE_2 = DSI0_VIDEO_DYNAMIC_MDNIE_2;
+	mdnie_data->DSI_VIDEO_STANDARD_MDNIE_2 = DSI0_VIDEO_STANDARD_MDNIE_2;
+	mdnie_data->DSI_VIDEO_AUTO_MDNIE_2 = DSI0_VIDEO_AUTO_MDNIE_2;
 	mdnie_data->DSI_CAMERA_AUTO_MDNIE_2 = DSI0_CAMERA_AUTO_MDNIE_2;
-	mdnie_data->DSI_GALLERY_DYNAMIC_MDNIE_2 = NULL;
-	mdnie_data->DSI_GALLERY_STANDARD_MDNIE_2 = NULL;
+	mdnie_data->DSI_GALLERY_DYNAMIC_MDNIE_2 = DSI0_GALLERY_DYNAMIC_MDNIE_2;
+	mdnie_data->DSI_GALLERY_STANDARD_MDNIE_2 = DSI0_GALLERY_STANDARD_MDNIE_2;
 	mdnie_data->DSI_GALLERY_AUTO_MDNIE_2 = DSI0_GALLERY_AUTO_MDNIE_2;
-	mdnie_data->DSI_BROWSER_DYNAMIC_MDNIE_2 = NULL;
-	mdnie_data->DSI_BROWSER_STANDARD_MDNIE_2 = NULL;
-	mdnie_data->DSI_BROWSER_AUTO_MDNIE_2 = NULL;
+	mdnie_data->DSI_BROWSER_DYNAMIC_MDNIE_2 = DSI0_BROWSER_DYNAMIC_MDNIE_2;
+	mdnie_data->DSI_BROWSER_STANDARD_MDNIE_2 = DSI0_BROWSER_STANDARD_MDNIE_2;
+	mdnie_data->DSI_BROWSER_AUTO_MDNIE_2 = DSI0_BROWSER_AUTO_MDNIE_2;
 	mdnie_data->DSI_EBOOK_AUTO_MDNIE_2 = DSI0_EBOOK_AUTO_MDNIE_2;
+	mdnie_data->DSI_EBOOK_DYNAMIC_MDNIE_2 = DSI0_EBOOK_DYNAMIC_MDNIE_2;
+	mdnie_data->DSI_EBOOK_STANDARD_MDNIE_2 = DSI0_EBOOK_STANDARD_MDNIE_2;
+	mdnie_data->DSI_EBOOK_AUTO_MDNIE_2 = DSI0_EBOOK_AUTO_MDNIE_2;
+	mdnie_data->DSI_TDMB_DYNAMIC_MDNIE_2 = DSI0_TDMB_DYNAMIC_MDNIE_2;
+	mdnie_data->DSI_TDMB_STANDARD_MDNIE_2 = DSI0_TDMB_STANDARD_MDNIE_2;
+	mdnie_data->DSI_TDMB_AUTO_MDNIE_2 = DSI0_TDMB_AUTO_MDNIE_2;
 
 	mdnie_data->DSI_BYPASS_MDNIE = DSI0_BYPASS_MDNIE;
 	mdnie_data->DSI_NEGATIVE_MDNIE = DSI0_NEGATIVE_MDNIE;
 	mdnie_data->DSI_COLOR_BLIND_MDNIE = DSI0_COLOR_BLIND_MDNIE;
 	mdnie_data->DSI_HBM_CE_MDNIE = DSI0_HBM_CE_MDNIE;
+	mdnie_data->DSI_HBM_CE_D65_MDNIE = DSI0_HBM_CE_D65_MDNIE;
 	mdnie_data->DSI_RGB_SENSOR_MDNIE = DSI0_RGB_SENSOR_MDNIE;
 	mdnie_data->DSI_UI_DYNAMIC_MDNIE = DSI0_UI_DYNAMIC_MDNIE;
 	mdnie_data->DSI_UI_STANDARD_MDNIE = DSI0_UI_STANDARD_MDNIE;
 	mdnie_data->DSI_UI_NATURAL_MDNIE = DSI0_UI_NATURAL_MDNIE;
 	mdnie_data->DSI_UI_AUTO_MDNIE = DSI0_UI_AUTO_MDNIE;
-	mdnie_data->DSI_VIDEO_DYNAMIC_MDNIE = NULL;
-	mdnie_data->DSI_VIDEO_STANDARD_MDNIE = NULL;
-	mdnie_data->DSI_VIDEO_NATURAL_MDNIE = NULL;
-	mdnie_data->DSI_VIDEO_AUTO_MDNIE = NULL;
+	mdnie_data->DSI_VIDEO_DYNAMIC_MDNIE = DSI0_VIDEO_DYNAMIC_MDNIE;
+	mdnie_data->DSI_VIDEO_STANDARD_MDNIE = DSI0_VIDEO_STANDARD_MDNIE;
+	mdnie_data->DSI_VIDEO_NATURAL_MDNIE = DSI0_VIDEO_NATURAL_MDNIE;
+	mdnie_data->DSI_VIDEO_AUTO_MDNIE = DSI0_VIDEO_AUTO_MDNIE;
 	mdnie_data->DSI_CAMERA_AUTO_MDNIE = DSI0_CAMERA_AUTO_MDNIE;
-	mdnie_data->DSI_GALLERY_DYNAMIC_MDNIE = NULL;
-	mdnie_data->DSI_GALLERY_STANDARD_MDNIE = NULL;
-	mdnie_data->DSI_GALLERY_NATURAL_MDNIE = NULL;
+	mdnie_data->DSI_GALLERY_DYNAMIC_MDNIE = DSI0_GALLERY_DYNAMIC_MDNIE;
+	mdnie_data->DSI_GALLERY_STANDARD_MDNIE = DSI0_GALLERY_STANDARD_MDNIE;
+	mdnie_data->DSI_GALLERY_NATURAL_MDNIE = DSI0_GALLERY_NATURAL_MDNIE;
 	mdnie_data->DSI_GALLERY_AUTO_MDNIE = DSI0_GALLERY_AUTO_MDNIE;
-	mdnie_data->DSI_BROWSER_DYNAMIC_MDNIE = NULL;
-	mdnie_data->DSI_BROWSER_STANDARD_MDNIE = NULL;
-	mdnie_data->DSI_BROWSER_NATURAL_MDNIE = NULL;
-	mdnie_data->DSI_BROWSER_AUTO_MDNIE = NULL;
+	mdnie_data->DSI_BROWSER_DYNAMIC_MDNIE = DSI0_BROWSER_DYNAMIC_MDNIE;
+	mdnie_data->DSI_BROWSER_STANDARD_MDNIE = DSI0_BROWSER_STANDARD_MDNIE;
+	mdnie_data->DSI_BROWSER_NATURAL_MDNIE = DSI0_BROWSER_NATURAL_MDNIE;
+	mdnie_data->DSI_BROWSER_AUTO_MDNIE = DSI0_BROWSER_AUTO_MDNIE;
+	mdnie_data->DSI_EBOOK_DYNAMIC_MDNIE = DSI0_EBOOK_DYNAMIC_MDNIE;
+	mdnie_data->DSI_EBOOK_STANDARD_MDNIE = DSI0_EBOOK_STANDARD_MDNIE;
+	mdnie_data->DSI_EBOOK_NATURAL_MDNIE = DSI0_EBOOK_NATURAL_MDNIE;
 	mdnie_data->DSI_EBOOK_AUTO_MDNIE = DSI0_EBOOK_AUTO_MDNIE;
-	mdnie_data->DSI_EMAIL_AUTO_MDNIE = NULL;
+	mdnie_data->DSI_EMAIL_AUTO_MDNIE = DSI0_EMAIL_AUTO_MDNIE;
+	mdnie_data->DSI_GAME_LOW_MDNIE = DSI0_GAME_LOW_MDNIE;
+	mdnie_data->DSI_GAME_MID_MDNIE = DSI0_GAME_MID_MDNIE;
+	mdnie_data->DSI_GAME_HIGH_MDNIE = DSI0_GAME_HIGH_MDNIE;
+	mdnie_data->DSI_TDMB_DYNAMIC_MDNIE = DSI0_TDMB_DYNAMIC_MDNIE;
+	mdnie_data->DSI_TDMB_STANDARD_MDNIE = DSI0_TDMB_STANDARD_MDNIE;
+	mdnie_data->DSI_TDMB_NATURAL_MDNIE = DSI0_TDMB_NATURAL_MDNIE;
+	mdnie_data->DSI_TDMB_AUTO_MDNIE = DSI0_TDMB_AUTO_MDNIE;
 	mdnie_data->DSI_GRAYSCALE_MDNIE = DSI0_GRAYSCALE_MDNIE;
 	mdnie_data->DSI_GRAYSCALE_NEGATIVE_MDNIE = DSI0_GRAYSCALE_NEGATIVE_MDNIE;
 	mdnie_data->DSI_CURTAIN = DSI0_SCREEN_CURTAIN_MDNIE;
 	mdnie_data->DSI_NIGHT_MODE_MDNIE = DSI0_NIGHT_MODE_MDNIE;
+	mdnie_data->DSI_NIGHT_MODE_MDNIE_SCR = DSI0_NIGHT_MODE_MDNIE_1;
 	mdnie_data->DSI_COLOR_LENS_MDNIE = DSI0_COLOR_LENS_MDNIE;
-	mdnie_data->DSI_NIGHT_MODE_MDNIE_SCR = DSI0_NIGHT_MODE_MDNIE_5;
-	mdnie_data->DSI_COLOR_LENS_MDNIE_SCR = DSI0_COLOR_LENS_MDNIE_5;
-	mdnie_data->DSI_COLOR_BLIND_MDNIE_SCR = DSI0_COLOR_BLIND_MDNIE_5;
-	mdnie_data->DSI_RGB_SENSOR_MDNIE_SCR = DSI0_RGB_SENSOR_MDNIE_5;
+	mdnie_data->DSI_COLOR_LENS_MDNIE_SCR = DSI0_COLOR_LENS_MDNIE_1;
+	mdnie_data->DSI_COLOR_BLIND_MDNIE_SCR = DSI0_COLOR_BLIND_MDNIE_1;
+	mdnie_data->DSI_RGB_SENSOR_MDNIE_SCR = DSI0_RGB_SENSOR_MDNIE_1;
 
 	mdnie_data->mdnie_tune_value_dsi = mdnie_tune_value_dsi0;
 	mdnie_data->hmt_color_temperature_tune_value_dsi = hmt_color_temperature_tune_value_dsi0;
 	mdnie_data->light_notification_tune_value_dsi = light_notification_tune_value_dsi0;
+	mdnie_data->hdr_tune_value_dsi = hdr_tune_value_dsi0;
 
 	/* Update MDNIE data related with size, offset or index */
 	mdnie_data->dsi_bypass_mdnie_size = ARRAY_SIZE(DSI0_BYPASS_MDNIE);
@@ -411,7 +466,7 @@ static int dsi_update_mdnie_data(struct samsung_display_driver_data *vdd)
 	mdnie_data->dsi_white_balanced_r = 0;
 	mdnie_data->dsi_white_balanced_g = 0;
 	mdnie_data->dsi_white_balanced_b = 0;
-	mdnie_data->dsi_scr_step_index = MDNIE_STEP2_INDEX;
+	mdnie_data->dsi_scr_step_index = MDNIE_STEP1_INDEX;
 	mdnie_data->dsi_afc_size = 45;
 	mdnie_data->dsi_afc_index = 33;
 
@@ -529,6 +584,25 @@ static struct dsi_panel_cmd_set *ss_acl_off(struct samsung_display_driver_data *
 	return ss_get_cmds(vdd, TX_ACL_OFF);
 }
 
+static struct dsi_panel_cmd_set *ss_vint(struct samsung_display_driver_data *vdd, int *level_key)
+{
+	struct dsi_panel_cmd_set *vint_cmds = ss_get_cmds(vdd, TX_VINT);
+
+	if (IS_ERR_OR_NULL(vdd) || SS_IS_CMDS_NULL(vint_cmds)) {
+		LCD_ERR("Invalid data vdd : 0x%zx cmds : 0x%zx", (size_t)vdd, (size_t)vint_cmds);
+		return NULL;
+	}
+
+	if (vdd->xtalk_mode)
+		vint_cmds->cmds->msg.tx_buf[1] = 0xC4; // ON : VGH 6.2 V
+	else
+		vint_cmds->cmds->msg.tx_buf[1] = 0xCC; // OFF
+
+	*level_key = LEVEL1_KEY;
+
+	return vint_cmds;
+}
+
 static void ss_set_panel_lpm_brightness(struct samsung_display_driver_data *vdd)
 {
 	struct dsi_panel_cmd_set *alpm_brightness[LPM_BRIGHTNESS_MAX_IDX] = {NULL, };
@@ -553,8 +627,8 @@ static void ss_set_panel_lpm_brightness(struct samsung_display_driver_data *vdd)
 
 	LCD_INFO("%s++\n", __func__);
 
-	cmd_list[0] = ss_get_cmds(vdd, TX_LPM_BL_CMD);	// JUN_TEMP
-	cmd_list[1] = ss_get_cmds(vdd, TX_LPM_BL_CMD);	// JUN_TEMP
+	cmd_list[0] = ss_get_cmds(vdd, TX_LPM_BL_CMD);
+	cmd_list[1] = ss_get_cmds(vdd, TX_LPM_BL_CMD);
 	if (SS_IS_CMDS_NULL(cmd_list[0]) || SS_IS_CMDS_NULL(cmd_list[1])) {
 		LCD_ERR("No cmds for TX_LPM_BL_CMD..\n");
 		return;
@@ -682,8 +756,8 @@ static void ss_update_panel_lpm_ctrl_cmd(struct samsung_display_driver_data *vdd
 
 	LCD_INFO("%s++\n", __func__);
 
-	cmd_list[0] = ss_get_cmds(vdd, TX_LPM_ON);	// JUN_TEMP
-	cmd_list[1] = ss_get_cmds(vdd, TX_LPM_ON);	// JUN_TEMP
+	cmd_list[0] = ss_get_cmds(vdd, TX_LPM_ON);
+	cmd_list[1] = ss_get_cmds(vdd, TX_LPM_ON);
 	if (SS_IS_CMDS_NULL(cmd_list[0]) || SS_IS_CMDS_NULL(cmd_list[1])) {
 		LCD_ERR("No cmds for TX_LPM_ON..\n");
 		return;
@@ -790,6 +864,37 @@ static void ss_update_panel_lpm_ctrl_cmd(struct samsung_display_driver_data *vdd
 	LCD_INFO("%s--\n", __func__);
 }
 
+static int ss_self_display_data_init(struct samsung_display_driver_data *vdd)
+{
+	LCD_INFO("++\n");
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("vdd is null or error\n");
+		return -ENODEV;
+	}
+
+	if (!vdd->self_disp.is_support) {
+		LCD_ERR("Self Display is not supported\n");
+		return -EINVAL;
+	}
+
+	vdd->self_disp.operation[FLAG_SELF_MASK].img_buf = self_mask_img_data;
+	vdd->self_disp.operation[FLAG_SELF_MASK].img_size = ARRAY_SIZE(self_mask_img_data);
+	vdd->self_disp.operation[FLAG_SELF_MASK].img_checksum = SELF_MASK_IMG_CHECKSUM;
+	make_self_dispaly_img_cmds_FA9(vdd, TX_SELF_MASK_IMAGE, FLAG_SELF_MASK);
+
+	vdd->self_disp.operation[FLAG_SELF_MASK_CRC].img_buf = self_mask_img_fhd_crc_data;
+	vdd->self_disp.operation[FLAG_SELF_MASK_CRC].img_size = ARRAY_SIZE(self_mask_img_fhd_crc_data);
+	make_self_dispaly_img_cmds_FA9(vdd, TX_SELF_MASK_IMAGE_CRC, FLAG_SELF_MASK_CRC);
+
+	LCD_INFO("--\n");
+	return 1;
+}
+
+static void ss_copr_panel_init(struct samsung_display_driver_data *vdd)
+{
+	ss_copr_init(vdd);
+}
 
 static int samsung_panel_off_pre(struct samsung_display_driver_data *vdd)
 {
@@ -820,7 +925,7 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	/* DDI RX */
 	vdd->panel_func.samsung_panel_revision = ss_panel_revision;
 	vdd->panel_func.samsung_manufacture_date_read = ss_manufacture_date_read;
-	vdd->panel_func.samsung_ddi_id_read = NULL;
+	vdd->panel_func.samsung_ddi_id_read = ss_ddi_id_read;
 	vdd->panel_func.samsung_smart_dimming_init = NULL;
 	vdd->panel_func.samsung_cell_id_read = ss_cell_id_read;
 	vdd->panel_func.samsung_octa_id_read = ss_octa_id_read;
@@ -836,7 +941,7 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_brightness_elvss = NULL;
 	vdd->panel_func.samsung_brightness_elvss_temperature1 = NULL;
 	vdd->panel_func.samsung_brightness_elvss_temperature2 = NULL;
-	vdd->panel_func.samsung_brightness_vint = NULL;
+	vdd->panel_func.samsung_brightness_vint = ss_vint;
 	vdd->panel_func.samsung_brightness_gamma = NULL;
 
 	vdd->smart_dimming_loaded_dsi = false;
@@ -863,13 +968,10 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	/* mdnie */
 	vdd->mdnie.support_mdnie = true;
 
-	vdd->mdnie.support_trans_dimming = false;
+	vdd->mdnie.support_trans_dimming = true;
 	vdd->mdnie.mdnie_tune_size[0] = sizeof(DSI0_BYPASS_MDNIE_1);
 	vdd->mdnie.mdnie_tune_size[1] = sizeof(DSI0_BYPASS_MDNIE_2);
 	vdd->mdnie.mdnie_tune_size[2] = sizeof(DSI0_BYPASS_MDNIE_3);
-	vdd->mdnie.mdnie_tune_size[3] = sizeof(DSI0_BYPASS_MDNIE_4);
-	vdd->mdnie.mdnie_tune_size[4] = sizeof(DSI0_BYPASS_MDNIE_5);
-	vdd->mdnie.mdnie_tune_size[5] = sizeof(DSI0_BYPASS_MDNIE_6);
 
 	dsi_update_mdnie_data(vdd);
 
@@ -889,7 +991,7 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_cover_control = NULL;
 
 	/* COPR */
-	vdd->copr.panel_init = NULL;
+	vdd->copr.panel_init = ss_copr_panel_init;
 
 	/* ACL default ON */
 	vdd->acl_status = 1;
@@ -905,13 +1007,14 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_gct_read = NULL;
 
 	/* Self display */
-	vdd->self_disp.is_support = false;
+	vdd->self_disp.is_support = true;
 	vdd->self_disp.factory_support = true;
+	vdd->self_disp.init = self_display_init_FA9;
+	vdd->self_disp.data_init = ss_self_display_data_init;
 
 	/* SAMSUNG_FINGERPRINT */
 	vdd->panel_hbm_entry_delay = 2;
 
-	vdd->debug_data->print_cmds = true;	// JUN_TEMP
 	LCD_INFO("S6E3FA9_AMB667UM01 : -- \n");
 }
 

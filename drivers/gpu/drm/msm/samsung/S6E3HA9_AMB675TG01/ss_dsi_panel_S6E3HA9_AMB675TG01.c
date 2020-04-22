@@ -1568,11 +1568,15 @@ static int ss_self_display_data_init(struct samsung_display_driver_data *vdd)
 	LCD_INFO("Panel Type=0x%x, Panel Color=0x%x\n", panel_type, panel_color);
 
 	LCD_INFO("Self Mask Image for P-Hole C-Type\n");
+
 	vdd->self_disp.operation[FLAG_SELF_MASK].img_buf = self_mask_img_phole_ctype_data;
 	vdd->self_disp.operation[FLAG_SELF_MASK].img_size = ARRAY_SIZE(self_mask_img_phole_ctype_data);
 	vdd->self_disp.operation[FLAG_SELF_MASK].img_checksum = SELF_MASK_IMG_PHOLE_CTYPE_CHECKSUM;
-	
 	make_self_dispaly_img_cmds_HA9(vdd, TX_SELF_MASK_IMAGE, FLAG_SELF_MASK);
+
+	vdd->self_disp.operation[FLAG_SELF_MASK_CRC].img_buf = self_mask_img_phole_ctype_data;
+	vdd->self_disp.operation[FLAG_SELF_MASK_CRC].img_size = ARRAY_SIZE(self_mask_img_phole_ctype_data);
+	make_self_dispaly_img_cmds_HA9(vdd, TX_SELF_MASK_IMAGE_CRC, FLAG_SELF_MASK_CRC);
 
 	vdd->self_disp.operation[FLAG_SELF_ICON].img_buf = self_icon_img_data;
 	vdd->self_disp.operation[FLAG_SELF_ICON].img_size = ARRAY_SIZE(self_icon_img_data);

@@ -22,8 +22,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/badblocks.h>
 #include <linux/ologk.h>
-#include <linux/ptrace.h>
-#include <linux/task_io_accounting_ops.h>
 
 #ifdef CONFIG_BLOCK_SUPPORT_STLOG
 #include <linux/fslog.h>
@@ -1203,11 +1201,11 @@ static ssize_t disk_ios_show(struct device *dev,
 			   "\"IOT\":\"%lu\","
 			   "\"Hours\":\"%ld\"\n",
 			UNSIGNED_DIFF(new.ios[READ], old->ios[READ]),
-			UNSIGNED_DIFF(new.sectors[READ], old->sectors[READ]),
+			UNSIGNED_DIFF(new.sectors[READ], old->sectors[READ]) / 2, /* KB */
 			UNSIGNED_DIFF(new.ios[WRITE], old->ios[WRITE]),
-			UNSIGNED_DIFF(new.sectors[WRITE], old->sectors[WRITE]),
+			UNSIGNED_DIFF(new.sectors[WRITE], old->sectors[WRITE]) / 2,
 			UNSIGNED_DIFF(new.ios[DISCARD], old->ios[DISCARD]),
-			UNSIGNED_DIFF(new.sectors[DISCARD], old->sectors[DISCARD]),
+			UNSIGNED_DIFF(new.sectors[DISCARD], old->sectors[DISCARD]) / 2,
 			UNSIGNED_DIFF(new.iot, old->iot),
 			hours);
 
@@ -1223,10 +1221,12 @@ static ssize_t disk_ios_show(struct device *dev,
 	return ret;
 }
 
+
+/* IOPP-iomon-v1.0.4.14 */
 #define SEC2MB(x) ((unsigned long)((x) / 2 / 1024))
-static ssize_t iomon_show(struct device *dev, 
-			  struct device_attribute *attr, 
-			  char *buf)
+static ssize_t iomon_show(struct device *dev,
+		struct device_attribute *attr,
+		char *buf)
 {
 	struct gendisk *disk = dev_to_disk(dev);
 	struct hd_struct *hd = dev_to_part(dev);
@@ -1241,31 +1241,31 @@ static ssize_t iomon_show(struct device *dev,
 	nwrite = part_in_flight_write(hd);
 
 	ret = sprintf(buf, "rc %lu rmb %lu "
-		"wc %lu wmb %lu dc %lu dmb %lu "
-		"inp %u %u "
-		"iot %u %llu \n",
-		part_stat_read(hd, ios[READ]),
-		SEC2MB(part_stat_read(hd, sectors[READ])),
+			"wc %lu wmb %lu dc %lu dmb %lu "
+			"inp %u %u "
+			"iot %u %llu \n",
+			part_stat_read(hd, ios[READ]),
+			SEC2MB(part_stat_read(hd, sectors[READ])),
 
-		part_stat_read(hd, ios[WRITE]) -
-		part_stat_read(hd, discard_ios) - part_stat_read(hd, flush_ios),
-		SEC2MB(part_stat_read(hd, sectors[WRITE])) -
-		SEC2MB(part_stat_read(hd, discard_sectors)),
-		part_stat_read(hd, discard_ios),
-		SEC2MB(part_stat_read(hd, discard_sectors)),
+			part_stat_read(hd, ios[WRITE]) -
+			part_stat_read(hd, discard_ios) - part_stat_read(hd, flush_ios),
+			SEC2MB(part_stat_read(hd, sectors[WRITE])) -
+			SEC2MB(part_stat_read(hd, discard_sectors)),
+			part_stat_read(hd, discard_ios),
+			SEC2MB(part_stat_read(hd, discard_sectors)),
 
-		nread,
-		nwrite,
+			nread,
+			nwrite,
 
-		jiffies_to_msecs(part_stat_read(hd, io_ticks)),
-		disk->queue->in_flight_time / USEC_PER_MSEC);
+			jiffies_to_msecs(part_stat_read(hd, io_ticks)),
+			disk->queue->in_flight_time / USEC_PER_MSEC);
 
 	return ret;
 }
 
 static ssize_t iomon_store(struct device *dev,
-			   struct device_attribute *attr,
-			   const char *buf, size_t count)
+		struct device_attribute *attr,
+		const char *buf, size_t count)
 {
 	struct gendisk *disk = dev_to_disk(dev);
 	struct hd_struct *hd = dev_to_part(dev);
@@ -1284,24 +1284,24 @@ static ssize_t iomon_store(struct device *dev,
 
 	if(!strcmp(action, "c") || !strcmp(action, "s") || !strcmp(action, "e")) {
 		ologk("rc %lu rmb %lu "
-			"wc %lu wmb %lu dc %lu dmb %lu "
-			"inp %u %u "
-			"iot %u %llu ",
-			part_stat_read(hd, ios[READ]),
-			SEC2MB(part_stat_read(hd, sectors[READ])),
+				"wc %lu wmb %lu dc %lu dmb %lu "
+				"inp %u %u "
+				"iot %u %llu ",
+				part_stat_read(hd, ios[READ]),
+				SEC2MB(part_stat_read(hd, sectors[READ])),
 
-			part_stat_read(hd, ios[WRITE]) - 
-			part_stat_read(hd, discard_ios) - part_stat_read(hd, flush_ios),
-			SEC2MB(part_stat_read(hd, sectors[WRITE])) - 
-			SEC2MB(part_stat_read(hd, discard_sectors)),
-			part_stat_read(hd, discard_ios),
-			SEC2MB(part_stat_read(hd, discard_sectors)),
+				part_stat_read(hd, ios[WRITE]) -
+				part_stat_read(hd, discard_ios) - part_stat_read(hd, flush_ios),
+				SEC2MB(part_stat_read(hd, sectors[WRITE])) -
+				SEC2MB(part_stat_read(hd, discard_sectors)),
+				part_stat_read(hd, discard_ios),
+				SEC2MB(part_stat_read(hd, discard_sectors)),
 
-			nread,
-			nwrite,
+				nread,
+				nwrite,
 
-			jiffies_to_msecs(part_stat_read(hd, io_ticks)),
-			disk->queue->in_flight_time / USEC_PER_MSEC);
+				jiffies_to_msecs(part_stat_read(hd, io_ticks)),
+				disk->queue->in_flight_time / USEC_PER_MSEC);
 	}
 
 	return count;
@@ -1438,8 +1438,8 @@ static ssize_t iobd_show(struct device *dev,
 
 	return ret;
 }
-
 #undef DISCARD
+
 
 static DEVICE_ATTR(range, S_IRUGO, disk_range_show, NULL);
 static DEVICE_ATTR(ext_range, S_IRUGO, disk_ext_range_show, NULL);
@@ -1812,71 +1812,8 @@ static const struct file_operations proc_iostats_operations = {
 	.release	= seq_release,
 };
 
-#ifdef CONFIG_TASK_IO_ACCOUNTING
-static int __piostats_show(struct task_struct *task, struct seq_file *m, int whole)
-{
-	struct task_io_accounting acct = task->ioac;
-	unsigned long flags;
-	int result;
-
-	result = mutex_lock_killable(&task->signal->cred_guard_mutex);
-	if (result)
-		return result;
-
-	if (whole && lock_task_sighand(task, &flags)) {
-		struct task_struct *t = task;
-
-		task_io_accounting_add(&acct, &task->signal->ioac);
-		while_each_thread(task, t)
-			task_io_accounting_add(&acct, &t->ioac);
-
-		unlock_task_sighand(task, &flags);
-	}
-
-	seq_printf(m, "%8llu %8d %8llu %8llu %8llu %16s\n",
-			task->real_start_time / NSEC_PER_SEC,
-			task->pid,
-			acct.read_bytes / 1024,
-			acct.write_bytes / 1024,
-			acct.cancelled_write_bytes / 1024,
-			task->comm);
-	result = 0;
-
-	mutex_unlock(&task->signal->cred_guard_mutex);
-	return result;
-}
-
-static int piostats_show(struct seq_file *seqf, void *v)
-{
-	struct task_struct *p;
-
-	for_each_process(p) {
-		if (p->flags & (PF_KTHREAD | PF_WQ_WORKER))
-			continue;
-		__piostats_show(p, seqf, 1);
-	}
-
-	return 0;
-}
-
-static int piostats_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, piostats_show, inode);
-}
-
-static const struct file_operations proc_piostats_operations = {
-	.open           = piostats_open,
-	.read           = seq_read,
-	.llseek         = seq_lseek,
-	.release        = seq_release,
-};
-#endif
-
 static int __init proc_genhd_init(void)
 {
-#ifdef CONFIG_TASK_IO_ACCOUNTING
-	proc_create("piostats", 0, NULL, &proc_piostats_operations);
-#endif
 	proc_create("iostats", 0, NULL, &proc_iostats_operations);
 	proc_create("diskstats", 0, NULL, &proc_diskstats_operations);
 	proc_create("iodevs", 0, NULL, &proc_iodevs_operations);

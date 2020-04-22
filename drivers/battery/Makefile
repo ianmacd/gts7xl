@@ -5,4 +5,8 @@
 
 # Object files in subdirectories
 
-obj-$(CONFIG_BATTERY_SAMSUNG)	+= charger/ common/ fuelgauge/ wireless/
+ifeq ($(CONFIG_BATTERY_SAMSUNG_V3), y)
+	obj-$(CONFIG_BATTERY_SAMSUNG)	+= v3/
+else
+	obj-$(CONFIG_BATTERY_SAMSUNG)	+= fuelgauge/ charger/ wireless/ common/
+endif

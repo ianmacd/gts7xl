@@ -29,16 +29,17 @@ const char *cisd_data_str[] = {
 const char *cisd_data_str_d[] = {
 	"FULL_CNT_D", "CAP_MAX_D", "CAP_MIN_D", "RECHARGING_CNT_D", "VALERT_CNT_D", "WIRE_CNT_D", "WIRELESS_CNT_D",
 	"HIGH_SWELLING_CNT_D", "LOW_SWELLING_CNT_D", "WC_HIGH_SWELLING_CNT_D", "SWELLING_FULL_CNT_D",
-	"SWELLING_RECOVERY_CNT_D", "AICL_CNT_D", "BATT_THM_MAX_D", "BATT_THM_MIN_D", "CHG_THM_MAX_D",
-	"CHG_THM_MIN_D", "WPC_THM_MAX_D", "WPC_THM_MIN_D", "USB_THM_MAX_D", "USB_THM_MIN_D",
-	"CHG_BATT_THM_MAX_D", "CHG_BATT_THM_MIN_D", "CHG_CHG_THM_MAX_D", "CHG_CHG_THM_MIN_D",
-	"CHG_WPC_THM_MAX_D", "CHG_WPC_THM_MIN_D", "CHG_USB_THM_MAX_D", "CHG_USB_THM_MIN_D",
-	"USB_OVERHEAT_CHARGING_D", "UNSAFETY_VOLT_D", "UNSAFETY_TEMP_D", "SAFETY_TIMER_D", "VSYS_OVP_D",
-	"VBAT_OVP_D", "USB_OVERHEAT_RAPID_CHANGE_D", "BUCK_OFF_D", "USB_OVERHEAT_ALONE_D", "DROP_SENSOR_D"
+	"SWELLING_RECOVERY_CNT_D", "AICL_CNT_D", "BATT_THM_MAX_D", "BATT_THM_MIN_D", "SUB_BATT_THM_MAX_D",
+	"SUB_BATT_THM_MIN_D", "CHG_THM_MAX_D", "CHG_THM_MIN_D", "USB_THM_MAX_D", "USB_THM_MIN_D", "CHG_BATT_THM_MAX_D",
+	"CHG_BATT_THM_MIN_D", "CHG_SUB_BATT_THM_MAX_D", "CHG_SUB_BATT_THM_MIN_D", "CHG_CHG_THM_MAX_D", "CHG_CHG_THM_MIN_D", 
+	"CHG_USB_THM_MAX_D", "CHG_USB_THM_MIN_D", "USB_OVERHEAT_CHARGING_D", "UNSAFETY_VOLT_D", "UNSAFETY_TEMP_D",
+	"SAFETY_TIMER_D", "VSYS_OVP_D", "VBAT_OVP_D", "USB_OVERHEAT_RAPID_CHANGE_D", "BUCK_OFF_D",
+	"USB_OVERHEAT_ALONE_D", "DROP_SENSOR_D"
 };
 
 const char *cisd_cable_data_str[] = {"TA", "AFC", "AFC_FAIL", "QC", "QC_FAIL", "PD", "PD_HIGH", "HV_WC_20"};
 const char *cisd_tx_data_str[] = {"ON", "OTHER", "GEAR", "PHONE", "BUDS"};
+const char *cisd_event_data_str[] = {"DC_ERR", "TA_OCP_DET", "TA_OCP_ON"};
 
 bool sec_bat_cisd_check(struct sec_battery_info *battery)
 {
@@ -62,8 +63,8 @@ bool sec_bat_cisd_check(struct sec_battery_info *battery)
 
 		if ((pcisd->ab_vbat_check_count >= pcisd->ab_vbat_max_count) &&
 			!(pcisd->state & CISD_STATE_OVER_VOLTAGE)) {
-			dev_info(battery->dev, "%s : [CISD] Battery Over Voltage Protction !! vbat(%d)mV\n",
-				__func__, battery->voltage_now);
+			dev_info(battery->dev, "%s : [CISD] Battery Over Voltage Protction !! vbat(%d)mV > pcisd->max_voltage_thr(%d)mV\n",
+				__func__, battery->voltage_now, pcisd->max_voltage_thr);
 			vbat_val.intval = true;
 			psy_do_property("battery", set, POWER_SUPPLY_EXT_PROP_VBAT_OVP,
 					vbat_val);
@@ -100,15 +101,15 @@ bool sec_bat_cisd_check(struct sec_battery_info *battery)
 		if (battery->temperature < pcisd->data[CISD_DATA_CHG_BATT_TEMP_MIN_PER_DAY])
 			pcisd->data[CISD_DATA_CHG_BATT_TEMP_MIN_PER_DAY] = battery->temperature;
 
+		if (battery->sub_bat_temp > pcisd->data[CISD_DATA_CHG_SUB_BATT_TEMP_MAX_PER_DAY])
+			pcisd->data[CISD_DATA_CHG_SUB_BATT_TEMP_MAX_PER_DAY] = battery->sub_bat_temp;
+		if (battery->sub_bat_temp < pcisd->data[CISD_DATA_CHG_SUB_BATT_TEMP_MIN_PER_DAY])
+			pcisd->data[CISD_DATA_CHG_SUB_BATT_TEMP_MIN_PER_DAY] = battery->sub_bat_temp;
+
 		if (battery->chg_temp > pcisd->data[CISD_DATA_CHG_CHG_TEMP_MAX_PER_DAY])
 			pcisd->data[CISD_DATA_CHG_CHG_TEMP_MAX_PER_DAY] = battery->chg_temp;
 		if (battery->chg_temp < pcisd->data[CISD_DATA_CHG_CHG_TEMP_MIN_PER_DAY])
 			pcisd->data[CISD_DATA_CHG_CHG_TEMP_MIN_PER_DAY] = battery->chg_temp;
-
-		if (battery->wpc_temp > pcisd->data[CISD_DATA_CHG_WPC_TEMP_MAX_PER_DAY])
-			pcisd->data[CISD_DATA_CHG_WPC_TEMP_MAX_PER_DAY] = battery->wpc_temp;
-		if (battery->wpc_temp < pcisd->data[CISD_DATA_CHG_WPC_TEMP_MIN_PER_DAY])
-			pcisd->data[CISD_DATA_CHG_WPC_TEMP_MIN_PER_DAY] = battery->wpc_temp;
 
 		if (battery->usb_temp > pcisd->data[CISD_DATA_CHG_USB_TEMP_MAX_PER_DAY])
 			pcisd->data[CISD_DATA_CHG_USB_TEMP_MAX_PER_DAY] = battery->usb_temp;
@@ -182,15 +183,15 @@ bool sec_bat_cisd_check(struct sec_battery_info *battery)
 	if (battery->temperature < pcisd->data[CISD_DATA_BATT_TEMP_MIN_PER_DAY])
 		pcisd->data[CISD_DATA_BATT_TEMP_MIN_PER_DAY] = battery->temperature;
 
+	if (battery->sub_bat_temp > pcisd->data[CISD_DATA_SUB_BATT_TEMP_MAX_PER_DAY])
+		pcisd->data[CISD_DATA_SUB_BATT_TEMP_MAX_PER_DAY] = battery->sub_bat_temp;
+	if (battery->sub_bat_temp < pcisd->data[CISD_DATA_SUB_BATT_TEMP_MIN_PER_DAY])
+		pcisd->data[CISD_DATA_SUB_BATT_TEMP_MIN_PER_DAY] = battery->sub_bat_temp;
+
 	if (battery->chg_temp > pcisd->data[CISD_DATA_CHG_TEMP_MAX_PER_DAY])
 		pcisd->data[CISD_DATA_CHG_TEMP_MAX_PER_DAY] = battery->chg_temp;
 	if (battery->chg_temp < pcisd->data[CISD_DATA_CHG_TEMP_MIN_PER_DAY])
 		pcisd->data[CISD_DATA_CHG_TEMP_MIN_PER_DAY] = battery->chg_temp;
-
-	if (battery->wpc_temp > pcisd->data[CISD_DATA_WPC_TEMP_MAX_PER_DAY])
-		pcisd->data[CISD_DATA_WPC_TEMP_MAX_PER_DAY] = battery->wpc_temp;
-	if (battery->wpc_temp < pcisd->data[CISD_DATA_WPC_TEMP_MIN_PER_DAY])
-		pcisd->data[CISD_DATA_WPC_TEMP_MIN_PER_DAY] = battery->wpc_temp;
 
 	if (battery->usb_temp > pcisd->data[CISD_DATA_USB_TEMP_MAX_PER_DAY])
 		pcisd->data[CISD_DATA_USB_TEMP_MAX_PER_DAY] = battery->usb_temp;
@@ -227,21 +228,21 @@ void sec_battery_cisd_init(struct sec_battery_info *battery)
 
 	battery->cisd.data[CISD_DATA_FULL_COUNT_PER_DAY] = 1;
 	battery->cisd.data[CISD_DATA_BATT_TEMP_MAX_PER_DAY] = -300;
+	battery->cisd.data[CISD_DATA_SUB_BATT_TEMP_MAX_PER_DAY] = -300;
 	battery->cisd.data[CISD_DATA_CHG_TEMP_MAX_PER_DAY] = -300;
-	battery->cisd.data[CISD_DATA_WPC_TEMP_MAX_PER_DAY] = -300;
 	battery->cisd.data[CISD_DATA_USB_TEMP_MAX_PER_DAY] = -300;
 	battery->cisd.data[CISD_DATA_BATT_TEMP_MIN_PER_DAY] = 1000;
+	battery->cisd.data[CISD_DATA_SUB_BATT_TEMP_MIN_PER_DAY] = 1000;
 	battery->cisd.data[CISD_DATA_CHG_TEMP_MIN_PER_DAY] = 1000;
-	battery->cisd.data[CISD_DATA_WPC_TEMP_MIN_PER_DAY] = 1000;
 	battery->cisd.data[CISD_DATA_USB_TEMP_MIN_PER_DAY] = 1000;
 
 	battery->cisd.data[CISD_DATA_CHG_BATT_TEMP_MAX_PER_DAY] = -300;
+	battery->cisd.data[CISD_DATA_CHG_SUB_BATT_TEMP_MAX_PER_DAY] = -300;
 	battery->cisd.data[CISD_DATA_CHG_CHG_TEMP_MAX_PER_DAY] = -300;
-	battery->cisd.data[CISD_DATA_CHG_WPC_TEMP_MAX_PER_DAY] = -300;
 	battery->cisd.data[CISD_DATA_CHG_USB_TEMP_MAX_PER_DAY] = -300;
 	battery->cisd.data[CISD_DATA_CHG_BATT_TEMP_MIN_PER_DAY] = 1000;
+	battery->cisd.data[CISD_DATA_CHG_SUB_BATT_TEMP_MIN_PER_DAY] = 1000;
 	battery->cisd.data[CISD_DATA_CHG_CHG_TEMP_MIN_PER_DAY] = 1000;
-	battery->cisd.data[CISD_DATA_CHG_WPC_TEMP_MIN_PER_DAY] = 1000;
 	battery->cisd.data[CISD_DATA_CHG_USB_TEMP_MIN_PER_DAY] = 1000;
 
 	battery->cisd.ab_vbat_max_count = 2; /* should be 2 */

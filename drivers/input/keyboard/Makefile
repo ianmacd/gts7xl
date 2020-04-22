@@ -74,4 +74,3 @@ obj-$(CONFIG_KEYBOARD_W90P910)		+= w90p910_keypad.o
 obj-$(CONFIG_KEYBOARD_STM_FSR)		+= stm/fsr1ad04/
 obj-$(CONFIG_KEYBOARD_STM32_POGO)	+= stm/stm32l0/
 obj-$(CONFIG_LOGICAL_HALL)		+= hall_ic_logical.o
-

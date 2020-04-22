@@ -268,7 +268,7 @@ static struct miscdevice ccic_misc_device = {
 	.fops	= &ccic_misc_fops,
 };
 
-int ccic_misc_init(void)
+int s2mu107_ccic_misc_init(void)
 {
 	int ret = 0;
 
@@ -294,9 +294,9 @@ err1:
 err:
 	return ret;
 }
-EXPORT_SYMBOL(ccic_misc_init);
+EXPORT_SYMBOL(s2mu107_ccic_misc_init);
 
-void ccic_misc_exit(void)
+void s2mu107_ccic_misc_exit(void)
 {
 	pr_info("%s() called\n", __func__);
 	if (!c_dev)
@@ -304,4 +304,4 @@ void ccic_misc_exit(void)
 	kfree(c_dev);
 	misc_deregister(&ccic_misc_device);
 }
-EXPORT_SYMBOL(ccic_misc_exit);
+EXPORT_SYMBOL(s2mu107_ccic_misc_exit);

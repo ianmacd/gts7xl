@@ -1,7 +1,7 @@
 /*
  * Fundamental types and constants relating to 802.1D
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,8 +23,6 @@
  *
  *
  * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: 802.1d.h 700076 2017-05-17 14:42:22Z $
  */
 
 #ifndef _802_1_D_

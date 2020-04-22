@@ -4,7 +4,7 @@
  * Provides type definitions and function prototypes used to link the
  * DHD OS, bus, and protocol modules.
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -27,7 +27,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd.h 828035 2019-07-01 05:39:16Z $
+ * $Id: dhd.h 858391 2020-01-08 12:02:35Z $
  */
 
 /****************
@@ -1126,9 +1126,9 @@ typedef struct dhd_pub {
 #if defined(DHD_HANG_SEND_UP_TEST)
 	uint req_hang_type;
 #endif /* DHD_HANG_SEND_UP_TEST */
-#if defined(CONFIG_BCM_DETECT_CONSECUTIVE_HANG)
-	uint hang_counts;
-#endif /* CONFIG_BCM_DETECT_CONSECUTIVE_HANG */
+#ifdef DHD_DETECT_CONSECUTIVE_MFG_HANG
+	uint hang_count;
+#endif /* DHD_DETECT_CONSECUTIVE_MFG_HANG */
 #ifdef WLTDLS
 	bool tdls_enable;
 #endif // endif
@@ -1421,6 +1421,7 @@ typedef struct dhd_pub {
 	union {
 		wl_roam_stats_v1_t v1;
 	} roam_evt;
+	bool dhd_chk_m4acked;		/* check acked for sending M4 packet */
 } dhd_pub_t;
 
 typedef struct {
@@ -1920,6 +1921,7 @@ extern void dhd_bus_wakeup_work(dhd_pub_t *dhdp);
 #define WIFI_FEATURE_CONTROL_ROAMING    0x800000	/* Enable/Disable firmware roaming */
 #define WIFI_FEATURE_FILTER_IE          0x1000000	/* Probe req ie filter              */
 #define WIFI_FEATURE_SCAN_RAND          0x2000000	/* Support MAC & Prb SN randomization */
+#define WIFI_FEATURE_P2P_RAND_MAC       0x80000000  /* Support P2P MAC randomization    */
 #define WIFI_FEATURE_INVALID            0xFFFFFFFF	/* Invalid Feature                  */
 
 #define MAX_FEATURE_SET_CONCURRRENT_GROUPS  3
@@ -1927,6 +1929,7 @@ extern void dhd_bus_wakeup_work(dhd_pub_t *dhdp);
 extern int dhd_dev_get_feature_set(struct net_device *dev);
 extern int dhd_dev_get_feature_set_matrix(struct net_device *dev, int num);
 extern int dhd_dev_cfg_rand_mac_oui(struct net_device *dev, uint8 *oui);
+extern int dhd_update_rand_mac_addr(dhd_pub_t *dhd);
 #ifdef CUSTOM_FORCE_NODFS_FLAG
 extern int dhd_dev_set_nodfs(struct net_device *dev, uint nodfs);
 #endif /* CUSTOM_FORCE_NODFS_FLAG */
@@ -2070,11 +2073,13 @@ void dhd_schedule_cto_recovery(dhd_pub_t *dhdp);
 #define DHD_IP4BCAST_DROP_FILTER_NUM	7
 #define DHD_LLC_STP_DROP_FILTER_NUM	8
 #define DHD_LLC_XID_DROP_FILTER_NUM	9
+#define DHD_UDPNETBIOS_DROP_FILTER_NUM	10
 #define DISCARD_IPV4_MCAST	"102 1 6 IP4_H:16 0xf0 0xe0"
 #define DISCARD_IPV6_MCAST	"103 1 6 IP6_H:24 0xff 0xff"
 #define DISCARD_IPV4_BCAST	"107 1 6 IP4_H:16 0xffffffff 0xffffffff"
 #define DISCARD_LLC_STP		"108 1 6 ETH_H:14 0xFFFFFFFFFFFF 0xAAAA0300000C"
 #define DISCARD_LLC_XID		"109 1 6 ETH_H:14 0xFFFFFF 0x0001AF"
+#define DISCARD_UDPNETBIOS	"110 1 6 UDP_H:2 0xffff 0x0089"
 extern int dhd_os_enable_packet_filter(dhd_pub_t *dhdp, int val);
 extern void dhd_enable_packet_filter(int value, dhd_pub_t *dhd);
 extern int dhd_packet_filter_add_remove(dhd_pub_t *dhdp, int add_remove, int num);
@@ -2577,7 +2582,6 @@ extern char fw_path2[MOD_PARAM_PATHLEN];
 #define DHD_EXPORT_CNTL_FILE
 #define DHD_SOFTAP_DUAL_IF_INFO
 #define DHD_SEND_HANG_PRIVCMD_ERRORS
-#define DHD_SEND_HANG_IOCTL_SUSPEND_ERROR
 #else
 #define PLATFORM_PATH   "/data/misc/conn/"
 #endif /* ANDROID_PLATFORM_VERSION >= 9 */
@@ -2926,6 +2930,10 @@ int dhd_parse_map_file(osl_t *osh, void *file, uint32 *ramstart,
 int dhd_event_logtrace_infobuf_pkt_process(dhd_pub_t *dhdp, void *pktbuf,
 		dhd_event_log_t *event_data);
 #endif /* PCIE_FULL_DONGLE */
+#ifdef CUSTOM_CONTROL_LOGTRACE
+/* By default logstr parsing is disabled */
+extern uint8 control_logtrace;
+#endif /* CUSTOM_CONTROL_LOGTRACE */
 #endif /* SHOW_LOGTRACE */
 
 #define dhd_is_device_removed(x) FALSE
@@ -3246,7 +3254,7 @@ extern void dhd_os_get_axi_error_filename(struct net_device *dev, char *dump_pat
 #endif /*  DNGL_AXI_ERROR_LOGGING */
 
 #endif /* DHD_LOG_DUMP */
-int dhd_export_debug_data(void *mem_buf, void *fp, const void *user_buf, int buf_len, void *pos);
+int dhd_export_debug_data(void *mem_buf, void *fp, const void *user_buf, uint32 buf_len, void *pos);
 #define DHD_PCIE_CONFIG_SAVE(bus)	pci_save_state(bus->dev)
 #define DHD_PCIE_CONFIG_RESTORE(bus)	pci_restore_state(bus->dev)
 
@@ -3401,4 +3409,11 @@ extern uint8 control_he_enab;
 #endif /* DISABLE_HE_ENAB  || CUSTOM_CONTROL_HE_ENAB */
 
 void *dhd_get_roam_evt(dhd_pub_t *dhdp);
+
+#ifdef DHD_CHECK_4WAY_M4ACKED
+extern void dhd_set_m4_acked(dhd_pub_t *dhdp, int set);
+extern void dhd_chk_m4_acked(dhd_pub_t *dhdp);
+#define CHK_M4_WAIT_MAX_TIME	200 /* ms */
+#define CHK_M4_WAIT_INTV_TIME	10 /* ms */
+#endif /* DHD_CHECK_4WAY_M4ACKED */
 #endif /* _dhd_h_ */

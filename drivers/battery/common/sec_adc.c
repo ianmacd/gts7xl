@@ -261,7 +261,7 @@ bool sec_bat_get_value_by_adc(
 				struct sec_battery_info *battery,
 				enum sec_battery_adc_channel channel,
 				union power_supply_propval *value,
-				enum sec_battery_temp_check check_type)
+				int check_type)
 {
 	int temp = 0;
 	int temp_adc;

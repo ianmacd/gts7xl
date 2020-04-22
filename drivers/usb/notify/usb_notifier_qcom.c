@@ -26,7 +26,11 @@
 #if defined(CONFIG_VBUS_NOTIFIER)
 #include <linux/vbus_notifier.h>
 #endif
+#if defined(CONFIG_BATTERY_SAMSUNG_LEGO_STYLE)
+#include "../../battery/common/include/sec_charging_common.h"
+#else
 #include "../../battery_v2/include/sec_charging_common.h"
+#endif
 #if defined(CONFIG_USB_TYPEC_MANAGER_NOTIFIER)
 #include <linux/usb/manager/usb_typec_manager_notifier.h>
 #endif
@@ -330,44 +334,6 @@ static int otg_accessory_power(bool enable)
 	return ret;
 }
 
-static int otg_accessory_power_change(bool enable)
-{
-	struct power_supply *psy_otg, *psy_battery;
-	union power_supply_propval val;
-	int on = !!enable;
-	int current_cable_type;
-	int ret = 0;
-	pr_info("%s %d, enable=%d\n", __func__, __LINE__, enable);
-	/* otg psy test */
-	psy_otg = get_power_supply_by_name("otg");
-	psy_battery = get_power_supply_by_name("battery");
-
-
-	if (psy_otg) {
-		val.intval = enable;
-		ret = psy_otg->desc->set_property(psy_otg, POWER_SUPPLY_PROP_VOLTAGE_MAX, &val);
-	} else if (psy_battery) {
-		if (enable)
-			current_cable_type = POWER_SUPPLY_TYPE_OTG;
-		else
-			current_cable_type = POWER_SUPPLY_TYPE_BATTERY;
-
-		val.intval = current_cable_type;
-		ret = psy_battery->desc->set_property(psy_battery, POWER_SUPPLY_PROP_ONLINE, &val);
-	} else {
-		pr_err("%s: Fail to get psy battery\n", __func__);
-		return -1;
-	}
-	if (ret) {
-		pr_err("%s: fail to set power_suppy ONLINE property(%d)\n",
-			__func__, ret);
-	} else {
-		pr_info("otg accessory power change = %d\n", on);
-	}
-
-	return ret;
-}
-
 static int qcom_set_peripheral(bool enable)
 {
 	dwc_msm_vbus_event(enable);
@@ -448,7 +414,6 @@ static int usb_blocked_chg_control(int set)
 
 static struct otg_notify sec_otg_notify = {
 	.vbus_drive	= otg_accessory_power,
-	.vbus_change = otg_accessory_power_change,
 	.set_peripheral	= qcom_set_peripheral,
 	.get_gadget_speed = qcom_get_gadget_speed,
 	.set_host = qcom_set_host,

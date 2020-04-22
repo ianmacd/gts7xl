@@ -25,18 +25,29 @@ extern struct pdic_notifier_struct pd_noti;
 void usbpd_timer1_start(struct usbpd_data *pd_data)
 {
 	do_gettimeofday(&pd_data->time1);
+	pr_info("%s, sec = %lld, usec = %lld\n", __func__,
+							pd_data->time1.tv_sec, pd_data->time1.tv_usec);
 }
 
-int usbpd_check_time1(struct usbpd_data *pd_data)
+long long usbpd_check_time1(struct usbpd_data *pd_data)
 {
-	int ms = 0;
-	int sec = 0;
+	long long ms = 0;
+	long long sec = 0;
 	struct timeval time;
 
 	do_gettimeofday(&time);
 
 	sec = time.tv_sec - pd_data->time1.tv_sec;
 	ms = (time.tv_usec - pd_data->time1.tv_usec) / 1000;
+
+	pd_data->check_time.tv_sec = time.tv_sec;
+	pd_data->check_time.tv_usec = time.tv_usec;
+
+	/* for demon update after boot */
+	if (sec > 100) {
+		usbpd_timer1_start(pd_data);
+		return 0;
+	}
 
 	return (sec * 1000) + ms;
 }
@@ -46,16 +57,22 @@ void usbpd_timer2_start(struct usbpd_data *pd_data)
 	do_gettimeofday(&pd_data->time2);
 }
 
-int usbpd_check_time2(struct usbpd_data *pd_data)
+long long usbpd_check_time2(struct usbpd_data *pd_data)
 {
-	int ms = 0;
-	int sec = 0;
+	long long ms = 0;
+	long long sec = 0;
 	struct timeval time;
 
 	do_gettimeofday(&time);
 
 	sec = time.tv_sec - pd_data->time2.tv_sec;
 	ms = (time.tv_usec - pd_data->time2.tv_usec) / 1000;
+
+	/* for demon update after boot */
+	if (sec > 100) {
+		usbpd_timer2_start(pd_data);
+		return 0;
+	}
 
 	return (sec * 1000) + ms;
 }
@@ -116,7 +133,9 @@ void usbpd_init_counters(struct usbpd_data *pd_data)
 	pd_data->counter.retry_counter = 0;
 	pd_data->counter.message_id_counter = 0;
 	pd_data->counter.caps_counter = 0;
+#if 0
 	pd_data->counter.hard_reset_counter = 0;
+#endif
 	pd_data->counter.swap_hard_reset_counter = 0;
 	pd_data->counter.discover_identity_counter = 0;
 }
@@ -137,6 +156,7 @@ void usbpd_policy_reset(struct usbpd_data *pd_data, unsigned flag)
 	} else if (flag == PLUG_DETACHED) {
 		pd_data->policy.plug_valid = 0;
 		dev_info(pd_data->dev, "%s DETACHED\n", __func__);
+		pd_data->counter.hard_reset_counter = 0;
 	}
 }
 
@@ -328,16 +348,39 @@ void usbpd_set_ops(struct device *dev, usbpd_phy_ops_type *ops)
 	pd_data->phy_ops.driver_reset = ops->driver_reset;
 	pd_data->phy_ops.set_otg_control = ops->set_otg_control;
 	pd_data->phy_ops.get_vbus_short_check = ops->get_vbus_short_check;
+	pd_data->phy_ops.pd_vbus_short_check = ops->pd_vbus_short_check;
 	pd_data->phy_ops.set_cc_control = ops->set_cc_control;
 	pd_data->phy_ops.get_side_check = ops->get_side_check;
 	pd_data->phy_ops.pr_swap = ops->pr_swap;
 	pd_data->phy_ops.vbus_on_check = ops->vbus_on_check;
 	pd_data->phy_ops.set_rp_control = ops->set_rp_control;
+	pd_data->phy_ops.send_pd_info = ops->send_pd_info;
+#if defined(CONFIG_TYPEC)
+	pd_data->phy_ops.set_pwr_opmode = ops->set_pwr_opmode;
+#endif
 	pd_data->phy_ops.cc_instead_of_vbus = ops->cc_instead_of_vbus;
 	pd_data->phy_ops.op_mode_clear = ops->op_mode_clear;
+
+#if defined(CONFIG_PDIC_PD30)
+	if (pd_data->ip_num == S2MU107_USBPD_IP) {
 	pd_data->phy_ops.pps_enable = ops->pps_enable;
+	pd_data->phy_ops.get_pps_enable = ops->get_pps_enable;
 	pd_data->phy_ops.send_psrdy = ops->send_psrdy;
 	pd_data->phy_ops.get_pps_voltage = ops->get_pps_voltage;
+	pd_data->phy_ops.send_hard_reset_dc = ops->send_hard_reset_dc;
+	pd_data->phy_ops.force_pps_disable = ops->force_pps_disable;
+	} else
+		pd_data->phy_ops.send_ocp_info = ops->send_ocp_info;
+#endif
+	pd_data->phy_ops.get_lpm_mode = ops->get_lpm_mode;
+	pd_data->phy_ops.set_lpm_mode = ops->set_lpm_mode;
+	pd_data->phy_ops.set_normal_mode = ops->set_normal_mode;
+	pd_data->phy_ops.get_rid = ops->get_rid;
+	pd_data->phy_ops.control_option_command = ops->control_option_command;
+#if defined(CONFIG_SEC_FACTORY)
+	pd_data->phy_ops.power_off_water_check = ops->power_off_water_check;
+#endif
+	pd_data->phy_ops.get_water_detect = ops->get_water_detect;
 }
 
 protocol_state usbpd_protocol_rx_layer_reset_for_receive(struct protocol_data *rx)
@@ -405,6 +448,7 @@ protocol_state usbpd_protocol_rx_store_messageid(struct protocol_data *rx)
 
 protocol_state usbpd_protocol_rx_check_messageid(struct protocol_data *rx)
 {
+#if 0
 	protocol_state state;
 
 	if (rx->stored_message_id == rx->msg_header.msg_id)
@@ -412,6 +456,8 @@ protocol_state usbpd_protocol_rx_check_messageid(struct protocol_data *rx)
 	else
 		state = PRL_Rx_Store_MessageID;
 	return state;
+#endif
+	return PRL_Rx_Store_MessageID;
 }
 
 void usbpd_protocol_tx(struct usbpd_data *pd_data)
@@ -509,7 +555,7 @@ void usbpd_read_msg(struct usbpd_data *pd_data)
 	}
 }
 
-/* return 1: sent with goodcrc, 0: fail */
+/* return i: sent with goodcrc, 0: fail */
 bool usbpd_send_msg(struct usbpd_data *pd_data, msg_header_type *header,
 		data_obj_type *obj)
 {
@@ -534,6 +580,7 @@ inline bool usbpd_send_ctrl_msg(struct usbpd_data *d, msg_header_type *h,
 		unsigned msg, unsigned dr, unsigned pr)
 {
 	h->msg_type = msg;
+	h->spec_revision = d->specification_revision;
 	h->port_data_role = dr;
 	h->port_power_role = pr;
 	h->num_data_objs = 0;
@@ -631,6 +678,8 @@ int usbpd_init(struct device *dev, void *phy_driver_data)
 	usbpd_init_manager(pd_data);
 
 	mutex_init(&pd_data->accept_mutex);
+
+	wake_lock_init(&pd_data->policy_wake, WAKE_LOCK_SUSPEND, "policy_wake");
 
 	pd_data->policy_wqueue =
 		create_singlethread_workqueue(dev_name(dev));

@@ -827,131 +827,224 @@ int sec_bat_parse_dt(struct device *dev,
 	if (ret)
 		pr_info("%s : Ovp Uvlo check type is Empty\n", __func__);
 
-	ret = of_property_read_u32(np, "battery,temp_highlimit_threshold_normal",
-				   &temp);
-	pdata->temp_highlimit_threshold_normal =  (int)temp;
-	if (ret)
-		pr_info("%s : Temp highlimit threshold normal is Empty\n", __func__);
+	ret = of_property_read_u32(np, "battery,overheatlimit_threshold", &temp);
+	battery->overheatlimit_threshold = (int)temp;
+	if (ret) {
+		pr_info("%s : overheatlimit_threshold is Empty\n", __func__);
+		battery->overheatlimit_threshold = 700;
+	}
 
-	ret = of_property_read_u32(np, "battery,temp_highlimit_recovery_normal",
-				   &temp);
-	pdata->temp_highlimit_recovery_normal =  (int)temp;
-	if (ret)
-		pr_info("%s : Temp highlimit recovery normal is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,temp_high_threshold_normal",
-				   &temp);
-	pdata->temp_high_threshold_normal =  (int)temp;
-	if (ret)
-		pr_info("%s : Temp high threshold normal is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,temp_high_recovery_normal",
-				   &temp);
-	pdata->temp_high_recovery_normal =  (int)temp;
-	if (ret)
-		pr_info("%s : Temp high recovery normal is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,temp_low_threshold_normal",
-				   &temp);
-	pdata->temp_low_threshold_normal =  (int)temp;
-	if (ret)
-		pr_info("%s : Temp low threshold normal is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,temp_low_recovery_normal",
-				   &temp);
-	pdata->temp_low_recovery_normal =  (int)temp;
-	if (ret)
-		pr_info("%s : Temp low recovery normal is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,temp_highlimit_threshold_lpm",
-				   &temp);
-	pdata->temp_highlimit_threshold_lpm = (int)temp;
-	if (ret)
-		pr_info("%s : Temp highlimit threshold lpm is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,temp_highlimit_recovery_lpm",
-				   &temp);
-	pdata->temp_highlimit_recovery_lpm = (int)temp;
-	if (ret)
-		pr_info("%s : Temp highlimit recovery lpm is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,temp_high_threshold_lpm",
-				   &temp);
-	pdata->temp_high_threshold_lpm = (int)temp;
-	if (ret)
-		pr_info("%s : Temp high threshold lpm is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,temp_high_recovery_lpm",
-				   &temp);
-	pdata->temp_high_recovery_lpm = (int)temp;
-	if (ret)
-		pr_info("%s : Temp high recovery lpm is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,temp_low_threshold_lpm",
-				   &temp);
-	pdata->temp_low_threshold_lpm = (int)temp;
-	if (ret)
-		pr_info("%s : Temp low threshold lpm is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,temp_low_recovery_lpm",
-				   &temp);
-	pdata->temp_low_recovery_lpm = (int)temp;
-	if (ret)
-		pr_info("%s : Temp low recovery lpm is Empty\n", __func__);
-
-	pr_info("%s : HIGHLIMIT_THRESHOLD_NOLMAL(%d), HIGHLIMIT_RECOVERY_NORMAL(%d)\n"
-		"HIGH_THRESHOLD_NORMAL(%d), HIGH_RECOVERY_NORMAL(%d) LOW_THRESHOLD_NORMAL(%d), LOW_RECOVERY_NORMAL(%d)\n"
-		"HIGHLIMIT_THRESHOLD_LPM(%d), HIGHLIMIT_RECOVERY_LPM(%d)\n"
-		"HIGH_THRESHOLD_LPM(%d), HIGH_RECOVERY_LPM(%d) LOW_THRESHOLD_LPM(%d), LOW_RECOVERY_LPM(%d)\n",
-		__func__,
-		pdata->temp_highlimit_threshold_normal, pdata->temp_highlimit_recovery_normal,
-		pdata->temp_high_threshold_normal, pdata->temp_high_recovery_normal,
-		pdata->temp_low_threshold_normal, pdata->temp_low_recovery_normal,
-		pdata->temp_highlimit_threshold_lpm, pdata->temp_highlimit_recovery_lpm,
-		pdata->temp_high_threshold_lpm, pdata->temp_high_recovery_lpm,
-		pdata->temp_low_threshold_lpm, pdata->temp_low_recovery_lpm);
-
-	ret = of_property_read_u32(np, "battery,wpc_high_threshold_normal",
-				   &temp);
-	pdata->wpc_high_threshold_normal =  (int)temp;
-	if (ret)
-		pr_info("%s : wpc_high_threshold_normal is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,wpc_high_recovery_normal",
-				   &temp);
-	pdata->wpc_high_recovery_normal =  (int)temp;
-	if (ret)
-		pr_info("%s : wpc_high_recovery_normal is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,wpc_low_threshold_normal",
-				   &temp);
-	pdata->wpc_low_threshold_normal =  (int)temp;
-	if (ret)
-		pr_info("%s : wpc_low_threshold_normal is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,wpc_low_recovery_normal",
-				   &temp);
-	pdata->wpc_low_recovery_normal =  (int)temp;
-	if (ret)
-		pr_info("%s : wpc_low_recovery_normal is Empty\n", __func__);
+	ret = of_property_read_u32(np, "battery,overheatlimit_recovery", &temp);
+	battery->overheatlimit_recovery = (int)temp;
+	if (ret) {
+		pr_info("%s : overheatlimit_recovery is Empty\n", __func__);
+		battery->overheatlimit_recovery = 680;
+	}
 
 #if defined(CONFIG_PREVENT_USB_CONN_OVERHEAT)
-	ret = of_property_read_u32(np, "battery,usb_protection_temp",
-				   &temp);
+	ret = of_property_read_u32(np, "battery,usb_protection_temp", &temp);
 	battery->usb_protection_temp = (int)temp;
 	if (ret) {
 		pr_info("%s : usb protection temp value is Empty\n", __func__);
 		battery->usb_protection_temp = 610;
 	}
 
-	ret = of_property_read_u32(np, "battery,temp_gap_bat_usb",
-				   &temp);
+	ret = of_property_read_u32(np, "battery,temp_gap_bat_usb", &temp);
 	battery->temp_gap_bat_usb = (int)temp;
 	if (ret) {
 		pr_info("%s : temp gap value is Empty\n", __func__);
 		battery->temp_gap_bat_usb = 200;
 	}
 #endif
+
+	ret = of_property_read_u32(np, "battery,wire_warm_overheat_thresh", &temp);
+	pdata->wire_warm_overheat_thresh = (int)temp;
+	if (ret) {
+		pr_info("%s : wire_warm_overheat_thresh is Empty\n", __func__);
+		pdata->wire_warm_overheat_thresh = 500;
+	}
+
+	ret = of_property_read_u32(np, "battery,wire_normal_warm_thresh", &temp);
+	pdata->wire_normal_warm_thresh = (int)temp;
+	if (ret) {
+		pr_info("%s : wire_normal_warm_thresh is Empty\n", __func__);
+		pdata->wire_normal_warm_thresh = 410;
+	}
+
+	ret = of_property_read_u32(np, "battery,wire_cool1_normal_thresh", &temp);
+	pdata->wire_cool1_normal_thresh = (int)temp;
+	if (ret) {
+		pr_info("%s : wire_cool1_normal_thresh is Empty\n", __func__);
+		pdata->wire_cool1_normal_thresh = 180;
+	}
+
+	ret = of_property_read_u32(np, "battery,wire_cool2_cool1_thresh", &temp);
+	pdata->wire_cool2_cool1_thresh = (int)temp;
+	if (ret) {
+		pr_info("%s : wire_cool2_cool1_thresh is Empty\n", __func__);
+		pdata->wire_cool2_cool1_thresh = 150;
+	}
+
+	ret = of_property_read_u32(np, "battery,wire_cool3_cool2_thresh", &temp);
+	pdata->wire_cool3_cool2_thresh = (int)temp;
+	if (ret) {
+		pr_info("%s : wire_cool3_cool2_thresh is Empty\n", __func__);
+		pdata->wire_cool3_cool2_thresh = 50;
+	}
+
+	ret = of_property_read_u32(np, "battery,wire_cold_cool3_thresh", &temp);
+	pdata->wire_cold_cool3_thresh = (int)temp;
+	if (ret) {
+		pr_info("%s : wire_cold_cool3_thresh is Empty\n", __func__);
+		pdata->wire_cold_cool3_thresh = 0;
+	}
+
+	ret = of_property_read_u32(np, "battery,wireless_warm_overheat_thresh", &temp);
+	pdata->wireless_warm_overheat_thresh = (int)temp;
+	if (ret) {
+		pr_info("%s : wireless_warm_overheat_thresh is Empty\n", __func__);
+		pdata->wireless_warm_overheat_thresh = 450;
+	}
+
+	ret = of_property_read_u32(np, "battery,wireless_normal_warm_thresh", &temp);
+	pdata->wireless_normal_warm_thresh = (int)temp;
+	if (ret) {
+		pr_info("%s : wireless_normal_warm_thresh is Empty\n", __func__);
+		pdata->wireless_normal_warm_thresh = 410;
+	}
+
+	ret = of_property_read_u32(np, "battery,wireless_cool1_normal_thresh", &temp);
+	pdata->wireless_cool1_normal_thresh = (int)temp;
+	if (ret) {
+		pr_info("%s : wireless_cool1_normal_thresh is Empty\n", __func__);
+		pdata->wireless_cool1_normal_thresh = 180;
+	}
+
+	ret = of_property_read_u32(np, "battery,wireless_cool2_cool1_thresh", &temp);
+	pdata->wireless_cool2_cool1_thresh = (int)temp;
+	if (ret) {
+		pr_info("%s : wireless_cool2_cool1_thresh is Empty\n", __func__);
+		pdata->wireless_cool2_cool1_thresh = 150;
+	}
+
+	ret = of_property_read_u32(np, "battery,wireless_cool3_cool2_thresh", &temp);
+	pdata->wireless_cool3_cool2_thresh = (int)temp;
+	if (ret) {
+		pr_info("%s : wireless_cool3_cool2_thresh is Empty\n", __func__);
+		pdata->wireless_cool3_cool2_thresh = 50;
+	}
+
+	ret = of_property_read_u32(np, "battery,wireless_cold_cool3_thresh", &temp);
+	pdata->wireless_cold_cool3_thresh = (int)temp;
+	if (ret) {
+		pr_info("%s : wireless_cold_cool3_thresh is Empty\n", __func__);
+		pdata->wireless_cold_cool3_thresh = 0;
+	}
+
+	ret = of_property_read_u32(np, "battery,wire_warm_current", &temp);
+	pdata->wire_warm_current = (int)temp;
+	if (ret) {
+		pr_info("%s : wire_warm_current is Empty\n", __func__);
+		pdata->wire_warm_current = 500;
+	}
+
+	ret = of_property_read_u32(np, "battery,wire_cool1_current", &temp);
+	pdata->wire_cool1_current = (int)temp;
+	if (ret) {
+		pr_info("%s : wire_cool1_current is Empty\n", __func__);
+		pdata->wire_cool1_current = 500;
+	}
+
+	ret = of_property_read_u32(np, "battery,wire_cool2_current", &temp);
+	pdata->wire_cool2_current = (int)temp;
+	if (ret) {
+		pr_info("%s : wire_cool2_current is Empty\n", __func__);
+		pdata->wire_cool2_current = 500;
+	}
+
+	ret = of_property_read_u32(np, "battery,wire_cool3_current", &temp);
+	pdata->wire_cool3_current = (int)temp;
+	if (ret) {
+		pr_info("%s : wire_cool3_current is Empty\n", __func__);
+		pdata->wire_cool3_current = 500;
+	}
+
+	ret = of_property_read_u32(np, "battery,wireless_warm_current", &temp);
+	pdata->wireless_warm_current = (int)temp;
+	if (ret) {
+		pr_info("%s : wireless_warm_current is Empty\n", __func__);
+		pdata->wireless_warm_current = 500;
+	}
+
+	ret = of_property_read_u32(np, "battery,wireless_cool1_current", &temp);
+	pdata->wireless_cool1_current = (int)temp;
+	if (ret) {
+		pr_info("%s : wireless_cool1_current is Empty\n", __func__);
+		pdata->wireless_cool1_current = 500;
+	}
+
+	ret = of_property_read_u32(np, "battery,wireless_cool2_current", &temp);
+	pdata->wireless_cool2_current = (int)temp;
+	if (ret) {
+		pr_info("%s : wireless_cool2_current is Empty\n", __func__);
+		pdata->wireless_cool2_current = 500;
+	}
+
+	ret = of_property_read_u32(np, "battery,wireless_cool3_current", &temp);
+	pdata->wireless_cool3_current = (int)temp;
+	if (ret) {
+		pr_info("%s : wireless_cool3_current is Empty\n", __func__);
+		pdata->wireless_cool3_current = 500;
+	}
+
+	ret = of_property_read_u32(np, "battery,high_temp_topoff", &temp);
+	pdata->high_temp_topoff = (int)temp;
+	if (ret) {
+		pr_info("%s : high_temp_topoff is Empty\n", __func__);
+		pdata->high_temp_topoff = 250;
+	}
+
+	ret = of_property_read_u32(np, "battery,low_temp_topoff", &temp);
+	pdata->low_temp_topoff = (int)temp;
+	if (ret) {
+		pr_info("%s : low_temp_topoff is Empty\n", __func__);
+		pdata->low_temp_topoff = 250;
+	}
+
+	ret = of_property_read_u32(np, "battery,high_temp_float", &temp);
+	pdata->high_temp_float = (int)temp;
+	if (ret) {
+		pr_info("%s : high_temp_float is Empty\n", __func__);
+		pdata->high_temp_float = 4150;
+	}
+
+	ret = of_property_read_u32(np, "battery,low_temp_float", &temp);
+	pdata->low_temp_float = (int)temp;
+	if (ret) {
+		pr_info("%s : low_temp_float is Empty\n", __func__);
+		pdata->low_temp_float = 4350;
+	}
+
+	ret = of_property_read_u32(np, "battery,recharge_condition_vcell", &pdata->recharge_condition_vcell);
+	if (ret) {
+		pr_info("%s : recharge_condition_vcell is Empty\n", __func__);
+		pdata->recharge_condition_vcell = 4270;
+	}
+
+	ret = of_property_read_u32(np, "battery,swelling_high_rechg_voltage", &temp);
+	pdata->swelling_high_rechg_voltage = (int)temp;
+	if (ret) {
+		pr_info("%s : swelling_high_rechg_voltage is Empty\n", __func__);
+		pdata->swelling_high_rechg_voltage = 4000;
+	}
+
+	ret = of_property_read_u32(np, "battery,swelling_low_rechg_voltage", &temp);
+	pdata->swelling_low_rechg_voltage = (int)temp;
+	if (ret) {
+		pr_info("%s : swelling_low_rechg_voltage is Empty\n", __func__);
+		pdata->swelling_low_rechg_voltage = 4200;
+	}
+
 	ret = of_property_read_u32(np, "battery,tx_high_threshold",
 				   &temp);
 	pdata->tx_high_threshold = (int)temp;
@@ -1067,11 +1160,6 @@ int sec_bat_parse_dt(struct device *dev,
 	if (ret)
 		pr_info("%s : Recharge condition soc is Empty\n", __func__);
 
-	ret = of_property_read_u32(np, "battery,recharge_condition_vcell",
-		&pdata->recharge_condition_vcell);
-	if (ret)
-		pr_info("%s : Recharge condition vcell is Empty\n", __func__);
-
 	ret = of_property_read_u32(np, "battery,charging_total_time",
 		(unsigned int *)&pdata->charging_total_time);
 	if (ret)
@@ -1124,199 +1212,6 @@ int sec_bat_parse_dt(struct device *dev,
 		pr_info("%s: chg_float_voltage_conv is Empty\n", __func__);
 		pdata->chg_float_voltage_conv = 1;
 	}
-#if defined(CONFIG_BATTERY_SWELLING)
-	ret = of_property_read_u32(np, "battery,chg_float_voltage",
-		(unsigned int *)&pdata->swelling_normal_float_voltage);
-	if (ret)
-		pr_info("%s: chg_float_voltage is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,swelling_high_temp_block",
-				   &temp);
-	pdata->swelling_high_temp_block = (int)temp;
-	if (ret)
-		pr_info("%s: swelling high temp block is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,swelling_high_temp_recov",
-				   &temp);
-	pdata->swelling_high_temp_recov = (int)temp;
-	if (ret)
-		pr_info("%s: swelling high temp recovery is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,swelling_wc_high_temp_recov",
-				   &temp);
-	pdata->swelling_wc_high_temp_recov = (int)temp;
-	if (ret) {
-		pdata->swelling_wc_high_temp_recov = pdata->swelling_high_temp_recov;
-		pr_info("%s: swelling wireless high temp recovery is %d\n",
-			__func__, pdata->swelling_wc_high_temp_recov);
-	}
-
-	ret = of_property_read_u32(np, "battery,swelling_low_temp_block_1st",
-				   &temp);
-	pdata->swelling_low_temp_block_1st = (int)temp;
-	if (ret)
-		pr_info("%s: swelling low temp block is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,swelling_low_temp_recov_1st",
-				   &temp);
-	pdata->swelling_low_temp_recov_1st = (int)temp;
-	if (ret)
-		pr_info("%s: swelling low temp recovery is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,swelling_low_temp_block_2nd",
-				   &temp);
-	pdata->swelling_low_temp_block_2nd = (int)temp;
-	if (ret)
-		pr_info("%s: swelling low temp block is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,swelling_low_temp_recov_2nd",
-				   &temp);
-	pdata->swelling_low_temp_recov_2nd = (int)temp;
-	if (ret)
-		pr_info("%s: swelling low temp recovery 2nd is Empty\n", __func__);
-
-	ret = of_property_read_u32(np, "battery,swelling_low_temp_current",
-					&pdata->swelling_low_temp_current);
-	if (ret) {
-		pr_info("%s: swelling_low_temp_current is Empty, Defualt value 600mA \n", __func__);
-		pdata->swelling_low_temp_current = 600;
-	}
-
-	ret = of_property_read_u32(np, "battery,swelling_low_temp_current_2nd",
-					&pdata->swelling_low_temp_current_2nd);
-	if (ret) {
-		pr_info("%s: swelling_low_temp_current_2nd is Empty, set swelling_low_temp_current value \n", __func__);
-		pdata->swelling_low_temp_current_2nd = pdata->swelling_low_temp_current;
-	}
-
-	ret = of_property_read_u32(np, "battery,swelling_low_temp_topoff",
-					&pdata->swelling_low_temp_topoff);
-	if (ret) {
-		pr_info("%s: swelling_low_temp_topoff is Empty, Defualt value 200mA \n", __func__);
-		pdata->swelling_low_temp_topoff = 200;
-	}
-
-	ret = of_property_read_u32(np, "battery,swelling_high_temp_current",
-					&pdata->swelling_high_temp_current);
-	if (ret) {
-		pr_info("%s: swelling_high_temp_current is Empty, Defualt value 1300mA \n", __func__);
-		pdata->swelling_high_temp_current = 1300;
-	}
-
-	ret = of_property_read_u32(np, "battery,swelling_high_temp_topoff",
-					&pdata->swelling_high_temp_topoff);
-	if (ret) {
-		pr_info("%s: swelling_high_temp_topoff is Empty, Defualt value 200mA \n", __func__);
-		pdata->swelling_high_temp_topoff = 200;
-	}
-
-	ret = of_property_read_u32(np, "battery,swelling_wc_high_temp_current",
-					&pdata->swelling_wc_high_temp_current);
-	if (ret) {
-		pr_info("%s: swelling_wc_high_temp_current is Empty, Defualt value 600mA \n", __func__);
-		pdata->swelling_wc_high_temp_current = 600;
-	}
-
-	ret = of_property_read_u32(np, "battery,swelling_wc_low_temp_current",
-					&pdata->swelling_wc_low_temp_current);
-	if (ret) {
-		pr_info("%s: swelling_wc_low_temp_current is Empty, Defualt value 600mA \n", __func__);
-		pdata->swelling_wc_low_temp_current = 600;
-	}
-
-	ret = of_property_read_u32(np, "battery,swelling_wc_low_temp_current_2nd",
-					&pdata->swelling_wc_low_temp_current_2nd);
-	if (ret) {
-		pr_info("%s: swelling_wc_low_temp_current_2nd is Empty, set swelling_wc_low_temp_current \n", __func__);
-		pdata->swelling_wc_low_temp_current_2nd = pdata->swelling_low_temp_current;
-	}
-
-	pdata->swelling_drop_float_voltage_lowtemp = of_property_read_bool(np,
-						     "battery,swelling_drop_float_voltage_lowtemp");
-	if (pdata->swelling_drop_float_voltage_lowtemp) {
-		pr_info("%s: swellingdrop float voltage in  low temp mode\n", __func__);
-
-		ret = of_property_read_u32(np, "battery,swelling_low_rechg_voltage",
-					   &pdata->swelling_low_rechg_voltage);
-		if (ret) {
-			pr_info("%s: swelling_low_rechg_voltage is Empty, Default value 4000mV \n", __func__);
-			pdata->swelling_low_rechg_voltage = 4000;
-		}
-	}
-
-	battery->swelling_low_temp_3rd_ctrl = of_property_read_bool(np,
-						     "battery,swelling_low_temp_3rd_ctrl");
-	if (battery->swelling_low_temp_3rd_ctrl) {
-		ret = of_property_read_u32(np, "battery,swelling_low_temp_block_3rd",
-					   &temp);
-		pdata->swelling_low_temp_block_3rd = (int)temp;
-		if (ret) {
-			pr_info("%s: swelling low temp block is Empty\n", __func__);
-			pdata->swelling_low_temp_block_3rd = pdata->swelling_low_temp_block_2nd;
-		}
-
-		ret = of_property_read_u32(np, "battery,swelling_low_temp_recov_3rd",
-					   &temp);
-		pdata->swelling_low_temp_recov_3rd = (int)temp;
-		if (ret) {
-			pr_info("%s: swelling low temp recovery 3rd is Empty\n", __func__);
-			pdata->swelling_low_temp_recov_3rd = pdata->swelling_low_temp_recov_2nd;
-		}
-
-		ret = of_property_read_u32(np, "battery,swelling_low_temp_current_3rd",
-						&pdata->swelling_low_temp_current_3rd);
-		if (ret) {
-			pr_info("%s: swelling_low_temp_current_3rd is Empty, set swelling_low_temp_current value \n", __func__);
-			pdata->swelling_low_temp_current_3rd = pdata->swelling_low_temp_current_2nd;
-		}
-
-		ret = of_property_read_u32(np, "battery,swelling_wc_low_temp_current_3rd",
-						&pdata->swelling_wc_low_temp_current_3rd);
-		if (ret) {
-			pr_info("%s: swelling_wc_low_temp_current_3rd is Empty, set swelling_wc_low_temp_current \n", __func__);
-			pdata->swelling_wc_low_temp_current_3rd = pdata->swelling_low_temp_current_2nd;
-		}
-	}
-
-	ret = of_property_read_u32(np, "battery,swelling_drop_float_voltage",
-		(unsigned int *)&pdata->swelling_drop_float_voltage);
-	if (ret) {
-		pr_info("%s: swelling drop float voltage is Empty, Default value 4250mV \n", __func__);
-		pdata->swelling_drop_float_voltage = 4250;
-		pdata->swelling_drop_voltage_condition = 4250;
-	} else {
-		pdata->swelling_drop_voltage_condition = (pdata->swelling_drop_float_voltage > 10000) ?
-			(pdata->swelling_drop_float_voltage / 10) : (pdata->swelling_drop_float_voltage);
-		pr_info("%s : swelling drop voltage(set : %d, condition : %d)\n", __func__,
-			pdata->swelling_drop_float_voltage, pdata->swelling_drop_voltage_condition);
-	}
-
-	ret = of_property_read_u32(np, "battery,swelling_high_rechg_voltage",
-		(unsigned int *)&pdata->swelling_high_rechg_voltage);
-	if (ret) {
-		pr_info("%s: swelling_high_rechg_voltage is Empty\n", __func__);
-		pdata->swelling_high_rechg_voltage = 4150;
-	}
-
-	ret = of_property_read_u32(np, "battery,swelling_low_rechg_thr",
-		(unsigned int *)&pdata->swelling_low_rechg_thr);
-	if (ret) {
-		pr_info("%s: swelling_low_rechg_thr is Empty\n", __func__);
-		pdata->swelling_low_rechg_thr = 150;
-	}
-
-	pr_info("%s : SWELLING_HIGH_TEMP(%d) SWELLING_HIGH_TEMP_RECOVERY(%d)\n"
-		"SWELLING_LOW_TEMP_1st(%d) SWELLING_LOW_TEMP_RECOVERY_1st(%d) "
-		"SWELLING_LOW_TEMP_2nd(%d) SWELLING_LOW_TEMP_RECOVERY_2nd(%d) "
-		"SWELLING_LOW_CURRENT(%d, %d), SWELLING_HIGH_CURRENT(%d, %d)\n"
-		"SWELLING_HIGH_TEMP_RCHG_VOL(%d), SWELLING_LOW_TEMP_RCHG_THRESHOLD(%d)\n",
-		__func__, pdata->swelling_high_temp_block, pdata->swelling_high_temp_recov,
-		pdata->swelling_low_temp_block_1st, pdata->swelling_low_temp_recov_1st,
-		pdata->swelling_low_temp_block_2nd, pdata->swelling_low_temp_recov_2nd,
-		pdata->swelling_low_temp_current, pdata->swelling_low_temp_topoff,
-		pdata->swelling_high_temp_current, pdata->swelling_high_temp_topoff,
-		pdata->swelling_high_rechg_voltage, pdata->swelling_low_rechg_thr);
-#endif
 
 #if defined(CONFIG_CALC_TIME_TO_FULL)
 	ret = of_property_read_u32(np, "battery,ttf_hv_12v_charge_current",
@@ -1358,6 +1253,21 @@ int sec_bat_parse_dt(struct device *dev,
 		pr_info("%s: ttf_wireless_charge_current is Empty, Defualt value 0 \n", __func__);
 		pdata->ttf_wireless_charge_current =
 			pdata->charging_current[SEC_BATTERY_CABLE_WIRELESS].input_current_limit;
+	}
+
+	ret = of_property_read_u32(np, "battery,ttf_dc25_charge_current",
+					&pdata->ttf_dc25_charge_current);
+	if (ret) {
+		pr_info("%s: ttf_dc25_charge_current is Empty, Defualt value 0 \n", __func__);
+		pdata->ttf_dc25_charge_current =
+			pdata->charging_current[SEC_BATTERY_CABLE_9V_TA].fast_charging_current;
+	}
+
+	ret = of_property_read_u32(np, "battery,ttf_dc45_charge_current",
+					&pdata->ttf_dc45_charge_current);
+	if (ret) {
+		pr_info("%s: ttf_dc45_charge_current is Empty, Defualt value 0 \n", __func__);
+		pdata->ttf_dc45_charge_current = pdata->ttf_dc25_charge_current;
 	}
 #endif
 
@@ -1409,6 +1319,28 @@ int sec_bat_parse_dt(struct device *dev,
 		pr_err("%s there is not age_data\n", __func__);
 	}
 #endif
+	p = of_get_property(np, "battery,health_condition", &len);
+	if (p || (len / sizeof(battery_health_condition)) == BATTERY_HEALTH_MAX) {
+		battery->pdata->health_condition = kzalloc(len, GFP_KERNEL);
+		ret = of_property_read_u32_array(np, "battery,health_condition",
+				(u32 *)battery->pdata->health_condition, len/sizeof(u32));
+		if (ret) {
+			pr_err("%s failed to read battery->pdata->health_condition: %d\n",
+					__func__, ret);
+			kfree(battery->pdata->health_condition);
+			battery->pdata->health_condition = NULL;
+		} else {
+			for (i = 0; i < BATTERY_HEALTH_MAX; i++) {
+				pr_err("%s: [BATTERY_HEALTH] %d: Cycle(~ %d), ASoC(~ %d)\n",
+						__func__, i,
+						battery->pdata->health_condition[i].cycle,
+						battery->pdata->health_condition[i].asoc);
+			}
+		}
+	} else {
+		battery->pdata->health_condition = NULL;
+		pr_err("%s there is not health_condition, len(%d)\n", __func__, len);
+	}
 
 	ret = of_property_read_u32(np, "battery,siop_input_limit_current",
 			&pdata->siop_input_limit_current);
@@ -1592,18 +1524,21 @@ int sec_bat_parse_dt(struct device *dev,
 	}
 
 	pr_info("%s: vendor : %s, technology : %d, cable_check_type : %d\n"
-		"cable_source_type : %d, event_waiting_time : %d\n"
+		"cable_source_type : %d, temp_adc_type: %d\n"
 		"polling_type : %d, initial_count : %d, check_count : %d\n"
 		"check_adc_max : %d, check_adc_min : %d\n"
 		"ovp_uvlo_check_type : %d, thermal_source : %d\n"
-		"temp_check_type : %d, temp_check_count : %d, nv_charge_power : %d\n",
+		"temp_check_type : %d, temp_check_count : %d, nv_charge_power : %d\n"
+		"full_condition_type : %d, recharge_condition_type : %d, full_check_type : %d\n",
 		__func__,
 		pdata->vendor, pdata->technology,pdata->cable_check_type,
-		pdata->cable_source_type, pdata->event_waiting_time,
+		pdata->cable_source_type, pdata->temp_adc_type,
 		pdata->polling_type, pdata->monitor_initial_count,
 		pdata->check_count, pdata->check_adc_max, pdata->check_adc_min,
 		pdata->ovp_uvlo_check_type, pdata->thermal_source,
-		pdata->temp_check_type, pdata->temp_check_count, pdata->nv_charge_power);
+		pdata->temp_check_type, pdata->temp_check_count, pdata->nv_charge_power,
+		pdata->full_condition_type, pdata->recharge_condition_type, pdata->full_check_type
+		);
 
 #if defined(CONFIG_STEP_CHARGING)
 	sec_step_charging_init(battery, dev);

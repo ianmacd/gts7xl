@@ -1110,6 +1110,16 @@ config MFD_S2MU107
      	 additional drivers must be enabled in order to use the functionality
      	 of the device
 
+config MFD_S2MU106
+    	bool "SAMSUNG Electronics IF PMIC Series Support"
+    	depends on I2C=y
+    	select MFD_CORE
+    	help
+     	 Support for the Samsung Electronics MFD series.
+     	 This driver provides common support for accessing the device,
+     	 additional drivers must be enabled in order to use the functionality
+     	 of the device
+
 config MFD_SM501
 	tristate "Silicon Motion SM501"
 	 ---help---

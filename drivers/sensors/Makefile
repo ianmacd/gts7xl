@@ -3,6 +3,7 @@ obj-$(CONFIG_SENSORS)			+= sensors_core.o
 
 # grip sensor
 obj-$(CONFIG_SENSORS_A96T3X6)		+= a96t3x6.o
+obj-$(CONFIG_SENSORS_A96T3X6_SUB)	+= a96t3x6_sub.o
 obj-$(CONFIG_SENSORS_A96T3X6_WIFI)	+= a96t3x6_wifi.o
 obj-$(CONFIG_SENSORS_SX9320)		+= sx9320.o
 obj-$(CONFIG_SENSORS_SX9330)		+= sx9330.o

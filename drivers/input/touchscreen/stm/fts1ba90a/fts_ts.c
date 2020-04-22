@@ -98,7 +98,7 @@ static void fts_reset_work(struct work_struct *work);
 static void fts_read_info_work(struct work_struct *work);
 
 #if defined(CONFIG_TOUCHSCREEN_DUMP_MODE)
-#include <linux/sec_debug.h>
+#include <linux/sec_ts_common.h>
 static void tsp_dump(void);
 static void dump_tsp_rawdata(struct work_struct *work);
 struct delayed_work *p_debug_work;
@@ -1600,6 +1600,34 @@ static void fts_print_info_work(struct work_struct *work)
 	fts_print_info(info);
 	schedule_delayed_work(&info->work_print_info, msecs_to_jiffies(TOUCH_PRINT_INFO_DWORK_TIME));
 }
+/************************************************************
+ *  720  * 1480 : <48 96 60> indicator: 24dp navigator:48dp edge:60px dpi=320
+ * 1080  * 2220 :  4096 * 4096 : <133 266 341>  (approximately value)
+ ************************************************************/
+
+static void location_detect(struct fts_ts_info *info, char *loc, int x, int y)
+{
+	int i;
+
+	for (i = 0; i < FTS_TS_LOCATION_DETECT_SIZE; ++i)
+		loc[i] = 0;
+
+	if (x < info->board->area_edge)
+		strcat(loc, "E.");
+	else if (x < (info->board->max_x - info->board->area_edge))
+		strcat(loc, "C.");
+	else
+		strcat(loc, "e.");
+
+	if (y < info->board->area_indicator)
+		strcat(loc, "S");
+	else if (y < (info->board->max_y - info->board->area_navigation))
+		strcat(loc, "C");
+	else
+		strcat(loc, "N");
+}
+
+static const char finger_mode[10] = {'N', '1', '2', 'G', '4', 'P'};
 
 static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 {
@@ -1615,8 +1643,8 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 	struct fts_gesture_status *p_gesture_status;
 	struct fts_event_status *p_event_status;
 
-	u8 prev_ttype = 0;
 	u8 prev_action = 0;
+	char location[FTS_TS_LOCATION_DETECT_SIZE] = { 0 };
 
 	regAdd = FTS_READ_ONE_EVENT;
 	fts_read_reg(info, &regAdd, 1, (u8 *)&data[0 * FTS_EVENT_SIZE], FTS_EVENT_SIZE);
@@ -1702,7 +1730,7 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 				break;
 			}
 
-			prev_ttype = info->finger[TouchID].ttype;
+			info->finger[TouchID].prev_ttype = info->finger[TouchID].ttype;
 			prev_action = info->finger[TouchID].action;
 			info->finger[TouchID].id = TouchID;
 			info->finger[TouchID].action = p_event_coord->tchsta;
@@ -1728,6 +1756,9 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 					(info->finger[TouchID].ttype == FTS_EVENT_TOUCHTYPE_PALM)   ||
 					(info->finger[TouchID].ttype == FTS_EVENT_TOUCHTYPE_WET)    ||
 					(info->finger[TouchID].ttype == FTS_EVENT_TOUCHTYPE_GLOVE)) {
+
+				location_detect(info, location, info->finger[TouchID].x, info->finger[TouchID].y);
+
 				if (info->finger[TouchID].action == FTS_COORDINATE_ACTION_RELEASE) {
 					input_mt_slot(info->input_dev, TouchID);
 
@@ -1750,23 +1781,33 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 					input_info(true, &info->client->dev,
-							"[R] tID:%d mc:%d tc:%d lx:%d ly:%d\n",
-							TouchID, info->finger[TouchID].mcount, info->touch_count,
+							"[R] tID:%d loc:%s dd:%d,%d mc:%d tc:%d lx:%d ly:%d\n",
+							TouchID, location,
+							info->finger[TouchID].x - info->finger[TouchID].p_x,
+							info->finger[TouchID].y - info->finger[TouchID].p_y,
+							info->finger[TouchID].mcount, info->touch_count,
 							info->finger[TouchID].x, info->finger[TouchID].y);
 #else
 					input_info(true, &info->client->dev,
-							"[R] tID:%d mc:%d tc:%d\n",
-							TouchID, info->finger[TouchID].mcount, info->touch_count);
+							"[R] tID:%d loc:%s dd:%d,%d mc:%d tc:%d\n",
+							TouchID, location,
+							info->finger[TouchID].x - info->finger[TouchID].p_x,
+							info->finger[TouchID].y - info->finger[TouchID].p_y,
+							info->finger[TouchID].mcount, info->touch_count);
 #endif
 
 					info->finger[TouchID].action = FTS_COORDINATE_ACTION_NONE;
 					info->finger[TouchID].mcount = 0;
 					info->finger[TouchID].palm_count = 0;
+					info->finger[TouchID].prev_ttype = 0;
 
 				} else if (info->finger[TouchID].action == FTS_COORDINATE_ACTION_PRESS) {
 
 					info->touch_count++;
 					info->all_finger_count++;
+
+					info->finger[TouchID].p_x = info->finger[TouchID].x;
+					info->finger[TouchID].p_y = info->finger[TouchID].y;
 
 					input_mt_slot(info->input_dev, TouchID);
 					input_mt_report_slot_state(info->input_dev, MT_TOOL_FINGER, 1);
@@ -1800,19 +1841,19 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 					input_info(true, &info->client->dev,
-							"[P] tID:%d.%d x:%d y:%d w:%d h:%d z:%d type:%X tc:%d tm:%02X\n",
+							"[P] tID:%d.%d x:%d y:%d z:%d major:%d minor:%d loc:%s tc:%d\n",
 							TouchID, (info->input_dev->mt->trkid - 1) & TRKID_MAX,
 							info->finger[TouchID].x, info->finger[TouchID].y,
+							info->finger[TouchID].z,
 							info->finger[TouchID].major, info->finger[TouchID].minor,
-							info->finger[TouchID].z, info->finger[TouchID].ttype,
-							info->touch_count, (u8)info->touch_functions);
+							location, info->touch_count);
 #else
 					input_info(true, &info->client->dev,
-							"[P] tID:%d.%d w:%d h:%d z:%d type:%X tc:%d tm:%02X\n",
+							"[P] tID:%d.%d z:%d major:%d minor:%d loc:%s tc:%d\n",
 							TouchID, (info->input_dev->mt->trkid - 1) & TRKID_MAX,
+							info->finger[TouchID].z,
 							info->finger[TouchID].major, info->finger[TouchID].minor,
-							info->finger[TouchID].z, info->finger[TouchID].ttype,
-							info->touch_count, (u8)info->touch_functions);
+							location, info->touch_count);
 #endif
 				} else if (info->finger[TouchID].action == FTS_COORDINATE_ACTION_MOVE) {
 					if (info->touch_count == 0) {
@@ -1859,7 +1900,7 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 							"%s: do not support coordinate action(%d)\n",
 							__func__, info->finger[TouchID].action);
 				}
-
+/*
 				if ((info->finger[TouchID].action == FTS_COORDINATE_ACTION_PRESS) ||
 						(info->finger[TouchID].action == FTS_COORDINATE_ACTION_MOVE)) {
 					if (info->finger[TouchID].ttype != prev_ttype) {
@@ -1868,6 +1909,15 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 								prev_ttype, info->finger[TouchID].ttype);
 					}
 				}
+*/
+				if (info->finger[TouchID].prev_ttype != info->finger[TouchID].ttype)
+					input_info(true, &info->client->dev, "%s: iID:%d ttype(%c->%c) : %s\n",
+							__func__, info->finger[TouchID].id,
+							finger_mode[info->finger[TouchID].prev_ttype],
+							finger_mode[info->finger[TouchID].ttype],
+							info->finger[TouchID].action == FTS_COORDINATE_ACTION_PRESS ? "P" :
+							info->finger[TouchID].action == FTS_COORDINATE_ACTION_MOVE ? "M" : "R");
+
 			} else {
 				input_dbg(true, &info->client->dev,
 						"%s: do not support coordinate type(%d)\n",
@@ -1902,9 +1952,9 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 						input_sync(info->input_dev);
 						input_report_key(info->input_dev, KEY_BLACK_UI_GESTURE, 0);
 					} else if (p_gesture_status->gesture_id == FTS_SPONGE_EVENT_GESTURE_ID_DOUBLETAP_TO_WAKEUP) {
-						input_report_key(info->input_dev, KEY_HOMEPAGE, 1);
+						input_report_key(info->input_dev, KEY_WAKEUP, 1);
 						input_sync(info->input_dev);
-						input_report_key(info->input_dev, KEY_HOMEPAGE, 0);
+						input_report_key(info->input_dev, KEY_WAKEUP, 0);
 						input_info(true, &info->client->dev, "%s: DOUBLE TAP TO WAKEUP\n", __func__);
 					}
 					break;
@@ -2211,6 +2261,7 @@ static int fts_parse_dt(struct i2c_client *client)
 	struct fts_i2c_platform_data *pdata = dev->platform_data;
 	struct device_node *np = dev->of_node;
 	u32 coords[2];
+	u32 px_zone[3] = { 0 };
 	u32 ic_match_value;
 	int retval = 0;
 	int lcdtype = 0;
@@ -2400,6 +2451,19 @@ static int fts_parse_dt(struct i2c_client *client)
 
 	pdata->panel_revision = ((lcdtype >> 8) & 0xFF) >> 4;
 
+	if (of_property_read_u32_array(np, "stm,area-size", px_zone, 3)) {
+		input_info(true, &client->dev, "Failed to get zone's size\n");
+		pdata->area_indicator = 48;
+		pdata->area_navigation = 96;
+		pdata->area_edge = 60;
+	} else {
+		pdata->area_indicator = px_zone[0];
+		pdata->area_navigation = px_zone[1];
+		pdata->area_edge = px_zone[2];
+	}
+	input_info(true, dev, "%s: zone's size - indicator:%d, navigation:%d, edge:%d\n",
+			__func__, pdata->area_indicator, pdata->area_navigation, pdata->area_edge);
+
 	input_err(true, dev,
 			"%s: irq :%d, irq_type: 0x%04x, max[x,y]: [%d,%d], display:%d,%d,"
 			" project/model_name: %s/%s, panel_revision: %d, gesture: %d, "
@@ -2576,7 +2640,7 @@ static void fts_set_input_prop(struct fts_ts_info *info, struct input_dev *dev, 
 	set_bit(BTN_TOUCH, dev->keybit);
 	set_bit(BTN_TOOL_FINGER, dev->keybit);
 	set_bit(KEY_BLACK_UI_GESTURE, dev->keybit);
-	set_bit(KEY_HOMEPAGE, dev->keybit);
+	set_bit(KEY_WAKEUP, dev->keybit);
 
 #ifdef FTS_SUPPORT_TOUCH_KEY
 	if (info->board->support_mskey) {
@@ -2914,6 +2978,7 @@ static int fts_remove(struct i2c_client *client)
 	cancel_delayed_work_sync(&info->work_print_info);
 	cancel_delayed_work_sync(&info->work_read_info);
 	cancel_delayed_work_sync(&info->reset_work);
+	cancel_delayed_work_sync(&info->work_print_info);
 
 	wake_lock_destroy(&info->wakelock);
 
@@ -3182,8 +3247,6 @@ void fts_release_all_finger(struct fts_ts_info *info)
 
 	input_report_key(info->input_dev, BTN_TOUCH, 0);
 	input_report_key(info->input_dev, BTN_TOOL_FINGER, 0);
-
-	input_report_key(info->input_dev, KEY_HOMEPAGE, 0);
 
 	if (info->board->support_sidegesture) {
 		input_report_key(info->input_dev, KEY_SIDE_GESTURE, 0);

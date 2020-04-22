@@ -22,7 +22,6 @@
 
 #define SMARTDOCK_INDEX	1
 #define MMDOCK_INDEX	2
-#define RESERVED_INDEX	0xFF
 
 struct dev_table {
 	struct usb_device_id dev;
@@ -65,25 +64,6 @@ static struct dev_table update_autotimer_device_table[] = {
 	{ .dev = { USB_DEVICE(0x04e8, 0xa502), },
 	   .index = 5,
 	}, /* GearVR3 */
-	{}
-};
-
-static struct dev_table sec_earphone_device_table[] = {
-	{ .dev = { USB_DEVICE(0x04e8, 0xa057), },
-	   .index = RESERVED_INDEX,
-	}, /* BES - R1 */
-	{ .dev = { USB_DEVICE(0x04e8, 0xa04f), },
-	   .index = RESERVED_INDEX,
-	}, /* BES - R1 Final */
-	{ .dev = { USB_DEVICE(0x04e8, 0xa058), },
-	   .index = RESERVED_INDEX,
-	}, /* BQ */
-	{ .dev = { USB_DEVICE(0x04e8, 0xa054), },
-	   .index = RESERVED_INDEX,
-	}, /* Davinci Kor */
-	{ .dev = { USB_DEVICE(0x04e8, 0xa051), },
-	   .index = RESERVED_INDEX,
-	}, /* Davinci - Synaptics */
 	{}
 };
 
@@ -135,38 +115,6 @@ static int check_lanhub_device(struct usb_device *dev)
 
 	return ret;
 }
-
-static void check_sec_audio_device(struct usb_device *dev, bool on)
-{
-	struct dev_table *id;
-	struct usb_device *hdev;
-	struct otg_notify *o_notify = get_otg_notify();
-	int found = 0;
-
-	hdev = dev->parent;
-	if (!hdev) 		
-		return;	
-
-	/* check VID, PID */
-	for (id = sec_earphone_device_table; id->dev.match_flags; id++) {
-		if ((id->dev.match_flags & USB_DEVICE_ID_MATCH_VENDOR) &&
-		(id->dev.match_flags & USB_DEVICE_ID_MATCH_PRODUCT) &&
-		id->dev.idVendor == le16_to_cpu(dev->descriptor.idVendor) &&
-		id->dev.idProduct == le16_to_cpu(dev->descriptor.idProduct) &&
-		(hdev == dev->bus->root_hub)) {
-			found = true;
-			break;
-		}
-	}
-
-	if (found) {
-		pr_info("%s : VID : 0x%x, PID : 0x%x\n", __func__,
-			dev->descriptor.idVendor, dev->descriptor.idProduct);
-		send_otg_notify(o_notify,
-				NOTIFY_EVENT_SEC_EARPHONE_CONNECT, 1);
-	}
-}
-
 
 static int is_notify_hub(struct usb_device *dev)
 {
@@ -464,7 +412,6 @@ static int dev_notify(struct notifier_block *self,
 #if defined(CONFIG_USB_HW_PARAM)
 		set_hw_param(dev);
 #endif
-		check_sec_audio_device(dev, 1);
 		break;
 	case USB_DEVICE_REMOVE:
 		call_battery_notify(dev, 0);

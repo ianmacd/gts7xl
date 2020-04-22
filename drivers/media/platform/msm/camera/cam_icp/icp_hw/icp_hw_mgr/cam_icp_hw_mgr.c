@@ -2569,7 +2569,7 @@ static int cam_icp_mgr_abort_handle(
 
 		CAM_ERR(CAM_ICP, "FW timeout/err in abort handle command");
 		//cam_hfi_queue_dump();
-		BUG_ON(1);
+		//BUG_ON(1);
 	}
 
 	kfree(abort_cmd);
@@ -2580,7 +2580,7 @@ static int cam_icp_mgr_destroy_handle(
 	struct cam_icp_hw_ctx_data *ctx_data)
 {
 	int rc = 0;
-	int timeout = 100;
+	int timeout = 1000;
 	unsigned long rem_jiffies;
 	size_t packet_size;
 	struct hfi_cmd_ipebps_async *destroy_cmd;
@@ -2626,7 +2626,7 @@ static int cam_icp_mgr_destroy_handle(
 		if (icp_hw_mgr.a5_debug_type ==
 			HFI_DEBUG_MODE_QUEUE)
 			cam_icp_mgr_process_dbg_buf();
-		//cam_hfi_queue_dump();
+		cam_hfi_queue_dump();
 		BUG_ON(1);
 	}
 	kfree(destroy_cmd);

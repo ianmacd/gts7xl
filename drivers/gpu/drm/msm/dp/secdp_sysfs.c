@@ -120,7 +120,8 @@ static ssize_t dex_show(struct class *class,
 	struct secdp_sysfs_private *sysfs = g_secdp_sysfs;
 	struct secdp_dex *dex = &sysfs->sec->dex;
 
-	if (!secdp_get_cable_status() || !secdp_get_hpd_status()) {
+	if (!secdp_get_cable_status() || !secdp_get_hpd_status() ||
+			secdp_get_poor_connection_status() || !secdp_get_link_train_status()) {
 		pr_info("cable is out\n");
 		dex->prev = dex->curr = DEX_DISABLED;
 	}
@@ -139,7 +140,7 @@ static ssize_t dex_store(struct class *class,
 {
 	int val[4] = {0,};
 	int setting_ui;	/* setting has Dex mode? if yes, 1. otherwise 0 */
-	int run;		/* dex is running now? if yes, 1. otherwise 0 */
+	int run;	/* dex is running now? if yes, 1. otherwise 0 */
 
 	struct secdp_sysfs_private *sysfs = g_secdp_sysfs;
 	struct secdp_misc *sec = sysfs->sec;
@@ -182,9 +183,16 @@ static ssize_t dex_store(struct class *class,
 	}
 	mutex_unlock(&sec->notifier_lock);
 
-	if (!secdp_get_cable_status() || !secdp_get_hpd_status()) {
+	if (!secdp_get_cable_status() || !secdp_get_hpd_status() ||
+			secdp_get_poor_connection_status() || !secdp_get_link_train_status()) {
 		pr_info("cable is out\n");
 		dex->prev = dex->curr = DEX_DISABLED;
+		goto exit;
+	}
+
+	if (sec->hpd_noti_deferred) {
+		secdp_send_deferred_hpd_noti();
+		dex->prev = dex->setting_ui;
 		goto exit;
 	}
 
@@ -496,7 +504,7 @@ static ssize_t dp_self_test_store(struct class *dev,
 	cmd = val[1];
 	arg = val[2];
 
-	if (cmd >= ST_MAX) {
+	if (cmd < 0 || cmd >= ST_MAX) {
 		pr_info("invalid cmd\n");
 		goto end;
 	}
@@ -671,6 +679,66 @@ static ssize_t dp_px_lvl_store(struct class *dev,
 }
 
 static CLASS_ATTR_RW(dp_px_lvl);
+
+static ssize_t dp_pref_skip_show(struct class *class,
+				struct class_attribute *attr, char *buf)
+{
+	int skip, rc;
+
+	pr_debug("+++\n");
+
+	skip = secdp_debug_prefer_skip_show();
+	rc = sprintf(buf, "%d\n", skip);
+
+	return rc;
+}
+
+static ssize_t dp_pref_skip_store(struct class *dev,
+				struct class_attribute *attr, const char *buf, size_t size)
+{
+	int i, val[30] = {0, };
+
+	pr_debug("+++, size(%d)\n", (int)size);
+
+	get_options(buf, 20, val);
+	for (i = 0; i < 16; i=i+4)
+		pr_debug("%02x,%02x,%02x,%02x\n", val[i+1],val[i+2],val[i+3],val[i+4]);
+
+	secdp_debug_prefer_skip_store(val[1]);
+	return size;
+}
+
+static CLASS_ATTR_RW(dp_pref_skip);
+
+static ssize_t dp_pref_ratio_show(struct class *class,
+				struct class_attribute *attr, char *buf)
+{
+	int ratio, rc;
+
+	pr_debug("+++\n");
+
+	ratio = secdp_debug_prefer_ratio_show();
+	rc = sprintf(buf, "%d\n", ratio);
+
+	return rc;
+}
+
+static ssize_t dp_pref_ratio_store(struct class *dev,
+				struct class_attribute *attr, const char *buf, size_t size)
+{
+	int i, val[30] = {0, };
+
+	pr_debug("+++, size(%d)\n", (int)size);
+
+	get_options(buf, 20, val);
+	for (i = 0; i < 16; i=i+4)
+		pr_debug("%02x,%02x,%02x,%02x\n", val[i+1],val[i+2],val[i+3],val[i+4]);
+
+	secdp_debug_prefer_ratio_store(val[1]);
+	return size;
+}
+
+static CLASS_ATTR_RW(dp_pref_ratio);
 #endif
 
 enum {
@@ -690,6 +758,8 @@ enum {
 #ifdef SECDP_CALIBRATE_VXPX
 	DP_VX_LVL,
 	DP_PX_LVL,
+	DP_PREF_SKIP,
+	DP_PREF_RATIO,
 #endif
 };
 
@@ -702,7 +772,7 @@ static struct attribute *secdp_class_attrs[] = {
 	[DP_UNIT_TEST]			= &class_attr_dp_unit_test.attr,
 #ifdef SECDP_SELF_TEST
 	[DP_SELF_TEST]			= &class_attr_dp_self_test.attr,
-	[DP_EDID]			= &class_attr_dp_edid.attr,
+	[DP_EDID]				= &class_attr_dp_edid.attr,
 #endif
 #ifdef CONFIG_SEC_DISPLAYPORT_BIGDATA
 	[DP_ERROR_INFO]			= &class_attr_dp_error_info.attr,
@@ -710,6 +780,8 @@ static struct attribute *secdp_class_attrs[] = {
 #ifdef SECDP_CALIBRATE_VXPX
 	[DP_VX_LVL]				= &class_attr_dp_vx_lvl.attr,
 	[DP_PX_LVL]				= &class_attr_dp_px_lvl.attr,
+	[DP_PREF_SKIP]			= &class_attr_dp_pref_skip.attr,
+	[DP_PREF_RATIO]			= &class_attr_dp_pref_ratio.attr,
 #endif
 	NULL,
 };

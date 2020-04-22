@@ -1,7 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), common DHD core.
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_common.c 828035 2019-07-01 05:39:16Z $
+ * $Id: dhd_common.c 853025 2019-11-28 04:39:05Z $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -319,6 +319,7 @@ enum {
 	IOV_RTT_GEOFENCE_TYPE_OVRD,
 #endif /* RTT_SUPPORT && WL_NAN */
 #endif /* RTT_GEOFENCE_CONT */
+	IOV_FW_VBS,
 	IOV_LAST
 };
 
@@ -412,6 +413,7 @@ const bcm_iovar_t dhd_iovars[] = {
 	{"rtt_geofence_type_ovrd", IOV_RTT_GEOFENCE_TYPE_OVRD, (0), 0, IOVT_BOOL, 0},
 #endif /* RTT_SUPPORT && WL_NAN */
 #endif /* RTT_GEOFENCE_CONT */
+	{"fw_verbose", IOV_FW_VBS, 0, 0, IOVT_UINT32, 0},
 	{NULL, 0, 0, 0, 0, 0 }
 };
 
@@ -1211,26 +1213,26 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifidx, wl_ioctl_t *ioc, void *buf, int len)
 			if ((ioc->cmd == WLC_GET_VAR || ioc->cmd == WLC_SET_VAR) &&
 					buf != NULL) {
 				if (ret == BCME_UNSUPPORTED || ret == BCME_NOTASSOCIATED) {
-					DHD_ERROR(("%s: %s: %s, %s\n",
+					DHD_ERROR_MEM(("%s: %s: %s, %s\n",
 						__FUNCTION__, ioc->cmd == WLC_GET_VAR ?
 						"WLC_GET_VAR" : "WLC_SET_VAR",
 						buf? (char *)buf:"NO MESSAGE",
 						ret == BCME_UNSUPPORTED ? "UNSUPPORTED"
 						: "NOT ASSOCIATED"));
 				} else {
-					DHD_ERROR(("%s: %s: %s, ret = %d\n",
+					DHD_ERROR_MEM(("%s: %s: %s, ret = %d\n",
 						__FUNCTION__, ioc->cmd == WLC_GET_VAR ?
 						"WLC_GET_VAR" : "WLC_SET_VAR",
 						(char *)buf, ret));
 				}
 			} else {
 				if (ret == BCME_UNSUPPORTED || ret == BCME_NOTASSOCIATED) {
-					DHD_ERROR(("%s: WLC_IOCTL: cmd: %d, %s\n",
+					DHD_ERROR_MEM(("%s: WLC_IOCTL: cmd: %d, %s\n",
 						__FUNCTION__, ioc->cmd,
 						ret == BCME_UNSUPPORTED ? "UNSUPPORTED" :
 						"NOT ASSOCIATED"));
 				} else {
-					DHD_ERROR(("%s: WLC_IOCTL: cmd: %d, ret = %d\n",
+					DHD_ERROR_MEM(("%s: WLC_IOCTL: cmd: %d, ret = %d\n",
 						__FUNCTION__, ioc->cmd, ret));
 				}
 			}
@@ -1552,11 +1554,18 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 		/* Need to have checked buffer length */
 		dhd_ver_len = strlen(dhd_version);
 		bus_api_rev_len = strlen(bus_api_revision);
-		if (dhd_ver_len)
-			bcm_strncpy_s((char*)arg, dhd_ver_len, dhd_version, dhd_ver_len);
-		if (bus_api_rev_len)
-			bcm_strncat_s((char*)arg + dhd_ver_len, bus_api_rev_len, bus_api_revision,
-				bus_api_rev_len);
+		if (len > dhd_ver_len + bus_api_rev_len) {
+			bcmerror = memcpy_s((char *)arg, len, dhd_version, dhd_ver_len);
+			if (bcmerror != BCME_OK) {
+				break;
+			}
+			bcmerror = memcpy_s((char *)arg + dhd_ver_len, len - dhd_ver_len,
+				bus_api_revision, bus_api_rev_len);
+			if (bcmerror != BCME_OK) {
+				break;
+			}
+			*((char *)arg + dhd_ver_len + bus_api_rev_len) = '\0';
+		}
 		break;
 
 	case IOV_GVAL(IOV_MSGLEVEL):
@@ -2229,6 +2238,18 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 	}
 #endif /* RTT_SUPPORT && WL_NAN */
 #endif /* RTT_GEOFENCE_CONT */
+	case IOV_GVAL(IOV_FW_VBS): {
+		*(uint32 *)arg = (uint32)dhd_dbg_get_fwverbose(dhd_pub);
+		break;
+	}
+
+	case IOV_SVAL(IOV_FW_VBS): {
+		if (int_val < 0) {
+			int_val = 0;
+		}
+		dhd_dbg_set_fwverbose(dhd_pub, (uint32)int_val);
+		break;
+	}
 	default:
 		bcmerror = BCME_UNSUPPORTED;
 		break;
@@ -2550,7 +2571,7 @@ dhd_ioctl(dhd_pub_t * dhd_pub, dhd_ioctl_t *ioc, void *buf, uint buflen)
 				for (arg = buf, arglen = buflen; *arg && arglen; arg++, arglen--)
 					;
 
-				if (*arg) {
+				if (arglen == 0 || *arg) {
 					bcmerror = BCME_BUFTOOSHORT;
 					goto unlock_exit;
 				}
@@ -2670,6 +2691,10 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 		} else if (status == WLC_E_STATUS_FAIL) {
 			DHD_EVENT(("MACEVENT: %s, MAC %s, FAILURE, status %d reason %d\n",
 			       event_name, eabuf, (int)status, (int)reason));
+		} else if (status == WLC_E_STATUS_SUPPRESS) {
+			DHD_EVENT(("MACEVENT: %s, MAC %s, SUPPRESS\n", event_name, eabuf));
+		} else if (status == WLC_E_STATUS_NO_ACK) {
+			DHD_EVENT(("MACEVENT: %s, MAC %s, NOACK\n", event_name, eabuf));
 		} else {
 			DHD_EVENT(("MACEVENT: %s, MAC %s, unexpected status %d\n",
 			       event_name, eabuf, (int)status));
@@ -2706,6 +2731,9 @@ wl_show_host_event(dhd_pub_t *dhd_pub, wl_event_msg_t *event, void *event_data,
 		} else if (status == WLC_E_STATUS_FAIL) {
 			DHD_EVENT(("MACEVENT: %s, MAC %s, %s, FAILURE, status %d reason %d\n",
 			       event_name, eabuf, auth_str, (int)status, (int)reason));
+		} else if (status == WLC_E_STATUS_SUPPRESS) {
+			DHD_EVENT(("MACEVENT: %s, MAC %s, %s, SUPPRESS\n",
+			       event_name, eabuf, auth_str));
 		} else if (status == WLC_E_STATUS_NO_ACK) {
 			DHD_EVENT(("MACEVENT: %s, MAC %s, %s, NOACK\n",
 			       event_name, eabuf, auth_str));
@@ -4869,7 +4897,7 @@ bool dhd_is_associated(dhd_pub_t *dhd, uint8 ifidx, int *retval)
 	DHD_TRACE((" %s WLC_GET_BSSID ioctl res = %d\n", __FUNCTION__, ret));
 
 	if (ret == BCME_NOTASSOCIATED) {
-		DHD_TRACE(("%s: not associated! res:%d\n", __FUNCTION__, ret));
+		DHD_ERROR(("%s: WLC_GET_BSSID, NOT ASSOCIATED\n", __FUNCTION__));
 	}
 
 	if (retval)
@@ -6192,6 +6220,9 @@ static ecounters_cfg_t ecounters_cfg_tbl[] = {
 	{ECOUNTERS_STATS_TYPES_FLAG_IFACE, 0x0, WL_IFSTATS_XTLV_GENERIC},
 	{ECOUNTERS_STATS_TYPES_FLAG_IFACE, 0x0, WL_IFSTATS_XTLV_INFRA_SPECIFIC},
 	{ECOUNTERS_STATS_TYPES_FLAG_IFACE, 0x0, WL_IFSTATS_XTLV_MGT_CNT},
+#ifdef WL_DISABLE_EVENT_ECNT
+	{ECOUNTERS_STATS_TYPES_FLAG_IFACE, 0x0, WL_IFSTATS_XTLV_IF_EVENT_STATS},
+#endif /* WL_DISABLE_EVENT_ECNT */
 
 	/* secondary interface */
 };
@@ -6334,16 +6365,22 @@ dhd_ecounter_configure(dhd_pub_t *dhd, bool enable)
 		if (dhd_ecounter_autoconfig(dhd) != BCME_OK) {
 			if ((rc = dhd_start_ecounters(dhd)) != BCME_OK) {
 				DHD_ERROR(("%s Ecounters start failed\n", __FUNCTION__));
-			} else if ((rc = dhd_start_event_ecounters(dhd)) != BCME_OK) {
+			}
+#ifndef WL_DISABLE_EVENT_ECNT
+			else if ((rc = dhd_start_event_ecounters(dhd)) != BCME_OK) {
 				DHD_ERROR(("%s Event_Ecounters start failed\n", __FUNCTION__));
 			}
+#endif /* !WL_DISABLE_EVENT_ECNT */
 		}
 	} else {
 		if ((rc = dhd_stop_ecounters(dhd)) != BCME_OK) {
 			DHD_ERROR(("%s Ecounters stop failed\n", __FUNCTION__));
-		} else if ((rc = dhd_stop_event_ecounters(dhd)) != BCME_OK) {
+		}
+#ifndef WL_DISABLE_EVENT_ECNT
+		else if ((rc = dhd_stop_event_ecounters(dhd)) != BCME_OK) {
 			DHD_ERROR(("%s Event_Ecounters stop failed\n", __FUNCTION__));
 		}
+#endif /* !WL_DISABLE_EVENT_ECNT */
 	}
 	return rc;
 }
@@ -7433,3 +7470,28 @@ dhd_control_he_enab(dhd_pub_t * dhd, uint8 he_enab)
 	return ret;
 }
 #endif /* DISABLE_HE_ENAB || CUSTOM_CONTROL_HE_ENAB */
+
+#ifdef DHD_CHECK_4WAY_M4ACKED
+void
+dhd_set_m4_acked(dhd_pub_t *dhdp, int set)
+{
+	dhdp->dhd_chk_m4acked = set;
+}
+
+void
+dhd_chk_m4_acked(dhd_pub_t *dhdp)
+{
+	int wait_cnt = CHK_M4_WAIT_MAX_TIME / CHK_M4_WAIT_INTV_TIME;
+
+	while ((dhdp->dhd_chk_m4acked == FALSE) && wait_cnt) {
+		DHD_INFO(("%s waiting for M4_acked, wait_cnt: %d\n", __FUNCTION__, wait_cnt));
+		wait_cnt--;
+		osl_sleep(10);
+	}
+	if (!wait_cnt) {
+		DHD_ERROR(("%s Force TRUE M4_acked, wait_cnt is 0\n", __FUNCTION__));
+		dhdp->dhd_chk_m4acked = TRUE;
+	}
+	return;
+}
+#endif /* DHD_CHECK_4WAY_M4ACKED */

@@ -26,11 +26,13 @@
 #include <linux/ccic/max77705_pass4.h>
 #if defined(CONFIG_SEC_BEYONDXQ_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT) ||    \
 	defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1XQ_PROJECT) ||    \
-	defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_R3Q_PROJECT)
+	defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2XQ2_PROJECT)
 #include <linux/ccic/max77705C_pass2_PID03.h>
 #elif defined(CONFIG_MACH_BEYOND1QLTE_JPN_DCM) || defined(CONFIG_MACH_BEYOND1QLTE_JPN_KDI) ||    \
 	defined(CONFIG_MACH_BEYOND2QLTE_JPN_DCM) || defined(CONFIG_MACH_BEYOND2QLTE_JPN_KDI)
 #include <linux/ccic/max77705C_pass2_PID04.h>
+#elif defined(CONFIG_SEC_R3Q_PROJECT) || defined(CONFIG_SEC_BLOOMQ_PROJECT)
+#include <linux/ccic/max77705C_pass2_PID05.h>
 #else
 #include <linux/ccic/max77705C_pass2.h>
 #endif
@@ -554,6 +556,9 @@ int max77705_usbc_fw_update(struct max77705_dev *max77705,
 	bool wpc_en_changed = 0;
 	int vcell = 0;
 	u8 vbvolt = 0;
+	u8 wcin_dtls = 0;
+	u8 chg_curr = 0;
+	u8 vchgin = 0;
 	int error = 0;
 
 
@@ -612,7 +617,7 @@ retry:
 			/* change chg_mode during FW update */
 			vcell = max77705_fuelgauge_read_vcell(max77705);
 
-			if (vcell < 3300) {
+			if (vcell < 3600) {
 				pr_info("%s: keep chg_mode(0x%x), vcell(%dmv)\n",
 					__func__, chg_cnfg_00 & 0x0F, vcell);
 				error = -EAGAIN;
@@ -620,14 +625,18 @@ retry:
 			}
 		}
 
+		max77705_read_reg(max77705->charger, MAX77705_CHG_REG_DETAILS_00, &wcin_dtls);
+		wcin_dtls = (wcin_dtls & 0x18) >> 3;
+
 		wpc_en_changed = true;
 		max77705_wc_control(max77705, false);
 
 		max77705_read_reg(max77705->muic, MAX77705_USBC_REG_BC_STATUS, &vbvolt);
-		pr_info("%s: BC:0x%02x, vbvolt:0x%x\n",
-			__func__, vbvolt, (vbvolt & 0x80) >> 7);
 
-		if (!(vbvolt & 0x80)) {
+		pr_info("%s: BC:0x%02x, vbvolt:0x%x, wcin_dtls:0x%x\n",
+			__func__, vbvolt, ((vbvolt & 0x80) >> 7), wcin_dtls);
+
+		if (!(vbvolt & 0x80) && (wcin_dtls != 0x3)) {
 			chg_mode_changed = true;
 					/* Switching Frequency : 3MHz */
 			max77705_update_reg(max77705->charger,
@@ -644,6 +653,16 @@ retry:
 			pr_info("%s: +change chg_mode(0x9), vcell(%dmv)\n",
 						__func__, vcell);
 		} else {
+			max77705_update_reg(max77705->charger,
+				MAX77705_CHG_REG_CNFG_12, 0x18, 0x18);
+			max77705_read_reg(max77705->charger, MAX77705_CHG_REG_CNFG_12, &vchgin);
+			pr_info("%s: -set aicl, (0x%02x)\n", __func__, vchgin);
+
+			max77705_update_reg(max77705->charger,
+				MAX77705_CHG_REG_CNFG_02, 0x0, 0x3F);
+			max77705_read_reg(max77705->charger, MAX77705_CHG_REG_CNFG_02, &chg_curr);
+			pr_info("%s: -set charge curr 100mA, (0x%02x)\n", __func__, chg_curr);
+
 			if (chg_mode_changed) {
 				chg_mode_changed = false;
 				/* Auto skip mode */

@@ -34,7 +34,11 @@
 #endif /* CONFIG_MUIC_NOTIFIER */
 
 #if defined(CONFIG_PM_S2MU107)
+#if defined(CONFIG_BATTERY_SAMSUNG_LEGO_STYLE)
 #include "../battery/charger/s2mu107_pmeter.h"
+#else
+#include "../battery_v2/include/s2mu107_pmeter.h"
+#endif
 #else
 #include "../battery_v2/include/sec_charging_common.h"
 #endif
@@ -63,7 +67,6 @@ extern int factory_mode;
 *VARIABLE DEFINITION
 */
 static usbpd_phy_ops_type s2mu107_ops;
-struct i2c_client *test_i2c;
 
 static enum power_supply_property ccic_props[] = {
 };
@@ -95,15 +98,8 @@ static void s2mu107_usbpd_set_rp_scr_sel(struct s2mu107_usbpd_data *pdic_data,
 													CCIC_RP_SCR_SEL scr_sel);
 int s2mu107_usbpd_check_msg(void *_data, u64 *val);
 static int s2mu107_usbpd_bulk_read(struct i2c_client *i2c, u8 reg, int count, u8 *buf);
-char *rid_text[] = {
-	"UNDEFINED",
-	"RID ERROR",
-	"RID ERROR",
-	"RID 255K",
-	"RID 301K",
-	"RID 523K",
-	"RID 619K"
-};
+static void s2mu107_vbus_short_check(struct s2mu107_usbpd_data *pdic_data);
+
 #if defined(CONFIG_CCIC_NOTIFIER)
 extern struct device *ccic_device;
 #endif
@@ -153,7 +149,7 @@ void s2mu107_rprd_mode_change(struct s2mu107_usbpd_data *usbpd_data, u8 mode)
 		s2mu107_usbpd_set_rp_scr_sel(usbpd_data, PLUG_CTRL_RP80);
 		msleep(S2MU107_ROLE_SWAP_TIME_MS);
 		s2mu107_assert_drp(pd_data);
-		usbpd_data->status_reg |= PLUG_ATTACH;
+		usbpd_data->status_reg |= 1 << PLUG_ATTACH;
 		schedule_delayed_work(&usbpd_data->plug_work, 0);
 		break;
 	case TYPE_C_ATTACH_UFP: /* SNK */
@@ -168,7 +164,7 @@ void s2mu107_rprd_mode_change(struct s2mu107_usbpd_data *usbpd_data, u8 mode)
 		s2mu107_usbpd_set_rp_scr_sel(usbpd_data, PLUG_CTRL_RP80);
 		msleep(S2MU107_ROLE_SWAP_TIME_MS);
 		s2mu107_assert_drp(pd_data);
-		usbpd_data->status_reg |= PLUG_ATTACH;
+		usbpd_data->status_reg |= 1 << PLUG_ATTACH;
 		schedule_delayed_work(&usbpd_data->plug_work, 0);
 		break;
 	case TYPE_C_ATTACH_DRP: /* DRP */
@@ -181,7 +177,7 @@ skip:
 	mutex_unlock(&usbpd_data->_mutex);
 }
 
-void vbus_turn_on_ctrl(struct s2mu107_usbpd_data *usbpd_data, bool enable)
+void s2mu107_vbus_turn_on_ctrl(struct s2mu107_usbpd_data *usbpd_data, bool enable)
 {
 	struct power_supply *psy_otg;
 	union power_supply_propval val;
@@ -263,42 +259,21 @@ static void s2mu107_usbpd_dc_control(struct work_struct *work)
 	if (ctrl & S2MU107_REG_INT_STATUS6_D2D_DOWN)
 		dc_val = 0;
 
+	if (pdic_data->auto_pps_enable) {
+		if (ctrl & S2MU107_REG_INT_STATUS1_MSG_REJECT)
+			dc_val = 5;
+	}
+
 	psy_dc = get_power_supply_by_name("s2mu107-direct-charger");
 
 	if (psy_dc) {
 		val.intval = dc_val;
+#if defined(CONFIG_DIRECT_CHARGING)
 		psy_dc->desc->set_property(psy_dc,
 					(enum power_supply_property)POWER_SUPPLY_EXT_PROP_DIRECT_PPS, &val);
+#endif
 	} else
 		pr_err("%s: Fail to get psy dc charger\n", __func__);
-}
-
-static void s2mu107_send_psrdy(void *_data)
-{
-	struct power_supply *psy_dc;
-	union power_supply_propval val;
-
-	psy_dc = get_power_supply_by_name("s2mu107-direct-charger");
-
-	if (psy_dc) {
-		val.intval = 1;
-		psy_dc->desc->set_property(psy_dc,
-					(enum power_supply_property)POWER_SUPPLY_EXT_PROP_DIRECT_PPS_READY, &val);
-	} else
-		pr_err("%s: Fail to get psy dc charger\n", __func__);
-}
-
-static int s2mu107_get_pps_voltage(void *_data)
-{
-	struct usbpd_data *data = (struct usbpd_data *) _data;
-	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
-	struct i2c_client *i2c = pdic_data->i2c;
-
-	u8 val[2];
-
-	s2mu107_usbpd_bulk_read(i2c, S2MU107_REG_PPS_VOLTAGE_LOW, 2, val);
-
-	return (val[0] | ((val[1] & 0x7) << 8));
 }
 
 #ifdef CONFIG_PM_S2MU107
@@ -354,7 +329,6 @@ static int s2mu107_usbpd_get_pmeter_volt(struct s2mu107_usbpd_data *pdic_data)
 static int s2mu107_usbpd_check_vbus(struct s2mu107_usbpd_data *pdic_data,
 												int volt, CCIC_VBUS_SEL mode)
 {
-	int delay = 20;
 	int retry = 100;
 	int i = 0;
 	int ret = 0;
@@ -375,7 +349,6 @@ static int s2mu107_usbpd_check_vbus(struct s2mu107_usbpd_data *pdic_data,
 				msleep(650);
 				return true;
 			}
-			msleep(delay);
 		}
 	} else if (mode == VBUS_ON) {
 		ret = s2mu107_usbpd_get_pmeter_volt(pdic_data);
@@ -480,9 +453,18 @@ static void s2mu107_pr_swap(void *_data, int val)
 	struct usbpd_data *data = (struct usbpd_data *) _data;
 	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
 
-	if (val == USBPD_SINK_OFF)
+	if (val == USBPD_SINK_OFF) {
+#ifdef CONFIG_BATTERY_SAMSUNG
+#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
+		pd_noti.event = PDIC_NOTIFY_EVENT_PD_PRSWAP_SNKTOSRC;
+		pd_noti.sink_status.selected_pdo_num = 0;
+		pd_noti.sink_status.available_pdo_num = 0;
+		pd_noti.sink_status.current_pdo_num = 0;
+#endif
+#endif
 		ccic_event_work(pdic_data, CCIC_NOTIFY_DEV_BATTERY,
-			CCIC_NOTIFY_ID_ATTACH, 0, 0);
+			CCIC_NOTIFY_ID_POWER_STATUS, 0, 0);
+	}
 	else if (val == USBPD_SOURCE_ON) {
 #if defined(CONFIG_DUAL_ROLE_USB_INTF)
 		pdic_data->power_role_dual = DUAL_ROLE_PROP_PR_SRC;
@@ -495,7 +477,7 @@ static void s2mu107_pr_swap(void *_data, int val)
 	}
 	else if (val == USBPD_SOURCE_OFF) {
 		ccic_event_work(pdic_data, CCIC_NOTIFY_DEV_BATTERY,
-			CCIC_NOTIFY_ID_ATTACH, 0, 0);
+			CCIC_NOTIFY_ID_POWER_STATUS, 0, 0);
 #if defined(CONFIG_DUAL_ROLE_USB_INTF)
 		pdic_data->power_role_dual = DUAL_ROLE_PROP_PR_SNK;
 #elif defined(CONFIG_TYPEC)
@@ -859,10 +841,11 @@ static bool s2mu107_poll_status(void *_data)
 	dev_info(dev, "%s status[0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x]\n",
 			__func__, intr[0], intr[1], intr[2], intr[3], intr[4], intr[5], intr[6]);
 
-	if (intr[6]) {
-		pdic_data->dc_intr = intr[6];
-		schedule_delayed_work(&pdic_data->dc_control, msecs_to_jiffies(10));
-	}
+	if (intr[6] || (intr[1] & S2MU107_REG_INT_STATUS1_MSG_REJECT)) {
+ 		pdic_data->dc_intr = intr[6];
+		pdic_data->dc_intr |= S2MU107_REG_INT_STATUS1_MSG_REJECT;
+ 		schedule_delayed_work(&pdic_data->dc_control, msecs_to_jiffies(10));
+ 	}
 
 	if ((intr[0] | intr[1] | intr[2] | intr[3] | intr[4] | intr[5]) == 0)
 		goto out;
@@ -921,7 +904,8 @@ static bool s2mu107_poll_status(void *_data)
 	if (intr[2] & S2MU107_REG_INT_STATUS2_MSG_REQUEST)
 		status_reg_val |= 1 << MSG_REQUEST;
 
-	if (intr[1] & S2MU107_REG_INT_STATUS1_MSG_REJECT)
+	if ((intr[1] & S2MU107_REG_INT_STATUS1_MSG_REJECT) &&
+			!pdic_data->auto_pps_enable)
 		status_reg_val |= 1 << MSG_REJECT;
 
 	if (intr[2] & S2MU107_REG_INT_STATUS2_MSG_WAIT)
@@ -936,8 +920,11 @@ static bool s2mu107_poll_status(void *_data)
 	if (intr[2] & S2MU107_REG_INT_STATUS2_MSG_VCONN_SWAP)
 		status_reg_val |= 1 << MSG_VCONN_SWAP;
 
-	if (intr[3] & S2MU107_REG_INT_STATUS3_UNS_CMD_DATA)
-		status_reg_val |= 1 << MSG_RID;
+	if (intr[3] & S2MU107_REG_INT_STATUS3_UNS_CMD_DATA) {
+		if (pdic_data->detach_valid)
+			pdic_data->status_reg |= 1 << PLUG_ATTACH;
+ 		status_reg_val |= 1 << MSG_RID;
+	}
 
 	/* function that support dp control */
 	if (intr[4] & S2MU107_REG_INT_STATUS4_MSG_PASS) {
@@ -982,10 +969,15 @@ static int s2mu107_hard_reset(void *_data)
 	struct i2c_client *i2c = pdic_data->i2c;
 	int ret;
 	u8 reg;
-	u8 Read_Value = 0;
+	u8 reg_data = 0;
 
 	if (pdic_data->rid != REG_RID_UNDF && pdic_data->rid != REG_RID_MAX)
 		return 0;
+
+	s2mu107_usbpd_read_reg(pdic_data->i2c, S2MU107_REG_RETRANS, &reg_data);
+	reg_data &= ~S2MU107_REG_RETRANS_MASK;
+	reg_data |= RETRANS_0 << S2MU107_REG_RETRANS_SHIFT;
+	s2mu107_usbpd_write_reg(pdic_data->i2c, S2MU107_REG_RETRANS, reg_data);
 
 	reg = S2MU107_REG_MSG_SEND_CON;
 
@@ -1000,10 +992,7 @@ static int s2mu107_hard_reset(void *_data)
 	if (ret < 0)
 		goto fail;
 
-    /* USB PD CC Off*/
-	Read_Value &= ~S2MU107_REG_PLUG_CTRL_CC_MANUAL_MASK;
-	Read_Value |= S2MU107_REG_PLUG_CTRL_CC_MANUAL_EN;
-	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, Read_Value);
+	usleep_range(2000, 2100);
 
 	ret = s2mu107_usbpd_write_reg(i2c, reg, S2MU107_REG_MSG_SEND_CON_OP_MODE
 										| S2MU107_REG_MSG_SEND_CON_HARD_EN);
@@ -1011,6 +1000,13 @@ static int s2mu107_hard_reset(void *_data)
 	ret = s2mu107_usbpd_write_reg(i2c, reg, S2MU107_REG_MSG_SEND_CON_HARD_EN);
 	if (ret < 0)
 		goto fail;
+
+	usleep_range(3000, 3100);
+
+	s2mu107_usbpd_read_reg(pdic_data->i2c, S2MU107_REG_RETRANS, &reg_data);
+	reg_data &= ~S2MU107_REG_RETRANS_MASK;
+	reg_data |= RETRANS_3 << S2MU107_REG_RETRANS_SHIFT;
+	s2mu107_usbpd_write_reg(pdic_data->i2c, S2MU107_REG_RETRANS, reg_data);
 
 	s2mu107_self_soft_reset(i2c);
 
@@ -1021,7 +1017,115 @@ static int s2mu107_hard_reset(void *_data)
 fail:
 	return -EIO;
 }
+#if defined(CONFIG_PDIC_PD30)
+static void s2mu107_send_hard_reset_dc(void *_data)
+{
+	struct power_supply *psy_dc;
+	union power_supply_propval val;
 
+	psy_dc = get_power_supply_by_name("s2mu107-direct-charger");
+
+	if (psy_dc) {
+		val.intval = 1;
+#if defined(CONFIG_DIRECT_CHARGING)
+		psy_dc->desc->set_property(psy_dc,
+	(enum power_supply_property)POWER_SUPPLY_EXT_PROP_DIRECT_HARD_RESET, &val);
+#endif
+	} else
+		pr_err("%s: Fail to get psy dc charger\n", __func__);
+}
+
+static void s2mu107_force_pps_disable(void *_data)
+{
+	struct power_supply *psy_dc;
+	union power_supply_propval val;
+
+	psy_dc = get_power_supply_by_name("s2mu107-direct-charger");
+
+	if (psy_dc) {
+		val.intval = 1;
+#if defined(CONFIG_DIRECT_CHARGING)
+		psy_dc->desc->set_property(psy_dc,
+	(enum power_supply_property)POWER_SUPPLY_EXT_PROP_DIRECT_PPS_DISABLE, &val);
+#endif
+	} else
+		pr_err("%s: Fail to get psy dc charger\n", __func__);
+}
+
+static int  s2mu107_pps_enable(void *_data, int val)
+{
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+	struct i2c_client *i2c = pdic_data->i2c;
+	u8 reg_data = 0;
+	u8 reg_data2 = 0;
+
+	pr_info("%s %d\n", __func__, val);
+
+	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PPS_CTRL, &reg_data);
+	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_VBUS_MUX, &reg_data2);
+
+	reg_data &= ~(0x3 << S2MU107_REG_PPS_CTRL_PPS_TIMER_SHIFT);
+	reg_data |= (PPS_TIMER_8s << S2MU107_REG_PPS_CTRL_PPS_TIMER_SHIFT);
+
+	if (val) {
+ 		reg_data |= S2MU107_REG_PPS_CTRL_PPS_ENABLE;
+		reg_data2 |= S2MU107_REG_SEND_EN_CLEAR;
+		s2mu107_set_irq_enable(pdic_data, 0, ENABLED_INT_1_PPS,
+ 				0, 0, ENABLED_INT_4_PPS, ENABLED_INT_5, 0);
+		pdic_data->auto_pps_enable = 1;
+ 	} else {
+ 		reg_data &= ~S2MU107_REG_PPS_CTRL_PPS_ENABLE;
+		reg_data2 &= ~S2MU107_REG_SEND_EN_CLEAR;
+ 		s2mu107_set_irq_enable(pdic_data, ENABLED_INT_0, ENABLED_INT_1,
+ 			ENABLED_INT_2, ENABLED_INT_3, ENABLED_INT_4, ENABLED_INT_5,
+ 															ENABLED_INT_6);
+		pdic_data->auto_pps_enable = 0;
+ 	}
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_VBUS_MUX, reg_data2);
+ 	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PPS_CTRL, reg_data);
+
+	return 0;
+}
+
+static int s2mu107_get_pps_enable(void *_data, int *val)
+{
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+	*val = pdic_data->auto_pps_enable;
+	return 0;
+}
+
+static void s2mu107_send_psrdy(void *_data)
+{
+	struct power_supply *psy_dc;
+	union power_supply_propval val;
+
+	psy_dc = get_power_supply_by_name("s2mu107-direct-charger");
+
+	if (psy_dc) {
+		val.intval = 1;
+#if defined(CONFIG_DIRECT_CHARGING)
+	psy_dc->desc->set_property(psy_dc,
+					(enum power_supply_property)POWER_SUPPLY_EXT_PROP_DIRECT_PPS_READY, &val);
+#endif
+	} else
+		pr_err("%s: Fail to get psy dc charger\n", __func__);
+}
+
+static int s2mu107_get_pps_voltage(void *_data)
+{
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+	struct i2c_client *i2c = pdic_data->i2c;
+
+	u8 val[2];
+
+	s2mu107_usbpd_bulk_read(i2c, S2MU107_REG_PPS_VOLTAGE_LOW, 2, val);
+
+	return (val[0] | ((val[1] & 0x7) << 8));
+}
+#endif
 static int s2mu107_receive_message(void *data)
 {
 	struct s2mu107_usbpd_data *pdic_data = data;
@@ -1118,10 +1222,11 @@ static int s2mu107_set_otg_control(void *_data, int val)
 	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
 
 	mutex_lock(&pdic_data->cc_mutex);
-	if (val)
-		vbus_turn_on_ctrl(pdic_data, VBUS_ON);
-	else
-		vbus_turn_on_ctrl(pdic_data, VBUS_OFF);
+	if (val) {
+		if (pdic_data->is_killer == 0)
+			s2mu107_vbus_turn_on_ctrl(pdic_data, VBUS_ON);
+	} else
+		s2mu107_vbus_turn_on_ctrl(pdic_data, VBUS_OFF);
 	mutex_unlock(&pdic_data->cc_mutex);
 
 	return 0;
@@ -1140,6 +1245,21 @@ static int s2mu107_set_cc_control(void *_data, int val)
 	return ret;
 }
 
+static void s2mu107_send_pd_info(void *_data, int attach)
+{
+#if defined(CONFIG_CCIC_NOTIFIER)
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+
+	if (attach)
+		ccic_event_work(pdic_data, CCIC_NOTIFY_DEV_BATTERY,
+								CCIC_NOTIFY_ID_POWER_STATUS, 1, 0);
+	else
+		ccic_event_work(pdic_data, CCIC_NOTIFY_DEV_BATTERY,
+								CCIC_NOTIFY_ID_POWER_STATUS, 0, 0);
+#endif
+}
+
 static int s2mu107_set_rp_control(void *_data, int val)
 {
 	struct usbpd_data *data = (struct usbpd_data *) _data;
@@ -1152,7 +1272,7 @@ static int s2mu107_set_rp_control(void *_data, int val)
 	return 0;
 }
 
-static int  s2mu107_cc_instead_of_vbus(void *_data)
+static int  s2mu107_cc_instead_of_vbus(void *_data, int enable)
 {
 	struct usbpd_data *data = (struct usbpd_data *) _data;
 	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
@@ -1164,14 +1284,13 @@ static int  s2mu107_cc_instead_of_vbus(void *_data)
 	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_VBUS_MUX, &val);
 	val &= ~S2MU107_REG_RD_OR_VBUS_MUX_SEL;
 	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_VBUS_MUX, val);
-	/* select detach condition
-	   0 vbus level & cc level
-	   1 only cc level*/
-#if 1
 	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL, &val);
-	val &= ~S2MU107_REG_PLUG_CTRL_REG_UFP_ATTACH_OPT_EN;
+	if (enable)
+		val |= S2MU107_REG_PLUG_CTRL_REG_UFP_ATTACH_OPT_EN;
+	else
+		val &= ~S2MU107_REG_PLUG_CTRL_REG_UFP_ATTACH_OPT_EN;
+
 	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL, val);
-#endif
 
 	return 0;
 }
@@ -1188,35 +1307,6 @@ static int  s2mu107_op_mode_clear(void *_data)
 	val &= ~S2MU107_REG_MSG_SEND_CON_OP_MODE;
 
 	s2mu107_usbpd_write_reg(i2c, reg, val);
-
-	return 0;
-}
-
-static int  s2mu107_pps_enable(void *_data, int val)
-{
-	struct usbpd_data *data = (struct usbpd_data *) _data;
-	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
-	struct i2c_client *i2c = pdic_data->i2c;
-	u8 reg_data = 0;
-
-	pr_info("%s %d\n", __func__, val);
-
-	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PPS_CTRL, &reg_data);
-
-	reg_data &= ~(0x3 << S2MU107_REG_PPS_CTRL_PPS_TIMER_SHIFT);
-	reg_data |= (PPS_TIMER_8s << S2MU107_REG_PPS_CTRL_PPS_TIMER_SHIFT);
-
-	if (val) {
-		reg_data |= S2MU107_REG_PPS_CTRL_PPS_ENABLE;
-		s2mu107_set_irq_enable(pdic_data, 0, 0,
-				0, 0, ENABLED_INT_4_PPS, ENABLED_INT_5, 0);
-	} else {
-		reg_data &= ~S2MU107_REG_PPS_CTRL_PPS_ENABLE;
-		s2mu107_set_irq_enable(pdic_data, ENABLED_INT_0, ENABLED_INT_1,
-			ENABLED_INT_2, ENABLED_INT_3, ENABLED_INT_4, ENABLED_INT_5,
-															ENABLED_INT_6);
-	}
-	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PPS_CTRL, reg_data);
 
 	return 0;
 }
@@ -1414,6 +1504,21 @@ static void s2mu107_get_vbus_short_check(void *_data, bool *val)
 	*val = pdic_data->vbus_short;
 }
 
+static void s2mu107_pd_vbus_short_check(void *_data)
+{
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+
+	if (pdic_data->pd_vbus_short_check)
+		return;
+
+	pdic_data->vbus_short_check = false;
+
+	s2mu107_vbus_short_check(pdic_data);
+
+	pdic_data->pd_vbus_short_check = true;
+}
+
 static void s2mu107_usbpd_set_threshold(struct s2mu107_usbpd_data *pdic_data,
 			CCIC_RP_RD_SEL port_sel, CCIC_THRESHOLD_SEL threshold_sel)
 {
@@ -1425,11 +1530,27 @@ static void s2mu107_usbpd_set_threshold(struct s2mu107_usbpd_data *pdic_data,
 	} else {
 		if (port_sel == PLUG_CTRL_RD)
 			s2mu107_usbpd_write_reg(i2c,
-				S2MU107_REG_PLUG_CTRL_SET_RD, threshold_sel);
+				S2MU107_REG_PLUG_CTRL_SET_RD, threshold_sel | 0x40);
 		else if (port_sel == PLUG_CTRL_RP)
 			s2mu107_usbpd_write_reg(i2c,
 				S2MU107_REG_PLUG_CTRL_SET_RP, threshold_sel);
 	}
+}
+
+static int s2mu107_usbpd_check_abnormal_attach(struct s2mu107_usbpd_data *pdic_data)
+{
+	struct i2c_client *i2c = pdic_data->i2c;
+	u8 data = 0;
+
+	s2mu107_usbpd_set_threshold(pdic_data, PLUG_CTRL_RP,
+										S2MU107_THRESHOLD_1628MV);
+	msleep(20);
+
+	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_MON2, &data);
+	if ((data & S2MU107_PR_MASK) == S2MU107_PDIC_SOURCE)
+		return true;
+	else
+		return false;
 }
 
 static void s2mu107_usbpd_set_rp_scr_sel(struct s2mu107_usbpd_data *pdic_data,
@@ -1462,10 +1583,12 @@ static void s2mu107_usbpd_set_rp_scr_sel(struct s2mu107_usbpd_data *pdic_data,
 		data &= ~S2MU107_REG_PLUG_CTRL_RP_SEL_MASK;
 		data |= S2MU107_REG_PLUG_CTRL_RP80;
 		s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_PORT, data);
+#if 0
 		s2mu107_usbpd_set_threshold(pdic_data, PLUG_CTRL_RD,
 						S2MU107_THRESHOLD_214MV);
 		s2mu107_usbpd_set_threshold(pdic_data, PLUG_CTRL_RP,
 						S2MU107_THRESHOLD_1628MV);
+#endif
 
 		break;
 	case PLUG_CTRL_RP180:
@@ -1473,10 +1596,12 @@ static void s2mu107_usbpd_set_rp_scr_sel(struct s2mu107_usbpd_data *pdic_data,
 		data &= ~S2MU107_REG_PLUG_CTRL_RP_SEL_MASK;
 		data |= S2MU107_REG_PLUG_CTRL_RP180;
 		s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_PORT, data);
+#if 0
 		s2mu107_usbpd_set_threshold(pdic_data, PLUG_CTRL_RD,
 						S2MU107_THRESHOLD_428MV);
 		s2mu107_usbpd_set_threshold(pdic_data, PLUG_CTRL_RP,
 						S2MU107_THRESHOLD_2057MV);
+#endif
 
 		break;
 	case PLUG_CTRL_RP330:
@@ -1484,10 +1609,12 @@ static void s2mu107_usbpd_set_rp_scr_sel(struct s2mu107_usbpd_data *pdic_data,
 		data &= ~S2MU107_REG_PLUG_CTRL_RP_SEL_MASK;
 		data |= S2MU107_REG_PLUG_CTRL_RP330;
 		s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_PORT, data);
+#if 0
 		s2mu107_usbpd_set_threshold(pdic_data, PLUG_CTRL_RD,
 						S2MU107_THRESHOLD_428MV);
 		s2mu107_usbpd_set_threshold(pdic_data, PLUG_CTRL_RP,
 						S2MU107_THRESHOLD_2057MV);
+#endif
 
 		break;
 	default:
@@ -1641,7 +1768,7 @@ int s2mu107_usbpd_check_msg(void *_data, u64 *val)
 					*val |= one << VDM_ENTER_MODE;
 					break;
 				case Discover_Modes:
-					*val |= one << VDM_ENTER_MODE;
+					*val |= one << VDM_DISCOVER_MODE;
 					break;
 				case Discover_SVIDs:
 					*val |= one << VDM_DISCOVER_SVID;
@@ -1756,19 +1883,10 @@ static int s2mu107_usbpd_set_cc_control(struct s2mu107_usbpd_data  *pdic_data, i
 	}
 
 	if (val) {
-		s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, &data);
-		data &= ~S2MU107_REG_PLUG_CTRL_CC_MANUAL_MASK;
-		s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, data);
-
 		s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL, &data);
 		data |= S2MU107_REG_PLUG_CTRL_ECO_SRC_CAP_RDY;
 		s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL, data);
 	} else {
-		s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, &data);
-		data &= ~S2MU107_REG_PLUG_CTRL_CC_MANUAL_MASK;
-		data |= S2MU107_REG_PLUG_CTRL_CC_MANUAL_EN;
-		s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, data);
-
 		s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL, &data);
 		data &= ~S2MU107_REG_PLUG_CTRL_ECO_SRC_CAP_RDY;
 		s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL, data);
@@ -1776,6 +1894,16 @@ static int s2mu107_usbpd_set_cc_control(struct s2mu107_usbpd_data  *pdic_data, i
 
 	return 0;
 }
+
+#if defined(CONFIG_TYPEC)
+static void s2mu107_set_pwr_opmode(void *_data, int mode)
+{
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+
+	typec_set_pwr_opmode(pdic_data->port, mode);
+}
+#endif
 
 static void s2mu107_dfp(struct i2c_client *i2c)
 {
@@ -2216,7 +2344,7 @@ static void _s2mu107_pdic_transfer_to_water(struct s2mu107_usbpd_data *pdic_data
 #endif
 	pr_info("%s: CCIC water detected", __func__);
 	s2mu107_set_irq_enable(pdic_data, 0, 0, 0, 0, 0, 0, 0);
-	vbus_turn_on_ctrl(pdic_data, VBUS_OFF);
+	s2mu107_vbus_turn_on_ctrl(pdic_data, VBUS_OFF);
 	ccic_event_work(pdic_data,
 	CCIC_NOTIFY_DEV_USB, CCIC_NOTIFY_ID_USB,
 		0/*attach*/, USB_STATUS_NOTIFY_DETACH);
@@ -2380,7 +2508,7 @@ static void s2mu107_usbpd_otg_attach(struct s2mu107_usbpd_data *pdic_data)
 #ifdef CONFIG_PM_S2MU107
 		s2mu107_usbpd_check_vbus(pdic_data, 80, VBUS_OFF);
 #endif
-		vbus_turn_on_ctrl(pdic_data, VBUS_ON);
+		s2mu107_vbus_turn_on_ctrl(pdic_data, VBUS_ON);
 	}
 #endif
 	usbpd_manager_acc_handler_cancel(dev);
@@ -2437,6 +2565,9 @@ static int type3_handle_notification(struct notifier_block *nb,
 		s2mu107_set_irq_enable(pdic_data, 0, 0, 0, 0, 0, 0, 0);
 		cancel_delayed_work(&pdic_data->water_dry_handler);
 		schedule_delayed_work(&pdic_data->water_dry_handler, msecs_to_jiffies(100));
+	} else if ((action == MUIC_PDIC_NOTIFY_CMD_ATTACH) &&
+		attached_dev == ATTACHED_DEV_ABNORMAL_OTG_MUIC) {
+		pdic_data->is_killer = true;
 	} else if ((action == MUIC_PDIC_NOTIFY_CMD_ATTACH) &&
 		attached_dev == ATTACHED_DEV_OTG_MUIC) {
 		s2mu107_usbpd_otg_attach(pdic_data);
@@ -2501,8 +2632,8 @@ static int type3_handle_notification(struct notifier_block *nb,
 		s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_CC_HOLD, reg_data);
 
 		s2mu107_usbpd_set_rp_scr_sel(pdic_data, PLUG_CTRL_RP80);
-		vbus_turn_on_ctrl(pdic_data, VBUS_OFF);
-		vbus_turn_on_ctrl(pdic_data, VBUS_ON);
+		s2mu107_vbus_turn_on_ctrl(pdic_data, VBUS_OFF);
+		s2mu107_vbus_turn_on_ctrl(pdic_data, VBUS_ON);
 
 		s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_CC_HOLD, &reg_data);
 		reg_data &= ~S2MU107_REG_PLUG_CTRL_CC_HOLD_BIT;
@@ -2565,7 +2696,7 @@ static void s2mu107_vbus_short_check(struct s2mu107_usbpd_data *pdic_data)
 #ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
 		pd_noti.sink_status.rp_currentlvl = rp_currentlvl;
 		pd_noti.event = PDIC_NOTIFY_EVENT_CCIC_ATTACH;
-		ccic_event_work(pdic_data, CCIC_NOTIFY_DEV_BATTERY, CCIC_NOTIFY_ID_POWER_STATUS, 1, 0);
+		ccic_event_work(pdic_data, CCIC_NOTIFY_DEV_BATTERY, CCIC_NOTIFY_ID_POWER_STATUS, 0, 0);
 #endif
 #endif
 		if (rp_currentlvl == RP_CURRENT_LEVEL_DEFAULT)
@@ -2576,7 +2707,7 @@ static void s2mu107_vbus_short_check(struct s2mu107_usbpd_data *pdic_data)
 	pdic_data->vbus_short_check = true;
 }
 
-#if !defined(CONFIG_SEC_FACTORY)
+#if !defined(CONFIG_SEC_FACTORY) && defined(CONFIG_S2MU107_TYPEC_WATER)
 static void s2mu107_power_off_water_check(struct s2mu107_usbpd_data *pdic_data)
 {
 	struct i2c_client *i2c = pdic_data->i2c;
@@ -2667,12 +2798,159 @@ static void s2mu107_power_off_water_check(struct s2mu107_usbpd_data *pdic_data)
 }
 #endif
 
+#if defined(CONFIG_SEC_FACTORY)
+int s2mu107_sys_power_off_water_check(struct s2mu107_usbpd_data *pdic_data)
+{
+	struct i2c_client *i2c = pdic_data->i2c;
+	struct device *dev = pdic_data->dev;
+	u8 val, prev_val, data_lpm = 0;
+	u8 cc1_val, cc2_val;
+	int retry = 0;
+	int ret = true;
+
+	mutex_lock(&pdic_data->_mutex);
+	mutex_lock(&pdic_data->lpm_mutex);
+
+	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_PORT, &val);
+	prev_val = val;
+	val &= ~(S2MU107_REG_PLUG_CTRL_MODE_MASK | S2MU107_REG_PLUG_CTRL_RP_SEL_MASK);
+	val |= S2MU107_REG_PLUG_CTRL_RP0 | S2MU107_REG_PLUG_CTRL_DRP;
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_PORT, val);
+
+	if (pdic_data->lpm_mode) {
+		s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PD_CTRL, &data_lpm);
+		data_lpm &= ~S2MU107_REG_LPM_EN;
+		s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PD_CTRL, data_lpm);
+	}
+
+	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, &val);
+	val &= ~S2MU107_REG_PLUG_CTRL_FSM_MANUAL_INPUT_MASK;
+	val |= S2MU107_REG_PLUG_CTRL_FSM_ATTACHED_SNK;
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, val);
+
+	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_RpRd, &val);
+	val |= S2MU107_REG_PLUG_CTRL_FSM_MANUAL_EN;
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_RpRd, val);
+
+	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, &val);
+	val &= ~S2MU107_REG_PLUG_CTRL_FSM_MANUAL_INPUT_MASK;
+	val |= S2MU107_REG_PLUG_CTRL_FSM_ATTACHED_SRC;
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, val);
+
+	msleep(300);
+
+	for (retry = 0; retry < 3; retry++) {
+		s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_MON1, &val);
+
+		cc1_val = val & S2MU107_REG_CTRL_MON_CC1_MASK;
+		cc2_val = (val & S2MU107_REG_CTRL_MON_CC2_MASK) >> S2MU107_REG_CTRL_MON_CC2_SHIFT;
+
+		dev_info(dev, "%s, vbus short check(%d) : cc1_val(%x), cc2_val(%x)\n",
+						__func__, retry, cc1_val, cc2_val);
+
+		if (cc1_val == USBPD_Ra || cc2_val == USBPD_Ra)
+			break;
+		else if (retry == 2)
+			ret = false;
+		udelay(5);
+	}
+
+	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, &val);
+	val &= ~S2MU107_REG_PLUG_CTRL_FSM_MANUAL_INPUT_MASK;
+	val |= S2MU107_REG_PLUG_CTRL_FSM_ATTACHED_SNK;
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, val);
+
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_PORT, prev_val);
+
+	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_RpRd, &val);
+	val &= ~S2MU107_REG_PLUG_CTRL_FSM_MANUAL_EN;
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_RpRd, val);
+
+	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, &val);
+	val &= ~S2MU107_REG_PLUG_CTRL_FSM_MANUAL_INPUT_MASK;
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, val);
+
+	if (pdic_data->lpm_mode) {
+		s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PD_CTRL, &data_lpm);
+		data_lpm |= S2MU107_REG_LPM_EN;
+		s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PD_CTRL, data_lpm);
+	}
+
+	mutex_unlock(&pdic_data->lpm_mutex);
+	mutex_unlock(&pdic_data->_mutex);
+
+	return ret;
+}
+#endif
+
+/* for one branch */
+static int s2mu107_get_lpm_mode(void *_data)
+{
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+
+	return pdic_data->lpm_mode;
+}
+
+static void s2mu107_sysfs_set_lpm_mode(void *_data)
+{
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+
+	s2mu107_set_lpm_mode(pdic_data);
+}
+
+static void s2mu107_sysfs_set_normal_mode(void *_data)
+{
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+
+	s2mu107_set_normal_mode(pdic_data);
+}
+
+static int s2mu107_get_rid(void *_data)
+{
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+
+	return pdic_data->rid;
+}
+
+static void s2mu107_option_command(void *_data, int cmd)
+{
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+
+	s2mu107_control_option_command(pdic_data, cmd);
+}
+
+#if defined(CONFIG_SEC_FACTORY)
+static int s2mu107_water_check(void *_data)
+{
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+
+	return s2mu107_sys_power_off_water_check(pdic_data);
+}
+#endif
+
+static int s2mu107_get_water_detect(void *_data)
+{
+	struct usbpd_data *data = (struct usbpd_data *) _data;
+	struct s2mu107_usbpd_data *pdic_data = data->phy_driver_data;
+
+	return pdic_data->is_water_detect;
+}
+
 static void s2mu107_usbpd_detach_init(struct s2mu107_usbpd_data *pdic_data)
 {
 	struct device *dev = pdic_data->dev;
 	struct usbpd_data *pd_data = dev_get_drvdata(dev);
+	struct usbpd_manager_data *manager = &pd_data->manager;
 	struct i2c_client *i2c = pdic_data->i2c;
 	int ret = 0;
+	u8 rid = 0;
+	u8 reg_data = 0;
 
 	dev_info(dev, "%s\n", __func__);
 
@@ -2680,20 +2958,25 @@ static void s2mu107_usbpd_detach_init(struct s2mu107_usbpd_data *pdic_data)
 	s2mu107_usbpd_set_cc_control(pdic_data, USBPD_CC_OFF);
 #if defined(CONFIG_DUAL_ROLE_USB_INTF)
 	if (pdic_data->power_role_dual == DUAL_ROLE_PROP_PR_SRC)
-		vbus_turn_on_ctrl(pdic_data, VBUS_OFF);
+		s2mu107_vbus_turn_on_ctrl(pdic_data, VBUS_OFF);
 #elif defined(CONFIG_TYPEC)
 	if (pdic_data->typec_power_role == TYPEC_SOURCE)
-		vbus_turn_on_ctrl(pdic_data, VBUS_OFF);
+		s2mu107_vbus_turn_on_ctrl(pdic_data, VBUS_OFF);
 #endif
 	s2mu107_usbpd_set_rp_scr_sel(pdic_data, PLUG_CTRL_RP80);
-	s2mu107_pps_enable(pd_data, 0);
-	s2mu107_set_irq_enable(pdic_data, ENABLED_INT_0, ENABLED_INT_1,
-			ENABLED_INT_2, ENABLED_INT_3, ENABLED_INT_4, ENABLED_INT_5,
-															ENABLED_INT_6);
 	pdic_data->detach_valid = true;
 	mutex_unlock(&pdic_data->cc_mutex);
 
 	usbpd_manager_plug_detach(dev, 0);
+
+	mutex_lock(&manager->pdo_mutex);
+#if defined(CONFIG_PDIC_PD30)
+	s2mu107_pps_enable(pd_data, 0);
+#endif
+	s2mu107_set_irq_enable(pdic_data, ENABLED_INT_0, ENABLED_INT_1,
+			ENABLED_INT_2, ENABLED_INT_3, ENABLED_INT_4, ENABLED_INT_5,
+															ENABLED_INT_6);
+	mutex_unlock(&manager->pdo_mutex);
 
 	/* wait flushing policy engine work */
 	usbpd_cancel_policy_work(dev);
@@ -2702,12 +2985,25 @@ static void s2mu107_usbpd_detach_init(struct s2mu107_usbpd_data *pdic_data)
 	usbpd_reinit(dev);
 	/* for ccic hw detect */
 	ret = s2mu107_usbpd_write_reg(i2c, S2MU107_REG_MSG_SEND_CON, S2MU107_REG_MSG_SEND_CON_HARD_EN);
-	s2mu107_self_soft_reset(i2c);
+	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_ADC_STATUS, &rid);
+	rid = (rid & S2MU107_PDIC_RID_MASK) >> S2MU107_PDIC_RID_SHIFT;
+	if (!rid) {
+		s2mu107_self_soft_reset(i2c);
+		s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_PORT, &reg_data);
+		if ((reg_data & S2MU107_REG_PLUG_CTRL_MODE_MASK) !=
+										S2MU107_REG_PLUG_CTRL_DRP) {
+			reg_data |= S2MU107_REG_PLUG_CTRL_DRP;
+			s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_PORT, reg_data);
+		}
+	}
+
 	pdic_data->rid = REG_RID_MAX;
 	pdic_data->is_factory_mode = false;
 	pdic_data->is_pr_swap = false;
 	pdic_data->vbus_short_check = false;
+	pdic_data->pd_vbus_short_check = false;
 	pdic_data->vbus_short = false;
+	pdic_data->is_killer = false;
 	if (pdic_data->regulator_en)
 		ret = regulator_disable(pdic_data->regulator);
 #ifdef CONFIG_BATTERY_SAMSUNG
@@ -2784,7 +3080,7 @@ static void s2mu107_usbpd_check_host(struct s2mu107_usbpd_data *pdic_data,
 		send_otg_notify(o_notify, NOTIFY_EVENT_POWER_SOURCE, 0);
 #endif
 		/* add to turn off external 5V */
-		vbus_turn_on_ctrl(pdic_data, VBUS_OFF);
+		s2mu107_vbus_turn_on_ctrl(pdic_data, VBUS_OFF);
 
 		ccic_event_work(pdic_data, CCIC_NOTIFY_DEV_USB, CCIC_NOTIFY_ID_USB,
 					0/*attach*/, USB_STATUS_NOTIFY_DETACH/*drp*/);
@@ -2875,6 +3171,13 @@ static int s2mu107_check_port_detect(struct s2mu107_usbpd_data *pdic_data)
 #endif
 		s2mu107_vbus_short_check(pdic_data);
 	} else if ((data & S2MU107_PR_MASK) == S2MU107_PDIC_SOURCE) {
+		ret = s2mu107_usbpd_check_abnormal_attach(pdic_data);
+		if (ret == false) {
+			dev_err(&i2c->dev, "%s, abnormal attach\n", __func__);
+			return -1;
+		}
+		s2mu107_usbpd_set_threshold(pdic_data, PLUG_CTRL_RP,
+											S2MU107_THRESHOLD_MAX);
 		dev_info(dev, "SOURCE\n");
 		ret = s2mu107_usbpd_check_accessory(pdic_data);
 		if (ret < 0) {
@@ -2967,7 +3270,7 @@ static irqreturn_t s2mu107_irq_thread(int irq, void *data)
 	int ret = 0;
 	unsigned attach_status = 0, rid_status = 0;
 
-	dev_info(dev, "%s\n", __func__);
+	dev_info(dev, "191104 %s\n", __func__);
 
 	mutex_lock(&pd_data->accept_mutex);
 	mutex_unlock(&pd_data->accept_mutex);
@@ -3063,26 +3366,14 @@ static int s2mu107_usbpd_reg_init(struct s2mu107_usbpd_data *_data)
 	struct i2c_client *i2c = _data->i2c;
 	u8 data = 0;
 
-	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL, &data);
-	data |= S2MU107_REG_PLUG_CTRL_VDM_DISABLE |
-					S2MU107_REG_PLUG_CTRL_ECO_SRC_CAP_RDY;
-	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL, data);
-
-#if 0
 	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PHY_CTRL_IFG, &data);
 	data |= S2MU107_PHY_IFG_35US << S2MU107_REG_IFG_SHIFT;
 	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PHY_CTRL_IFG, data);
-#endif
+
 	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_MSG_SEND_CON, &data);
 	data |= S2MU107_REG_MSG_SEND_CON_HARD_EN;
 	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_MSG_SEND_CON, data);
 
-#if 0
-	/* for SMPL issue */
-	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_ANALOG_OTP_0A, &data);
-	data |= S2MU107_REG_OVP_ON;
-	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_ANALOG_OTP_0A, data);
-#endif
 	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PD_CTRL_2, &data);
 	data &= ~S2MU107_REG_CC_OCP_MASK;
 	data |= S2MU107_CC_OCP_575MV << S2MU107_REG_CC_OCP_SHIFT;
@@ -3098,13 +3389,9 @@ static int s2mu107_usbpd_reg_init(struct s2mu107_usbpd_data *_data)
 	/* It is recognized that VBUS falls when CC line falls */
 	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_VBUS_MUX, &data);
 	data &= ~S2MU107_REG_RD_OR_VBUS_MUX_SEL;
-	data |= S2MU107_REG_SEND_EN_CLEAR;
+	data &= ~S2MU107_REG_SEND_EN_CLEAR;
 	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_VBUS_MUX, data);
-	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL, &data);
-	data |= S2MU107_REG_PLUG_CTRL_REG_UFP_ATTACH_OPT_EN;
-	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL, data);
 
-#if 0
 	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PHY_CTRL_00, 0x80);
 	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_BMC_CTRL, &data);
 	data |= 0x01 << 2;
@@ -3113,20 +3400,20 @@ static int s2mu107_usbpd_reg_init(struct s2mu107_usbpd_data *_data)
 	/* set debounce time */
 	s2mu107_usbpd_write_reg(i2c, 0x20, 0xe4);
 	s2mu107_usbpd_write_reg(i2c, 0x21, 0x0c);
-#endif
+
 	/* enable support acc */
 	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_CC_HOLD, &data);
 	data |= 0x80;
 	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_CC_HOLD, data);
 
-#if 0
 	/* fix trim code */
 	s2mu107_usbpd_read_reg(i2c, 0x00, &data);
 	data |= 0x1 | 0x3 << 2;
 	s2mu107_usbpd_write_reg(i2c, 0x00, data);
-#endif
+
 	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PPS_CTRL, &data);
 	data |= S2MU107_REG_PPS_CTRL_MSG_IRQ_SEL;
+	data &= ~S2MU107_REG_PPS_CTRL_PPS_ENABLE;
 	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PPS_CTRL, data);
 
 	data = 0;
@@ -3135,15 +3422,19 @@ static int s2mu107_usbpd_reg_init(struct s2mu107_usbpd_data *_data)
 						S2MU107_REG_PLUG_CTRL_REG_UFP_ATTACH_OPT_EN);
 	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL, data);
 
+	s2mu107_usbpd_read_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, &data);
+	data &= ~S2MU107_REG_PLUG_CTRL_CC_MANUAL_MASK;
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_CC12, data);
+
 	/* set Rd threshold to 400mV */
 	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_SET_RD_2, S2MU107_THRESHOLD_600MV);
 	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_SET_RP_2, S2MU107_THRESHOLD_1200MV);
 #ifdef CONFIG_SEC_FACTORY
-	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_SET_RD, S2MU107_THRESHOLD_257MV);
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_SET_RD, S2MU107_THRESHOLD_342MV);
 #else
-	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_SET_RD, S2MU107_THRESHOLD_257MV);
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_SET_RD, S2MU107_THRESHOLD_257MV | 0x40);
 #endif
-	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_SET_RP, S2MU107_THRESHOLD_2057MV);
+	s2mu107_usbpd_write_reg(i2c, S2MU107_REG_PLUG_CTRL_SET_RP, S2MU107_THRESHOLD_MAX);
 
 	if (_data->vconn_en) {
 		/* Off Manual Rd setup & On Manual Vconn setup */
@@ -3181,7 +3472,7 @@ static int s2mu107_usbpd_irq_init(struct s2mu107_usbpd_data *_data)
 	if (i2c->irq) {
 		ret = request_threaded_irq(i2c->irq, s2mu107_irq_isr,
 				s2mu107_irq_thread,
-				(IRQF_TRIGGER_FALLING | IRQF_ONESHOT | IRQF_NO_SUSPEND),
+				(IRQF_TRIGGER_LOW | IRQF_ONESHOT | IRQF_NO_SUSPEND),
 				"s2mu107-usbpd", _data);
 		if (ret < 0) {
 			dev_err(dev, "%s failed to request irq(%d)\n",
@@ -3358,10 +3649,13 @@ static void s2mu107_usbpd_pdic_data_init(struct s2mu107_usbpd_data *_data)
 	_data->rp_lvl = PLUG_CTRL_RP80;
 	_data->vbus_short = false;
 	_data->vbus_short_check = false;
+	_data->pd_vbus_short_check = false;
 	_data->vbus_short_check_cnt = 0;
 	_data->lpcharge_water = false;
 	_data->pm_cc1 = 0;
 	_data->pm_cc2 = 0;
+	_data->auto_pps_enable = 0;
+	_data->is_killer = false;
 }
 
 static int of_s2mu107_dt(struct device *dev,
@@ -3401,11 +3695,11 @@ static int s2mu107_usbpd_probe(struct i2c_client *i2c,
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(i2c->dev.parent);
 	struct s2mu107_usbpd_data *pdic_data;
+	struct usbpd_data *pd_data;
 	struct device *dev = &i2c->dev;
 	int ret = 0;
 
 	dev_info(dev, "%s\n", __func__);
-	test_i2c = i2c;
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA)) {
 		dev_err(dev, "%s: i2c functionality check error\n", __func__);
@@ -3453,6 +3747,9 @@ static int s2mu107_usbpd_probe(struct i2c_client *i2c,
 		goto err_return;
 	}
 
+	pd_data = dev_get_drvdata(dev);
+	pd_data->ip_num = S2MU107_USBPD_IP;
+
 	usbpd_set_ops(dev, &s2mu107_ops);
 
 	pdic_data->pdic_queue =
@@ -3475,7 +3772,7 @@ static int s2mu107_usbpd_probe(struct i2c_client *i2c,
 	}
 	if (pdic_data->rid == REG_RID_UNDF)
 		pdic_data->rid = REG_RID_MAX;
-	dev_set_drvdata(ccic_device, pdic_data);
+	dev_set_drvdata(ccic_device, pd_data);
 #endif
 
 #if defined(CONFIG_TYPEC)
@@ -3505,7 +3802,7 @@ static int s2mu107_usbpd_probe(struct i2c_client *i2c,
 	}
 
 #if defined(CONFIG_BATTERY_SAMSUNG)
-#if !defined(CONFIG_SEC_FACTORY)
+#if !defined(CONFIG_SEC_FACTORY) && defined(CONFIG_S2MU107_TYPEC_WATER)
 	if (lpcharge)
 		s2mu107_power_off_water_check(pdic_data);
 #endif
@@ -3582,6 +3879,7 @@ static int s2mu107_usbpd_resume(struct device *dev)
 static int s2mu107_usbpd_remove(struct i2c_client *i2c)
 {
 	struct s2mu107_usbpd_data *_data = i2c_get_clientdata(i2c);
+	struct usbpd_data *pd_data = dev_get_drvdata(&i2c->dev);
 
 	if (_data) {
 #if defined(CONFIG_DUAL_ROLE_USB_INTF)
@@ -3598,26 +3896,37 @@ static int s2mu107_usbpd_remove(struct i2c_client *i2c)
 		i2c_set_clientdata(_data->i2c, NULL);
 		kfree(_data);
 	}
+	if (pd_data) {
+		wake_lock_destroy(&pd_data->policy_wake);
+		mutex_destroy(&pd_data->accept_mutex);
+	}
+
 	return 0;
 }
 
 static const struct i2c_device_id s2mu107_usbpd_i2c_id[] = {
-	{ USBPD_DEV_NAME, 1 },
+	{ USBPD_S2MU107_NAME, 1 },
 	{}
 };
 MODULE_DEVICE_TABLE(i2c, s2mu107_i2c_id);
 
 static struct of_device_id sec_usbpd_i2c_dt_ids[] = {
-	{ .compatible = "sec-usbpd" },
+	{ .compatible = "s2mu107-usbpd" },
 	{ }
 };
 
 static void s2mu107_usbpd_shutdown(struct i2c_client *i2c)
 {
 	struct s2mu107_usbpd_data *_data = i2c_get_clientdata(i2c);
+	struct usbpd_data *pd_data;
 
 	if (!_data->i2c)
 		return;
+
+	pd_data = dev_get_drvdata(&i2c->dev);
+#if defined(CONFIG_PDIC_PD30)
+	s2mu107_pps_enable(pd_data, 0);
+#endif
 }
 
 static usbpd_phy_ops_type s2mu107_ops = {
@@ -3636,7 +3945,9 @@ static usbpd_phy_ops_type s2mu107_ops = {
 	.driver_reset		= s2mu107_driver_reset,
 	.set_otg_control	= s2mu107_set_otg_control,
 	.get_vbus_short_check	= s2mu107_get_vbus_short_check,
+	.pd_vbus_short_check	= s2mu107_pd_vbus_short_check,
 	.set_cc_control		= s2mu107_set_cc_control,
+	.send_pd_info		= s2mu107_send_pd_info,
 #if defined(CONFIG_CHECK_CTYPE_SIDE) || defined(CONFIG_CCIC_SYSFS)
 	.get_side_check		= s2mu107_get_side_check,
 #endif
@@ -3645,9 +3956,27 @@ static usbpd_phy_ops_type s2mu107_ops = {
 	.set_rp_control		= s2mu107_set_rp_control,
 	.cc_instead_of_vbus = s2mu107_cc_instead_of_vbus,
 	.op_mode_clear		= s2mu107_op_mode_clear,
+#if defined(CONFIG_TYPEC)
+	.set_pwr_opmode		= s2mu107_set_pwr_opmode,
+#endif
+#if defined(CONFIG_PDIC_PD30)
 	.pps_enable			= s2mu107_pps_enable,
+	.get_pps_enable			= s2mu107_get_pps_enable,
 	.send_psrdy			= s2mu107_send_psrdy,
 	.get_pps_voltage	= s2mu107_get_pps_voltage,
+	.send_hard_reset_dc	= s2mu107_send_hard_reset_dc,
+	.force_pps_disable	= s2mu107_force_pps_disable,
+#endif
+/*for one branch */
+	.get_lpm_mode		= s2mu107_get_lpm_mode,
+	.set_lpm_mode		= s2mu107_sysfs_set_lpm_mode,
+	.set_normal_mode	= s2mu107_sysfs_set_normal_mode,
+	.get_rid			= s2mu107_get_rid,
+	.control_option_command = s2mu107_option_command,
+#if defined(CONFIG_SEC_FACTORY)
+	.power_off_water_check	= s2mu107_water_check,
+#endif
+	.get_water_detect	= s2mu107_get_water_detect,
 };
 
 #if defined CONFIG_PM
@@ -3659,7 +3988,7 @@ const struct dev_pm_ops s2mu107_usbpd_pm = {
 
 static struct i2c_driver s2mu107_usbpd_driver = {
 	.driver		= {
-		.name	= USBPD_DEV_NAME,
+		.name	= USBPD_S2MU107_NAME,
 		.of_match_table	= sec_usbpd_i2c_dt_ids,
 #if defined CONFIG_PM
 		.pm	= &s2mu107_usbpd_pm,

@@ -22,7 +22,7 @@
 #ifndef __USBPD_S2MU107_H__
 #define __USBPD_S2MU107_H__
 
-#define USBPD_DEV_NAME    "usbpd-s2mu107"
+#define USBPD_S2MU107_NAME    "usbpd-s2mu107"
 
 /* message buffer */
 #define S2MU107_MAX_NUM_MSG_OBJ (7)
@@ -262,6 +262,11 @@
 #define S2MU107_REG_PPS_CTRL_MSG_IRQ_SEL \
 		(0x1 << S2MU107_REG_PPS_CTRL_MSG_IRQ_SEL_SHIFT) /* 0x80 */
 
+/* reg 0x34 */
+#define S2MU107_REG_RETRANS_SHIFT				(6)
+#define S2MU107_REG_RETRANS_MASK \
+		(0x3 << S2MU107_REG_RETRANS_SHIFT) /* 0xC0 */
+
 /* reg 0x90 (For S2MU107_REG_MSG_SEND_CON) */
 #define S2MU107_REG_MSG_SEND_CON_SEND_MSG_EN_SHIFT    (0)
 #define S2MU107_REG_MSG_SEND_CON_OP_MODE_SHIFT        (1)
@@ -382,10 +387,9 @@
 						S2MU107_REG_INT_STATUS1_MSG_PSRDY |\
 						S2MU107_REG_INT_STATUS1_MSG_DR_SWAP |\
 						S2MU107_REG_INT_STATUS1_MSG_PR_SWAP)
-#define ENABLED_INT_1_PPS    (S2MU107_REG_INT_STATUS1_MSG_PING |\
-						S2MU107_REG_INT_STATUS1_MSG_REJECT |\
-						S2MU107_REG_INT_STATUS1_MSG_DR_SWAP |\
-						S2MU107_REG_INT_STATUS1_MSG_PR_SWAP)
+#define ENABLED_INT_1_PPS    (S2MU107_REG_INT_STATUS1_MSG_REJECT |\
+ 						S2MU107_REG_INT_STATUS1_MSG_DR_SWAP |\
+ 						S2MU107_REG_INT_STATUS1_MSG_PR_SWAP)
 #define ENABLED_INT_2    (S2MU107_REG_INT_STATUS2_MSG_VCONN_SWAP |\
 						S2MU107_REG_INT_STATUS2_MSG_WAIT |\
 						S2MU107_REG_INT_STATUS2_MSG_REQUEST |\
@@ -432,6 +436,7 @@ enum s2mu107_usbpd_reg {
     S2MU107_REG_PLUG_CTRL          = 0x2E,
     S2MU107_REG_CTRL               = 0x2F,
     S2MU107_REG_PPS_CTRL           = 0x30,
+    S2MU107_REG_RETRANS           = 0x34,
 
     S2MU107_REG_INT_MASK0          = 0x3E,
     S2MU107_REG_INT_MASK1          = 0x3F,
@@ -602,15 +607,12 @@ enum s2mu107_power_role {
     PDIC_SOURCE
 };
 
-enum s2mu107_pdic_rid {
-    REG_RID_UNDF = 0x00,
-    REG_RID_255K = 0x03,
-    REG_RID_301K = 0x04,
-    REG_RID_523K = 0x05,
-    REG_RID_619K = 0x06,
-    REG_RID_OPEN = 0x07,
-    REG_RID_MAX  = 0x08,
-};
+typedef enum {
+    RETRANS_0 = 0,
+    RETRANS_1 = 1,
+    RETRANS_2 = 2,
+    RETRANS_3 = 3,
+} CCIC_RETRANSMITTION;
 
 typedef enum {
     CLIENT_OFF = 0,
@@ -631,13 +633,6 @@ typedef enum {
     DET_HARD_RESET = 0,
     DET_DETACH = 1,
 } CCIC_DETACH_TYPE;
-
-typedef enum {
-    TYPE_C_DETACH = 0,
-    TYPE_C_ATTACH_DFP = 1, /* Host */
-    TYPE_C_ATTACH_UFP = 2, /* Device */
-    TYPE_C_ATTACH_DRP = 3, /* Dual role */
-} CCIC_OTP_MODE;
 
 typedef enum {
     PLUG_CTRL_RD = 0,
@@ -703,6 +698,7 @@ struct s2mu107_usbpd_data {
 	bool is_pr_swap;
 	bool is_muic_attached;
 	bool vbus_short_check;
+	bool pd_vbus_short_check;
 	bool vbus_short;
 	bool lpcharge_water;
 	int vbus_short_check_cnt;
@@ -712,6 +708,7 @@ struct s2mu107_usbpd_data {
 	int is_host;
 	int is_client;
 	int is_attached;
+	int is_killer;
 #if defined(CONFIG_DUAL_ROLE_USB_INTF)
     struct dual_role_phy_instance *dual_role;
     struct dual_role_phy_desc *desc;
@@ -751,6 +748,8 @@ struct s2mu107_usbpd_data {
 
 	int dc_intr;
 
+	int auto_pps_enable;
+
     struct regulator *regulator;
 };
 
@@ -760,7 +759,7 @@ extern void s2mu107_usbpd_set_muic_type(int type);
 extern void s2mu107_control_option_command(struct s2mu107_usbpd_data *usbpd_data, int cmd);
 #endif
 extern void s2mu107_rprd_mode_change(struct s2mu107_usbpd_data *usbpd_data, u8 mode);
-extern void vbus_turn_on_ctrl(struct s2mu107_usbpd_data *usbpd_data, bool enable);
+extern void s2mu107_vbus_turn_on_ctrl(struct s2mu107_usbpd_data *usbpd_data, bool enable);
 extern int s2mu107_set_lpm_mode(struct s2mu107_usbpd_data *pdic_data);
 extern int s2mu107_set_normal_mode(struct s2mu107_usbpd_data *pdic_data);
 #endif /* __USBPD_S2MU107_H__ */

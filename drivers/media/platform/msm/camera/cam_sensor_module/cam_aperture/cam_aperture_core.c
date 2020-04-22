@@ -153,7 +153,7 @@ int32_t cam_aperture_set_mode(
 			CAM_ERR(CAM_APERTURE, "write aperture power failed ");
 		}
 #if defined(CONFIG_SAMSUNG_APERTURE_MULTI_MODE) || defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT)\
-	|| defined(CONFIG_SEC_D1Q_PROJECT)
+	|| defined(CONFIG_SEC_D1Q_PROJECT) || defined(CONFIG_SEC_D2XQ2_PROJECT)
 		usleep_range(20000, 21000);
 #else
 		usleep_range(15000, 16000);

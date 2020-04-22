@@ -1009,7 +1009,13 @@ void flash_br_work_func(struct work_struct *work)
 	}
 
 	if (!strcmp(vdd->dtsi_data.flash_read_intf, "spi")) {
-		flash_gamma_read_spi(vdd, 0);
+		rc = flash_gamma_read_spi(vdd, 0);
+		if (rc && IS_ERR_OR_NULL(vdd->spi_dev)) {
+			vdd->spi_no_dev = true;
+			LCD_ERR("vdd->spi_no_dev:%d\n", vdd->spi_no_dev);
+		} else if (vdd->spi_no_dev) {
+			vdd->spi_no_dev = false;
+		}
 	} else {
 		if (vdd->poc_driver.check_read_case) {
 			if (vdd->poc_driver.read_case == READ_CASE1) {

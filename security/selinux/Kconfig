@@ -99,11 +99,3 @@ config SECURITY_SELINUX_CHECKREQPROT_VALUE
 	  via /selinux/checkreqprot if authorized by policy.
 
 	  If you are unsure how to answer this question, answer 0.
-
-config SECURITY_DEBUG_UNLABELED
-	bool "NSA SELinux Debug for unlabeled"
-	depends on SECURITY_SELINUX
-	default n
-	help
-	  This option enable kernel panic point
-	  when someone set selinux label as unlabeled

@@ -422,7 +422,8 @@ static int cam_lrme_mgr_util_submit_req(void *priv, void *data)
 			CAM_DBG(CAM_LRME, "device busy");
 		else if (rc)
 			CAM_ERR(CAM_LRME, "submit request failed rc %d", rc);
-		if (rc) {
+
+		if (rc == -EBUSY) {
 			req_prio == 0 ? spin_lock(&hw_device->high_req_lock) :
 				spin_lock(&hw_device->normal_req_lock);
 			list_add(&frame_req->frame_list,
@@ -431,9 +432,9 @@ static int cam_lrme_mgr_util_submit_req(void *priv, void *data)
 				 &hw_device->frame_pending_list_normal));
 			req_prio == 0 ? spin_unlock(&hw_device->high_req_lock) :
 				spin_unlock(&hw_device->normal_req_lock);
-		}
-		if (rc == -EBUSY)
 			rc = 0;
+		}
+			
 	} else {
 		req_prio == 0 ? spin_lock(&hw_device->high_req_lock) :
 			spin_lock(&hw_device->normal_req_lock);

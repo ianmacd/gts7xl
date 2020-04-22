@@ -57,9 +57,30 @@ char front_tof_cam_cal_check[SYSFS_FW_VER_SIZE] = "NULL";
 char bokeh_module_fw_ver[FROM_MODULE_FW_INFO_SIZE+1];
 #endif
 
-extern unsigned int sec_hw_rev(void);
+static unsigned int system_rev __read_mostly;
 
-#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+static int __init sec_hw_rev_setup(char *p)
+{
+	int ret;
+
+	ret = kstrtouint(p, 0, &system_rev);
+	if (unlikely(ret < 0)) {
+		pr_warn("androidboot.revision is malformed (%s)\n", p);
+		return -EINVAL;
+	}
+
+	pr_info("androidboot.revision %x\n", system_rev);
+
+	return 0;
+}
+early_param("androidboot.revision", sec_hw_rev_setup);
+
+static unsigned int sec_hw_rev(void)
+{
+	return system_rev;
+}
+
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32) || defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
 uint8_t ois_wide_xygg[OIS_XYGG_SIZE] = { 0, };
 uint8_t ois_wide_cal_mark = 0;
 uint8_t ois_wide_xysr[OIS_XYSR_SIZE] = { 0, };
@@ -100,6 +121,8 @@ static int cam_eeprom_dump(uint32_t subdev_id, uint8_t *mapdata, uint32_t addr, 
 {
 	int rc = 0;
 	int j;
+	int k = 0;
+	int mod = size % 16;
 
 	if (mapdata == NULL) {
 		CAM_ERR(CAM_EEPROM, "mapdata is NULL");
@@ -111,8 +134,18 @@ static int cam_eeprom_dump(uint32_t subdev_id, uint8_t *mapdata, uint32_t addr, 
 	}
 
 	CAM_INFO(CAM_EEPROM, "subdev_id: %d, eeprom dump addr = 0x%04X, total read size = %d", subdev_id, addr, size);
-	for (j = 0; j < size; j++)
-		CAM_INFO(CAM_EEPROM, "addr = 0x%04X, data = 0x%02X", addr+j, mapdata[addr+j]);
+	for (j = 0; j < size-mod; j += 16)
+	{
+		k = j + addr;
+		CAM_INFO(CAM_EEPROM, "mapdata[%03x]: %c %c %c %c %c %c %c %c %c %c %c %c %c %c %c %c\n", j,
+        		mapdata[k],mapdata[k+1],mapdata[k+2],mapdata[k+3],mapdata[k+4],mapdata[k+5],mapdata[k+6],mapdata[k+7],
+        		mapdata[k+8],mapdata[k+9],mapdata[k+10],mapdata[k+11],mapdata[k+12],mapdata[k+13],mapdata[k+14],mapdata[k+15]);
+	}
+	for (; j < size; j++)
+	{
+		k = j + addr;
+		CAM_INFO(CAM_EEPROM, "addr = 0x%04X, data = 0x%02X", k, mapdata[k]);
+	}
 
 	return rc;
 }
@@ -293,7 +326,7 @@ static int cam_eeprom_module_info_set_load_version(int rev, uint32_t hasSubCalda
                         bokeh_module_fw_ver[5], bokeh_module_fw_ver[6], bokeh_module_fw_ver[7], bokeh_module_fw_ver[8], bokeh_module_fw_ver[9],
                         bokeh_module_fw_ver[10]);
             }
-            ConfIdx = ADDR_CUSTOM_SENSOR_ID;			
+            ConfIdx = ADDR_CUSTOM_SENSOR_ID;
             memset(rear3_sensor_id,0x00,sizeof(rear3_sensor_id));
             if(isValidIdx(ConfIdx, &ConfAddr) == 1)
             {
@@ -454,7 +487,7 @@ static int cam_eeprom_module_info_set_load_version(int rev, uint32_t hasSubCalda
 	return rc;
 }
 
-#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT) && (defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE) || defined(CONFIG_SAMSUNG_REAR_TOF) ||\
+#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6X_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT) && (defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE) || defined(CONFIG_SAMSUNG_REAR_TOF) ||\
 	defined(CONFIG_SAMSUNG_FRONT_DUAL) || defined(CONFIG_SAMSUNG_FRONT_TOF))
 static int cam_eeprom_module_info_set_dual_tilt(eDualTiltMode tiltMode, uint32_t dual_addr_idx,
 	uint32_t dual_size_idx, uint8_t *pMapData, char *log_str,
@@ -496,6 +529,17 @@ static int cam_eeprom_module_info_set_dual_tilt(eDualTiltMode tiltMode, uint32_t
 			case DUAL_TILT_REAR_UW:
 			case DUAL_TILT_REAR_TELE:
 				offset_dll_ver = 0x0000;
+#if defined(CONFIG_SEC_BLOOMQ_PROJECT)
+				offset_x       = 0x011C;
+				offset_y       = 0x0120;
+				offset_z       = 0x0124;
+				offset_sx      = 0x0128;
+				offset_sy      = 0x012C;
+				offset_range   = 0x07F0;
+				offset_max_err = 0x07F4;
+				offset_avg_err = 0x07F8;
+				offset_project_cal_type = 0x0108;
+#else
 				offset_x       = 0x0060;
 				offset_y       = 0x0064;
 				offset_z       = 0x0068;
@@ -505,6 +549,7 @@ static int cam_eeprom_module_info_set_dual_tilt(eDualTiltMode tiltMode, uint32_t
 				offset_max_err = 0x07E4;
 				offset_avg_err = 0x07E8;
 				offset_project_cal_type = 0x0742;
+#endif
 				break;
 
 			case DUAL_TILT_FRONT:
@@ -786,7 +831,7 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 
 	unsigned int rev = sec_hw_rev();
 
-	CAM_INFO(CAM_EEPROM, "E");
+	CAM_INFO(CAM_EEPROM, "e_ctrl->soc_info.index=%d E", e_ctrl->soc_info.index);
 
 	if (!e_ctrl) {
 		CAM_ERR(CAM_EEPROM, "e_ctrl is NULL");
@@ -1098,7 +1143,8 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 			CAM_INFO(CAM_EEPROM, "rear3 mtf exif = %s", rear3_mtf_exif);
 		}
 
-#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)
+#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)\
+	|| defined(CONFIG_SEC_D2XQ2_PROJECT)
 		if (e_ctrl->cal_data.num_data > 0xE900) {
 #else
 		if (e_ctrl->cal_data.num_data > 0xAF00) {
@@ -1136,7 +1182,7 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 		}
 #endif
 
-#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT) && (defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE))
+#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6X_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT) && (defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE))
 		/* rear2 sw dual cal */
 		mInfo.mVer.dual_cal = rear2_dual_cal;
 		mInfo.mVer.DualTilt = &rear2_dual;
@@ -1180,7 +1226,7 @@ static int cam_eeprom_update_module_info(struct cam_eeprom_ctrl_t *e_ctrl)
 		}
 #endif
 
-#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32) || defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
 		if(isValidIdx(ADDR_M_OIS, &ConfAddr) == 1) {
 
 			ConfAddr += OIS_CAL_MARK_START_OFFSET;
@@ -1974,7 +2020,11 @@ static int cam_eeprom_power_up(struct cam_eeprom_ctrl_t *e_ctrl,
  *
  * Returns success or failure
  */
+#if defined(CONFIG_SAMSUNG_FORCE_DISABLE_REGULATOR)
+static int cam_eeprom_power_down(struct cam_eeprom_ctrl_t *e_ctrl, int force)
+#else
 static int cam_eeprom_power_down(struct cam_eeprom_ctrl_t *e_ctrl)
+#endif
 {
 	struct cam_sensor_power_ctrl_t *power_info;
 	struct cam_hw_soc_info         *soc_info;
@@ -1995,8 +2045,8 @@ static int cam_eeprom_power_down(struct cam_eeprom_ctrl_t *e_ctrl)
 		CAM_ERR(CAM_EEPROM, "failed: power_info %pK", power_info);
 		return -EINVAL;
 	}
-#if defined(CONFIG_SENSOR_RETENTION)
-	rc = cam_sensor_util_power_down(power_info, soc_info, 0);
+#if defined(CONFIG_SAMSUNG_FORCE_DISABLE_REGULATOR)
+	rc = cam_sensor_util_power_down(power_info, soc_info, force);
 #else
 	rc = cam_sensor_util_power_down(power_info, soc_info);
 #endif
@@ -2010,51 +2060,6 @@ static int cam_eeprom_power_down(struct cam_eeprom_ctrl_t *e_ctrl)
 
 	return rc;
 }
-
-#if defined(CONFIG_EEPROM_FORCE_DOWN)
-/**
- * cam_eeprom_force_power_down - Power down eeprom hardware forcely
- * @e_ctrl:    ctrl structure
- *
- * Returns success or failure
- */
-static int cam_eeprom_force_power_down(struct cam_eeprom_ctrl_t *e_ctrl)
-{
-	struct cam_sensor_power_ctrl_t *power_info;
-	struct cam_hw_soc_info         *soc_info;
-	struct cam_eeprom_soc_private  *soc_private;
-	int                             rc = 0;
-
-	if (!e_ctrl) {
-		CAM_ERR(CAM_EEPROM, "failed: e_ctrl %pK", e_ctrl);
-		return -EINVAL;
-	}
-
-	soc_private =
-		(struct cam_eeprom_soc_private *)e_ctrl->soc_info.soc_private;
-	power_info = &soc_private->power_info;
-	soc_info = &e_ctrl->soc_info;
-
-	if (!power_info) {
-		CAM_ERR(CAM_EEPROM, "failed: power_info %pK", power_info);
-		return -EINVAL;
-	}
-#if defined(CONFIG_SENSOR_RETENTION)
-	rc = cam_sensor_util_power_down(power_info, soc_info, 2);
-#else
-	rc = cam_sensor_util_power_down(power_info, soc_info);
-#endif
-	if (rc) {
-		CAM_ERR(CAM_EEPROM, "power down the core is failed:%d", rc);
-		return rc;
-	}
-
-	if (e_ctrl->io_master_info.master_type == CCI_MASTER)
-		camera_io_release(&(e_ctrl->io_master_info));
-
-	return rc;
-}
-#endif
 
 /**
  * cam_eeprom_match_id - match eeprom id
@@ -2154,18 +2159,25 @@ int32_t cam_eeprom_parse_read_memory_map(struct device_node *of_node,
 	}
 
 #ifdef CAM_EEPROM_DBG_DUMP
-	if (e_ctrl->soc_info.index == 1) {
-		rc = cam_eeprom_dump(e_ctrl->soc_info.index, e_ctrl->cal_data.mapdata, 0x0000, 0x200);
-	}
+	rc = cam_eeprom_dump(e_ctrl->soc_info.index,
+		e_ctrl->cal_data.mapdata, 0x0, e_ctrl->cal_data.num_data);
 #endif
 
+#if defined(CONFIG_SAMSUNG_FORCE_DISABLE_REGULATOR)
+	rc = cam_eeprom_power_down(e_ctrl, FALSE);
+#else
 	rc = cam_eeprom_power_down(e_ctrl);
+#endif
 	if (rc < 0)
 		CAM_ERR(CAM_EEPROM, "failed: eeprom power down rc %d", rc);
 
 	return rc;
 power_down:
+#if defined(CONFIG_SAMSUNG_FORCE_DISABLE_REGULATOR)
+	cam_eeprom_power_down(e_ctrl, TRUE);
+#else
 	cam_eeprom_power_down(e_ctrl);
+#endif
 data_mem_free:
 	vfree(e_ctrl->cal_data.mapdata);
 	vfree(e_ctrl->cal_data.map);
@@ -2205,6 +2217,8 @@ static int32_t cam_eeprom_get_dev_handle(struct cam_eeprom_ctrl_t *e_ctrl,
 	bridge_params.v4l2_sub_dev_flag = 0;
 	bridge_params.media_entity_flag = 0;
 	bridge_params.priv = e_ctrl;
+
+	bridge_params.dev_id = CAM_EEPROM;
 
 	eeprom_acq_dev.device_handle =
 		cam_create_device_hdl(&bridge_params);
@@ -3131,12 +3145,8 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 					}
 
 #ifdef CAM_EEPROM_DBG_DUMP
-					if (e_ctrl->soc_info.index == 0)
-						rc = cam_eeprom_dump(e_ctrl->soc_info.index,
-							e_ctrl->cal_data.mapdata, 0x4680, 0x2C);
-					else
-						rc = cam_eeprom_dump(e_ctrl->soc_info.index,
-							e_ctrl->cal_data.mapdata, 0xB0, 0x60);
+				rc = cam_eeprom_dump(e_ctrl->soc_info.index,
+					e_ctrl->cal_data.mapdata, 0x0, e_ctrl->cal_data.num_data);
 #endif
 				} else if (e_ctrl->cal_data.num_map == 1 &&
 					e_ctrl->cal_data.num_data == FROM_REAR_HEADER_SIZE) {
@@ -3146,7 +3156,11 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 			}
 
 			rc = cam_eeprom_get_cal_data(e_ctrl, csl_packet);
+#if defined(CONFIG_SAMSUNG_FORCE_DISABLE_REGULATOR)
+			rc = cam_eeprom_power_down(e_ctrl, FALSE);
+#else
 			rc = cam_eeprom_power_down(e_ctrl);
+#endif
 			e_ctrl->cam_eeprom_state = CAM_EEPROM_ACQUIRE;
 			vfree(e_ctrl->cal_data.mapdata);
 			vfree(e_ctrl->cal_data.map);
@@ -3165,8 +3179,8 @@ static int32_t cam_eeprom_pkt_parse(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 	}
 	return rc;
 power_down:
-#if defined(CONFIG_EEPROM_FORCE_DOWN)
-	cam_eeprom_force_power_down(e_ctrl);
+#if defined(CONFIG_SAMSUNG_FORCE_DISABLE_REGULATOR)
+	cam_eeprom_power_down(e_ctrl, TRUE);
 #else
 	cam_eeprom_power_down(e_ctrl);
 #endif
@@ -3195,7 +3209,11 @@ void cam_eeprom_shutdown(struct cam_eeprom_ctrl_t *e_ctrl)
 		return;
 
 	if (e_ctrl->cam_eeprom_state == CAM_EEPROM_CONFIG) {
+#if defined(CONFIG_SAMSUNG_FORCE_DISABLE_REGULATOR)
+		rc = cam_eeprom_power_down(e_ctrl, FALSE);
+#else
 		rc = cam_eeprom_power_down(e_ctrl);
+#endif
 		if (rc < 0)
 			CAM_ERR(CAM_EEPROM, "EEPROM Power down failed");
 		e_ctrl->cam_eeprom_state = CAM_EEPROM_ACQUIRE;
@@ -3263,7 +3281,7 @@ int32_t cam_eeprom_driver_cmd(struct cam_eeprom_ctrl_t *e_ctrl, void *arg)
 			&eeprom_cap,
 			sizeof(struct cam_eeprom_query_cap_t))) {
 			CAM_ERR(CAM_EEPROM, "Failed Copy to User");
-			return -EFAULT;
+			rc = -EFAULT;
 			goto release_mutex;
 		}
 		CAM_DBG(CAM_EEPROM, "eeprom_cap: ID: %d", eeprom_cap.slot_info);

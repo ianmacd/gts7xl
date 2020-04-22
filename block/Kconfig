@@ -227,18 +227,6 @@ config BLK_SED_OPAL
 	Enabling this option enables users to setup/unlock/lock
 	Locking ranges for SED devices using the Opal protocol.
 
-config SUBMIT_BH_IO_ACCOUNTING
-	bool "Accounting Per-TASK submit_bh statistic"
-	default n
-	---help---
-	Accounting Per-TASK submit_bh statistic
-
-config SUBMIT_BH_IO_ACCOUNTING_DEBUG
-	bool "Export Per-TASK submit_bh statistic on /proc/<PID>/io"
-	default n
-	---help---
-	Per TASK based submit_bh io statistics exported to /proc/<PID>/io
-
 menu "Partition Types"
 
 source "block/partitions/Kconfig"

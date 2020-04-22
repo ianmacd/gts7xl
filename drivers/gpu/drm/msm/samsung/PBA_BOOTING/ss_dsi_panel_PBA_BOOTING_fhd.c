@@ -41,6 +41,7 @@ static void samsung_pba_config(struct samsung_display_driver_data *vdd, void *ar
 	}
 }
 
+
 static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 {
 	LCD_INFO("%s\n", ss_get_panel_name(vdd));

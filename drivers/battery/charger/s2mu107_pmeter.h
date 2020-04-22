@@ -74,6 +74,7 @@
 #define S2MU107_PM_VAL2_ITX	0x29
 #define S2MU107_PM_VAL1_GPADC	0x2A
 #define S2MU107_PM_VAL2_GPADC	0x2B
+#define S2MU107_PM_ICHGIN_STAT	0x2C
 
 #define S2MU107_PM_HYST_LEVEL1	0x85
 
@@ -142,13 +143,25 @@ struct s2mu107_pmeter_data {
 	struct i2c_client       *i2c;
 	struct device *dev;
 	struct s2mu107_platform_data *s2mu106_pdata;
+	struct delayed_work vchgin_work;
 
 	int irq_vchgin;
+	int irq_ichgin;
 
 	struct power_supply	*psy_pm;
 	struct power_supply_desc psy_pm_desc;
 
 	struct mutex 	pmeter_mutex;
+
+	bool is_9v_trim;
+	bool trim_updated;
+	bool max_duty_wa;
+	u8 reg_0xBB;
+	u8 reg_0xBC;
+	u8 reg_0xBD;
+	u8 reg_0xCD;
+	u8 reg_0xCE;
+	u8 reg_0xCF;
 };
 
 #endif /*S2MU107_PMETER_H*/

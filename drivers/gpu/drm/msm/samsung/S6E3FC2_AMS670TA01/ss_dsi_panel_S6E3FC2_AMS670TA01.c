@@ -128,7 +128,6 @@ static struct dsi_panel_cmd_set * mdss_brightness_gamma_mode2(struct samsung_dis
 
 static struct dsi_panel_cmd_set * mdss_brightness_hmt(struct samsung_display_driver_data *vdd, int *level_key)
 {
-    //struct samsung_display_driver_data *vdd = check_valid_ctrl(ctrl);
     struct dsi_panel_cmd_set *pcmds;
     if (IS_ERR_OR_NULL(vdd)) {
         pr_err("%s: Invalid data vdd : 0x%zx", __func__,  (size_t)vdd);
@@ -137,12 +136,10 @@ static struct dsi_panel_cmd_set * mdss_brightness_hmt(struct samsung_display_dri
 
     LCD_INFO("hmt_bl_level : %d candela : %dCD\n", vdd->hmt_stat.hmt_bl_level, vdd->hmt_stat.candela_level_hmt);
 
-    pcmds = ss_get_cmds(vdd, TX_GAMMA_MODE2);
+    pcmds = ss_get_cmds(vdd, TX_HMT_GAMMA_MODE2_BRIGHT);
 
-    pcmds->cmds[0].msg.tx_buf[1] = 0x28;  /* Smooth transition */
-    pcmds->cmds[1].msg.tx_buf[7] = 0x90;  /* ELVSS Value for normal brgihtness */
-    pcmds->cmds[2].msg.tx_buf[1] = get_bit(vdd->hmt_stat.candela_level_hmt, 8, 2);
-    pcmds->cmds[2].msg.tx_buf[2] = get_bit(vdd->hmt_stat.candela_level_hmt, 0, 8);
+    pcmds->cmds[0].msg.tx_buf[1] = get_bit(vdd->hmt_stat.candela_level_hmt, 8, 2);
+    pcmds->cmds[0].msg.tx_buf[2] = get_bit(vdd->hmt_stat.candela_level_hmt, 0, 8);
     *level_key = LEVEL1_KEY;
 
     return pcmds;
@@ -214,7 +211,7 @@ static char coordinate_data_2[][COORDINATE_DATA_SIZE] = {
 	{0xff, 0x00, 0xf5, 0x00, 0xef, 0x00}, /* Tune_2 */
 	{0xff, 0x00, 0xf6, 0x00, 0xf3, 0x00}, /* Tune_3 */
 	{0xff, 0x00, 0xf7, 0x00, 0xed, 0x00}, /* Tune_4 */
-	{0xff, 0x00, 0xf7, 0x00, 0xef, 0x00}, /* Tune_5 */
+	{0xff, 0x00, 0xfa, 0x00, 0xf0, 0x00}, /* Tune_5 */
 	{0xff, 0x00, 0xf8, 0x00, 0xf2, 0x00}, /* Tune_6 */
 	{0xff, 0x00, 0xfa, 0x00, 0xed, 0x00}, /* Tune_7 */
 	{0xff, 0x00, 0xfa, 0x00, 0xef, 0x00}, /* Tune_8 */
@@ -512,12 +509,12 @@ static struct dsi_panel_cmd_set *ss_acl_on(struct samsung_display_driver_data *v
 	}
 
 	if(vdd->br.cd_idx <= MAX_BL_PF_LEVEL)
-		pcmds->cmds[0].msg.tx_buf[1] = 0X03;	/* ACL 15% */
+		pcmds->cmds[2].msg.tx_buf[1] = 0X03;	/* ACL 15% */
 	else
-		pcmds->cmds[0].msg.tx_buf[1] = 0X01;	/* ACL 8% */
+		pcmds->cmds[2].msg.tx_buf[1] = 0X01;	/* ACL 8% */
 
 	LCD_INFO("gradual_acl: %d, acl per: 0x%x",
-			vdd->gradual_acl_val, pcmds->cmds[0].msg.tx_buf[1]);
+			vdd->gradual_acl_val, pcmds->cmds[2].msg.tx_buf[1]);
 
 	return pcmds;
 }

@@ -4,7 +4,7 @@
  *
  * Definitions subject to change without notice.
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -26,8 +26,6 @@
  *
  *
  * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: wlioctl_defs.h 824133 2019-06-07 04:19:22Z $
  */
 
 #ifndef wlioctl_defs_h
@@ -227,30 +225,33 @@
  * So, reserved flag definition removed.
  */
 /* Use lower 16 bit for scan flags, the upper 16 bits are for internal use */
-#define WL_SCANFLAGS_PASSIVE	0x01	/* force passive scan */
-#define WL_SCANFLAGS_LOW_PRIO	0x02	/* Low priority scan */
-#define WL_SCANFLAGS_PROHIBITED	0x04	/* allow scanning prohibited channels */
-#define WL_SCANFLAGS_OFFCHAN	0x08	/* allow scanning/reporting off-channel APs */
-#define WL_SCANFLAGS_HOTSPOT	0x10	/* automatic ANQP to hotspot APs */
-#define WL_SCANFLAGS_SWTCHAN	0x20	/* Force channel switch for differerent bandwidth */
-#define WL_SCANFLAGS_FORCE_PARALLEL 0x40 /* Force parallel scan even when actcb_fn_t is on.
+#define WL_SCANFLAGS_PASSIVE	0x01U	/* force passive scan */
+#define WL_SCANFLAGS_LOW_PRIO	0x02U	/* Low priority scan */
+#define WL_SCANFLAGS_PROHIBITED	0x04U	/* allow scanning prohibited channels */
+#define WL_SCANFLAGS_OFFCHAN	0x08U	/* allow scanning/reporting off-channel APs */
+#define WL_SCANFLAGS_HOTSPOT	0x10U	/* automatic ANQP to hotspot APs */
+#define WL_SCANFLAGS_SWTCHAN	0x20U	/* Force channel switch for differerent bandwidth */
+#define WL_SCANFLAGS_FORCE_PARALLEL 0x40U /* Force parallel scan even when actcb_fn_t is on.
 					  * by default parallel scan will be disabled if actcb_fn_t
 					  * is provided.
 					  */
-#define WL_SCANFLAGS_SISO	0x40	/* Use 1 RX chain for scanning */
-#define WL_SCANFLAGS_MIMO	0x80	/* Force MIMO scanning */
-#define WL_SCANFLAGS_ASSOCSCAN  0x100   /* Assoc scan    */
-#define WL_SCANFLAGS_ROAMSCAN   0x200   /* Roam scan     */
-#define WL_SCANFLAGS_FWSCAN     0x400   /* Other FW scan */
-#define WL_SCANFLAGS_HOSTSCAN   0x800   /* Host scan     */
-#define WL_SCANFLAGS_LOW_POWER_SCAN     0x1000 /* LOW power scan, scheduled scan
+#define WL_SCANFLAGS_SISO	0x40U	/* Use 1 RX chain for scanning */
+#define WL_SCANFLAGS_MIMO	0x80U	/* Force MIMO scanning */
+#define WL_SCANFLAGS_ASSOCSCAN  0x100U   /* Assoc scan    */
+#define WL_SCANFLAGS_ROAMSCAN   0x200U   /* Roam scan     */
+#define WL_SCANFLAGS_FWSCAN     0x400U   /* Other FW scan */
+#define WL_SCANFLAGS_HOSTSCAN   0x800U   /* Host scan     */
+#define WL_SCANFLAGS_LOW_POWER_SCAN     0x1000U /* LOW power scan, scheduled scan
 						* only on scancore
 						*/
-#define WL_SCANFLAGS_HIGH_ACCURACY      0x2000  /* High accuracy scan, which needs
+#define WL_SCANFLAGS_HIGH_ACCURACY      0x2000U  /* High accuracy scan, which needs
 						 * reliable scan results
 						 */
-#define WL_SCANFLAGS_LOW_SPAN            0x4000  /* LOW span scan, which expects
+#define WL_SCANFLAGS_LOW_SPAN            0x4000U  /* LOW span scan, which expects
 						 * scan to be completed ASAP
+						 */
+#define WL_SCANFLAGS_LISTEN		 0x8000U  /* Listen option in escan
+						 * enable LISTEN along with PASSIVE flag
 						 */
 
 /* wl_iscan_results status values */
@@ -569,12 +570,12 @@
 #define WPA2_AUTH_FILS_SHA384		0x20000 /* FILS with SHA384 key derivation */
 #define WPA2_AUTH_IS_FILS(auth) ((auth) & (WPA2_AUTH_FILS_SHA256 | WPA2_AUTH_FILS_SHA384))
 #define WPA3_AUTH_SAE_PSK		0x40000 /* SAE with 4-way handshake */
+#define WPA3_AUTH_DPP_AKM		0x80000 /* Device Provisioning Protocol (DPP) */
 #define WPA3_AUTH_OWE			0x100000 /* OWE */
 #define WPA3_AUTH_1X_SUITE_B_SHA256	0x200000 /* Suite B SHA256 */
 #define WPA3_AUTH_1X_SUITE_B_SHA384	0x400000 /* Suite B-192 SHA384 */
 #define WPA3_AUTH_PSK_SHA384		0x800000 /* PSK with SHA384 key derivation */
 #define WPA3_AUTH_SAE_AP_ONLY		0x1000000 /* SAE restriction to connect to pure SAE APs */
-#define WPA3_AUTH_1X_SHA384             0x2000000 /* 1x with SHA384 key derivation */
 /* WPA2_AUTH_SHA256 not used anymore. Just kept here to avoid build issue in DINGO */
 #define WPA2_AUTH_SHA256		0x8000
 #define WPA_AUTH_PFN_ANY		0xffffffff	/* for PFN, match only ssid */
@@ -1057,6 +1058,7 @@
 #define WL_CHAN_FREQ_RANGE_5G_BAND2     3
 #define WL_CHAN_FREQ_RANGE_5G_BAND3     4
 #define WL_CHAN_FREQ_RANGE_5G_4BAND     5
+#define WL_CHAN_FREQ_RANGE_6G_6BAND		6
 
 /* SROM12 */
 #define WL_CHAN_FREQ_RANGE_5G_BAND4 5
@@ -1864,6 +1866,11 @@
 #define	AP_TPC_AP_BSS_PWR	3	/* Both AP and BSS power control */
 #define AP_TPC_MAX_LINK_MARGIN	127
 
+/* tpc option bits */
+#define TPC_OPT_NO_11DH_TXPWR	1	/* Do not adopt 11d+11h AP power constraints when
+					 * autocountry is 0
+					 */
+
 /* state */
 #define WL_P2P_DISC_ST_SCAN	0
 #define WL_P2P_DISC_ST_LISTEN	1
@@ -2173,9 +2180,18 @@
 #define PNO_SCAN_MAX_FW_SEC		PNO_SCAN_MAX_FW/1000 /* max time scan time in SEC */
 #define PNO_SCAN_MIN_FW_SEC		10			/* min time scan time in SEC */
 #define WL_PFN_HIDDEN_MASK		0x4
-#define MAX_SSID_WHITELIST_NUM         4
 #define MAX_BSSID_PREF_LIST_NUM        32
+
+#ifdef CUSTOM_SSID_WHITELIST_NUM
+#define MAX_SSID_WHITELIST_NUM		CUSTOM_SSID_WHITELIST_NUM
+#else
+#define MAX_SSID_WHITELIST_NUM         4
+#endif /* CUSTOM_SSID_WHITELIST_NUM */
+#ifdef CUSTOM_BSSID_BLACKLIST_NUM
+#define MAX_BSSID_BLACKLIST_NUM		CUSTOM_BSSID_BLACKLIST_NUM
+#else
 #define MAX_BSSID_BLACKLIST_NUM        32
+#endif /* CUSTOM_BSSID_BLACKLIST_NUM */
 
 #ifndef BESTN_MAX
 #define BESTN_MAX			10

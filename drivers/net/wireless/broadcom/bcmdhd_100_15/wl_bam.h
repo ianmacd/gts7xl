@@ -1,7 +1,7 @@
 /*
  * Bad AP Manager for ADPS
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_bam.h 790478 2018-11-26 05:51:42Z $
+ * $Id$
  */
 #ifndef _WL_BAM_H_
 #define _WL_BAM_H_
@@ -47,6 +47,7 @@ typedef struct wl_bad_ap_mngr {
 	struct mutex fs_lock;		/* lock for bad ap file list */
 #endif  /* !DHD_ADPS_BAM_EXPORT */
 	struct list_head list;
+	bool disconnected;		/* for Big Data */
 } wl_bad_ap_mngr_t;
 
 typedef struct wl_bad_ap_info {

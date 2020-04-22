@@ -9,11 +9,13 @@
 #This program is distributed in the hope that it will be useful,
 #but WITHOUT ANY WARRANTY; without even the implied warranty of
 #MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#GNU General Public License for more details.
+#GNU General Public License for more details. 
 
 config MST_LDO
 	bool "MST LDO kernel driver"
-	depends on !(SEC_BOLTQ5G_PROJECT) && !(SEC_GTS5L_PROJECT) && !(SEC_GTS5LWIFI_PROJECT) && !(SEC_GTS6L_PROJECT) && !(SEC_GTS6LWIFI_PROJECT) && !(MACH_R3Q_EUR_OPEN)
+	depends on !(SEC_BOLTQ5G_PROJECT) && !(SEC_GTS5L_PROJECT) && !(SEC_GTS5LWIFI_PROJECT) \
+			&& !(SEC_GTS6L_PROJECT) && !(SEC_GTS6LWIFI_PROJECT) && !(SEC_R3Q_PROJECT && !(MACH_R3Q_KOR_SINGLE)) \
+			&& !(SEC_R5Q_PROJECT && !(MACH_R5Q_EUR_OPEN) && !(MACH_R5Q_USA_OPEN)) && !(SEC_GTS6X_PROJECT) && !(SEC_ZODIAC_PROJECT)
 	default n
 	help
 	This enables the MST LDO kernel driver
@@ -30,15 +32,11 @@ config MST_SUPPORT_GPIO
 	help
 	This enables support gpio check code
 
-config MST_NONSECURE
-	bool "MST before TrustZone bringup"
-	default n
-	help
-	This enables the MST operation in Normal kernel
-
 config MFC_CHARGER
 	bool "MFC IC using model"
-	depends on !(SEC_BOLTQ5G_PROJECT) && !(SEC_GTS5L_PROJECT) && !(SEC_GTS5LWIFI_PROJECT) && !(SEC_GTS6L_PROJECT) && !(SEC_GTS6LWIFI_PROJECT) && !(SEC_R3Q_PROJECT) && !(SEC_R5Q_PROJECT)
+	depends on !(SEC_BOLTQ5G_PROJECT) && !(SEC_GTS5L_PROJECT) && !(SEC_GTS5LWIFI_PROJECT) \
+			&& !(SEC_GTS6L_PROJECT) && !(SEC_GTS6LWIFI_PROJECT) && !(SEC_R3Q_PROJECT) && !(SEC_R5Q_PROJECT) \
+			&& !(SEC_R5QSWA_PROJECT) && !(SEC_GTS6X_PROJECT) && !(SEC_ZODIAC_PROJECT)
 	default n
 	help
 	This enables the MFC IC sysfs node
@@ -51,7 +49,9 @@ config MFC_LDO_COMMAND
 
 config MST_LPM_DISABLE
 	bool "MST LPM Disable, this works only in eng binary version"
-	depends on !(SEC_BOLTQ5G_PROJECT) && !(SEC_GTS5L_PROJECT) && !(SEC_GTS5LWIFI_PROJECT) && !(SEC_GTS6L_PROJECT) && !(SEC_GTS6LWIFI_PROJECT) && !(SEC_R3Q_PROJECT) && !(SEC_R5Q_PROJECT)
+	depends on !(SEC_BOLTQ5G_PROJECT) && !(SEC_GTS5L_PROJECT) && !(SEC_GTS5LWIFI_PROJECT) \
+			&& !(SEC_GTS6L_PROJECT) && !(SEC_GTS6LWIFI_PROJECT) && !(SEC_R3Q_PROJECT) && !(SEC_R5Q_PROJECT) \
+			&& !(SEC_R5QSWA_PROJECT) && !(SEC_GTS6X_PROJECT) && !(SEC_ZODIAC_PROJECT)
 	default n
 	help
 	This enables the MST LPM disable funtion in eng binary version

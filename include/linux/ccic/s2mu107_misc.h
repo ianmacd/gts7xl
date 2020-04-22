@@ -58,7 +58,7 @@ struct ccic_misc_dev {
 	int (*uvdm_read)(void *data, int size);
 };
 
-extern int ccic_misc_init(void);
+extern int s2mu107_ccic_misc_init(void);
 extern ssize_t samsung_uvdm_out_request_message(void *data, size_t size);
 extern int samsung_uvdm_in_request_message(void *data);
 extern int samsung_uvdm_ready(void);

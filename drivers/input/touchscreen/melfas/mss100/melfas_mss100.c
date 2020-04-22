@@ -745,6 +745,9 @@ static void mms_input_close(struct input_dev *dev)
 		mms_disable(info);
 	}
 
+	info->noise_mode = 0;
+	info->wet_mode = 0;
+
 	mutex_unlock(&info->modechange);
 	cancel_delayed_work(&info->work_print_info);
 }
@@ -1350,6 +1353,11 @@ static ssize_t mms_sys_fw_update(struct device *dev,
 	u8 data[255];
 	int ret = 0;
 
+#if defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+	input_info(true, &info->client->dev, "%s: user_ship, skip\n", __func__);
+	return snprintf(buf, PAGE_SIZE, "user_ship, skip\n");
+#endif
+
 	memset(info->print_buf, 0, PAGE_SIZE);
 
 	input_info(true, &info->client->dev, "%s [START]\n", __func__);
@@ -1403,37 +1411,6 @@ static const struct attribute_group mms_attr_group = {
 	.attrs = mms_attrs,
 };
 
-static int mms_check_custom_library(struct mms_ts_info *info)
-{
-	u8 wbuf[8];
-	u8 rbuf[32];
-	int ret = -1;
-
-	/* read fw build date */
-	wbuf[0] = MIP_R0_AOT;
-	wbuf[1] = MIP_R0_AOT_CTRL;
-
-	mms_i2c_read(info, wbuf, 2, rbuf, 10);
-	msleep(10);
-
-	input_info(true, &info->client->dev,
-			"%s: %c%c%c%c\n",
-			__func__, rbuf[0], rbuf[1], rbuf[2], rbuf[3]);
-
-	if (info->dtdata->model_name)
-		ret = strncmp(rbuf, info->dtdata->model_name, 4);
-
-	if (ret == 0)
-		info->use_sponge = true;
-	else
-		info->use_sponge = false;
-
-	input_err(true, &info->client->dev, "%s: use %s\n",
-			__func__, info->use_sponge ? "SPONGE" : "VENDOR");
-
-	return ret;
-}
-
 /**
  * Initial config
  */
@@ -1454,8 +1431,6 @@ static int mms_init_config(struct mms_ts_info *info)
 
 	/* read fw version */
 	mms_get_fw_version(info, rbuf);
-
-	mms_check_custom_library(info);
 
 	info->max_x = info->dtdata->max_x;
 	info->max_y = info->dtdata->max_y;

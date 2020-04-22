@@ -36,6 +36,9 @@
 #ifdef CONFIG_SENSORS_SSC
 #include <linux/adsp/ssc_ssr_reason.h>
 #endif
+#ifdef CONFIG_SUPPORT_AK0997X
+#include <linux/gpio.h>
+#endif
 
 #define XO_FREQ			19200000
 #define PROXY_TIMEOUT_MS	10000
@@ -706,6 +709,22 @@ static int pil_auth_and_reset(struct pil_desc *pil)
 	if (rc)
 		return rc;
 
+#ifdef CONFIG_SUPPORT_AK0997X
+	if (d->subsys_desc.d_hall_rst_gpio > 0) {
+		usleep_range(5, 10);
+		gpio_set_value(d->subsys_desc.d_hall_rst_gpio, 0);
+		pr_info("%s, %s d_hall_rst_gpio(%d) value(%d)\n", __func__,
+			d->subsys_desc.name, d->subsys_desc.d_hall_rst_gpio,
+			gpio_get_value(d->subsys_desc.d_hall_rst_gpio));
+
+		usleep_range(5, 10);
+		gpio_set_value(d->subsys_desc.d_hall_rst_gpio, 1);
+		pr_info("%s, %s d_hall_rst_gpio(%d) value(%d)\n", __func__,
+			d->subsys_desc.name, d->subsys_desc.d_hall_rst_gpio,
+			gpio_get_value(d->subsys_desc.d_hall_rst_gpio));
+	}
+#endif
+
 	rc = prepare_enable_clocks(pil->dev, d->clks, d->clk_count);
 	if (rc)
 		goto err_clks;
@@ -848,8 +867,11 @@ static void log_failure_reason(const struct pil_tz_data *d)
 	pr_err("%s subsystem failure reason: %s.\n", name, reason);
 
 #ifdef CONFIG_SENSORS_SSC
-	if (!strncmp(name, "slpi", 4))
+	if (!strncmp(name, "slpi", 4)) {
 		ssr_reason_call_back(reason, min(size, (size_t)MAX_SSR_REASON_LEN));
+		if (strstr(reason, "IPLSREVOCER"))
+			subsys_set_fssr(d->subsys, true);
+	}
 #endif
 }
 

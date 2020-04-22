@@ -32,11 +32,8 @@
 #include "thermal_core.h"
 #include "thermal_hwmon.h"
 
-#if defined(CONFIG_SEC_PM)
+#ifdef CONFIG_SEC_PM
 void *thermal_ipc_log;
-
-/* cooling device state */
-static struct delayed_work cdev_print_work;
 #endif
 
 MODULE_AUTHOR("Zhang Rui");
@@ -480,14 +477,18 @@ static void update_temperature(struct thermal_zone_device *tz)
 	store_temperature(tz, temp);
 }
 
-static void thermal_zone_device_reset(struct thermal_zone_device *tz)
+static void thermal_zone_device_init(struct thermal_zone_device *tz)
 {
 	struct thermal_instance *pos;
-
 	tz->temperature = THERMAL_TEMP_INVALID;
-	tz->passive = 0;
 	list_for_each_entry(pos, &tz->thermal_instances, tz_node)
 		pos->initialized = false;
+}
+
+static void thermal_zone_device_reset(struct thermal_zone_device *tz)
+{
+	tz->passive = 0;
+	thermal_zone_device_init(tz);
 }
 
 void thermal_zone_device_update_temp(struct thermal_zone_device *tz,
@@ -1590,36 +1591,6 @@ static inline int thermal_generate_netlink_event(struct thermal_zone_device *tz,
 		enum events event) { return -ENODEV; }
 #endif /* !CONFIG_NET */
 
-#if defined(CONFIG_SEC_PM)
-static void __ref cdev_print(struct work_struct *work)
-{
-	struct thermal_cooling_device *cdev;
-	unsigned long cur_state = 0;
-	int added = 0, ret = 0;
-	char buffer[500] = { 0, };
-	bool is_state = false;
-
-	mutex_lock(&thermal_list_lock);
-	list_for_each_entry(cdev, &thermal_cdev_list, node) {
-		if (cdev->ops->get_cur_state)
-			cdev->ops->get_cur_state(cdev, &cur_state);;
-
-		if (cur_state) {
-			is_state = true;
-			ret = snprintf(buffer + added, sizeof(buffer) - added,
-					   "[%s:%ld]", cdev->type, cur_state);
-			added += ret;
-		}
-	}
-	mutex_unlock(&thermal_list_lock);
-
-	if (is_state)
-		printk("thermal: cdev%s\n", buffer);
-
-	schedule_delayed_work(&cdev_print_work, HZ * 5);
-}
-#endif
-
 static int thermal_pm_notify(struct notifier_block *nb,
 			     unsigned long mode, void *_unused)
 {
@@ -1629,9 +1600,6 @@ static int thermal_pm_notify(struct notifier_block *nb,
 	case PM_HIBERNATION_PREPARE:
 	case PM_RESTORE_PREPARE:
 	case PM_SUSPEND_PREPARE:
-#if defined(CONFIG_SEC_PM)
-		cancel_delayed_work(&cdev_print_work);
-#endif
 		atomic_set(&in_suspend, 1);
 		break;
 	case PM_POST_HIBERNATION:
@@ -1642,13 +1610,10 @@ static int thermal_pm_notify(struct notifier_block *nb,
 			if (tz->ops->is_wakeable &&
 				tz->ops->is_wakeable(tz))
 				continue;
-			thermal_zone_device_reset(tz);
+			thermal_zone_device_init(tz);
 			thermal_zone_device_update(tz,
 						   THERMAL_EVENT_UNSPECIFIED);
 		}
-#if defined(CONFIG_SEC_PM)
-		schedule_delayed_work(&cdev_print_work, 0);
-#endif
 		break;
 	default:
 		break;
@@ -1691,10 +1656,7 @@ static int __init thermal_init(void)
 		pr_warn("Thermal: Can not register suspend notifier, return %d\n",
 			result);
 
-#if defined(CONFIG_SEC_PM)
-	INIT_DELAYED_WORK(&cdev_print_work, cdev_print);
-	schedule_delayed_work(&cdev_print_work, 0);
-
+#ifdef CONFIG_SEC_PM
 	if (!thermal_ipc_log)
 		thermal_ipc_log = ipc_log_context_create(10, "lmh_dcvs", 0);
 
@@ -1721,9 +1683,6 @@ error:
 
 static void thermal_exit(void)
 {
-#if defined(CONFIG_SEC_PM)
-	cancel_delayed_work_sync(&cdev_print_work);
-#endif
 	unregister_pm_notifier(&thermal_pm_nb);
 	of_thermal_destroy_zones();
 	destroy_workqueue(thermal_passive_wq);

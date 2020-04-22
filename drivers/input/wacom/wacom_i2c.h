@@ -77,6 +77,7 @@ struct wacom_g5_platform_data {
 	int max_y_tilt;
 	int max_height;
 	const char *fw_path;
+	int fw_force_update_from; /* if it has a value, force update firmware from that version */
 	int flag_for_d; /* VDDL of wacom is made leakage about DISP_TE.
 			 * before modification of schematics about VDDL,
 			 * use this property only D model less than hw rev 04.

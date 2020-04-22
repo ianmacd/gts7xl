@@ -25,6 +25,7 @@ int mms_power_control(struct mms_ts_info *info, int enable)
 	struct regulator *regulator_avdd = NULL;
 	struct pinctrl_state *pinctrl_state;
 	static bool on;
+	static bool first_flag = true;
 
 	input_info(true, &info->client->dev, "%s [START %s]\n",
 			__func__, enable ? "on":"off");
@@ -93,11 +94,14 @@ out:
 	if (!IS_ERR_OR_NULL(regulator_avdd))
 		regulator_put(regulator_avdd);
 
-	if (!enable)
-		usleep_range(10 * 1000, 11 * 1000);
-	else
-		msleep(70);
+	if (!first_flag || !info->dtdata->regulator_boot_on) {
+		if (!enable)
+			usleep_range(10 * 1000, 11 * 1000);
+		else
+			msleep(90);
+	}
 
+	first_flag = false;
 	input_info(true, &info->client->dev, "%s [DONE %s]\n",
 			__func__, enable ? "on":"off");
 	return ret;
@@ -134,9 +138,6 @@ int mms_set_custom_library(struct mms_ts_info *info, u16 addr, u8 *buf, u8 len)
 	int ret = 0;
 	u8 wbuf[3];
 
-	if (!info->use_sponge)
-		return 0;
-
 	mutex_lock(&info->sponge_mutex);
 
 	ret = sponge_write(info, addr, buf, len);
@@ -164,9 +165,6 @@ int sponge_read(struct mms_ts_info *info, u16 addr, u8 *buf, u8 len)
 	u8 rbuf[4] = {0, };
 	u16 mip4_addr = 0;
 
-	if (!info->use_sponge)
-		return 0;
-
 	mutex_lock(&info->sponge_mutex);
 
 	mip4_addr = MIP_LIB_ADDR_START + addr;
@@ -193,9 +191,6 @@ int sponge_write(struct mms_ts_info *info, u16 addr, u8 *buf, u8 len)
 	int ret = 0;
 	u8 *wbuf;
 	u16 mip4_addr = 0;
-
-	if (!info->use_sponge)
-		return 0;
 
 	mip4_addr = MIP_LIB_ADDR_START + addr;
 	if (mip4_addr > MIP_LIB_ADDR_END) {
@@ -225,9 +220,6 @@ void mip4_ts_sponge_write_time(struct mms_ts_info *info, u32 val)
 {
 	int ret = 0;
 	u8 data[4];
-
-	if (!info->use_sponge)
-		return;
 
 	input_info(true, &info->client->dev, "%s - time[%u]\n", __func__, val);
 
@@ -367,7 +359,7 @@ void mms_input_event_handler(struct mms_ts_info *info, u8 sz, u8 *buf)
 				state = (packet[1] & 0x01);
 				x = ((packet[2] & 0x0F) << 8) | packet[3];
 				y = (((packet[2] >> 4) & 0x0F) << 8) | packet[4];
-				z = (packet[5] << 8) | packet[6];
+				z = (packet[6] << 8) | packet[5];
 				size = packet[7];
 				pressure_stage = (packet[8] & 0xF0) >> 4;
 				pressure = ((packet[8] & 0x0F) << 8) | packet[9];
@@ -721,15 +713,14 @@ int mms_parse_devicetree(struct device *dev, struct mms_ts_info *info)
 	info->dtdata->support_fod = of_property_read_bool(np, "support_fod");	
 	info->dtdata->enable_settings_aot = of_property_read_bool(np, "enable_settings_aot");
 	info->dtdata->sync_reportrate_120 = of_property_read_bool(np, "sync-reportrate-120");
+	info->dtdata->support_open_short_test = of_property_read_bool(np, "support_open_short_test");
 	info->dtdata->support_dex = of_property_read_bool(np, "support_dex_mode");
+	info->dtdata->regulator_boot_on = of_property_read_bool(np, "melfas,regulator_boot_on");
 
 #ifdef CONFIG_INPUT_SEC_SECURE_TOUCH
 	of_property_read_u32(np, "melfas,ss_touch_num", &info->dtdata->ss_touch_num);
 	input_err(true, dev, "%s: ss_touch_num:%d\n", __func__, &info->dtdata->ss_touch_num);
 #endif
-
-	if (of_property_read_string(np, "melfas,project_name", &info->dtdata->model_name))
-		input_err(true, dev, "%s: skipped to get model_name property\n", __func__);
 
 	if (of_property_read_u32_array(np, "melfas,area-siz", px_zone, 3)){
 		input_info(true, dev, "Failed to get zone's size\n");
@@ -892,9 +883,6 @@ static void mms_set_utc_sponge(struct mms_ts_info *info)
 {
 	struct timeval current_time;
 	u32 time_val = 0;
-
-	if (!info->use_sponge)
-		return;
 
 	do_gettimeofday(&current_time);
 	time_val = (u32)current_time.tv_sec;

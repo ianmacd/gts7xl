@@ -3,7 +3,7 @@
  * drivers/staging/android/ion/ion.c
  *
  * Copyright (C) 2011 Google, Inc.
- * Copyright (c) 2011-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2019, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -336,9 +336,9 @@ static void ion_dma_buf_detatch(struct dma_buf *dmabuf,
 	struct ion_buffer *buffer = dmabuf->priv;
 
 	mutex_lock(&buffer->lock);
-	free_duped_table(a->table);
 	list_del(&a->list);
 	mutex_unlock(&buffer->lock);
+	free_duped_table(a->table);
 
 	kfree(a);
 }
@@ -592,7 +592,8 @@ static int ion_sgl_sync_range(struct device *dev, struct scatterlist *sgl,
 			break;
 
 		if (i > 0) {
-			pr_warn("Partial cmo only supported with 1 segment\n"
+			pr_warn_ratelimited(
+				"Partial cmo only supported with 1 segment\n"
 				"is dma_set_max_seg_size being set on dev:%s\n",
 				dev_name(dev));
 			return -EINVAL;
@@ -1075,6 +1076,13 @@ struct dma_buf *ion_alloc_dmabuf(size_t len, unsigned int heap_id_mask,
 	if (!len)
 		return ERR_PTR(-EINVAL);
 
+	if (heap_id_mask == 0xFFFFFFFF) {
+		heap_id_mask = get_ion_system_heap_id();
+		if (IS_ERR(ERR_PTR(heap_id_mask)))
+			return ERR_PTR(heap_id_mask);
+		heap_id_mask = (1 << heap_id_mask);
+	}
+
 	down_read(&dev->lock);
 	plist_for_each_entry(heap, &dev->heaps, node) {
 		/* if the caller didn't specify this heap id */
@@ -1286,15 +1294,19 @@ static void ion_debug_heap_usage_show_force(struct ion_heap *heap)
 	__ion_debug_heap_usage_show(heap);
 }
 
-static int ion_oom_notify(struct notifier_block *nb,
-			  unsigned long action, void *data)
+void show_ion_system_heap(void)
 {
 	struct ion_heap *heap;
 
 	/* print ion system_heap */
 	heap = get_ion_heap(ION_SYSTEM_HEAP_ID);
 	ion_debug_heap_usage_show_force(heap);
+}
 
+static int ion_oom_notify(struct notifier_block *nb,
+			  unsigned long action, void *data)
+{
+	show_ion_system_heap();
 	return NOTIFY_DONE;
 }
 

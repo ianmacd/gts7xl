@@ -102,7 +102,7 @@ unlock:
 	if (alg == (void *)&alg_manager.list)
 		return ERR_PTR(-ENOENT);
 
-	bctx = kmem_cache_zalloc(blk_crypt_cachep, GFP_NOFS);
+	bctx = kmem_cache_zalloc(blk_crypt_cachep, GFP_KERNEL);
 	if (!bctx) {
 		res = -ENOMEM;
 		goto err_free;

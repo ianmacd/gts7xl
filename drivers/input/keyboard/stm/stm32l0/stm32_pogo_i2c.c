@@ -800,17 +800,8 @@ static void stm32_check_ic_work(struct work_struct *work)
 
 static int stm32_dev_kpc_enable(struct stm32_dev *stm32)
 {
-#ifdef CONFIG_POGO_FPGA
-	if (is_fw_dl_completed())
-		schedule_delayed_work(&stm32->check_ic_work, msecs_to_jiffies(1000));
-	else
-		input_info(true, &stm32->client->dev,
-				"%s: FPGA FW downloding is not done\n", __func__);
-#else
 	schedule_delayed_work(&stm32->check_ic_work, msecs_to_jiffies(1000));
-#endif
 	stm32_enable_irq(stm32, INT_ENABLE);
-
 	return 0;
 }
 

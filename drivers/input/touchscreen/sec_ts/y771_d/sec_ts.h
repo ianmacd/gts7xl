@@ -102,10 +102,10 @@
 
 #define SEC_TS_EVENTID_HOVER		10
 
-#define SEC_TS_DEFAULT_FW_NAME		"tsp_sec/y771_beyond2.bin"
-#define SEC_TS_DEFAULT_UMS_FW		"/sdcard/Firmware/TSP/lsi.bin"
-#define SEC_TS_DEFAULT_SPU_FW		"/spu/TSP/ffu_tsp.bin"
-#define SEC_TS_DEFAULT_FFU_FW		"ffu_tsp.bin"
+#define TSP_PATH_EXTERNAL_FW		"/sdcard/Firmware/TSP/tsp.bin"
+#define TSP_PATH_EXTERNAL_FW_SIGNED	"/sdcard/Firmware/TSP/tsp_signed.bin"
+#define TSP_PATH_SPU_FW_SIGNED		"/spu/TSP/ffu_tsp.bin"
+
 #define SEC_TS_MAX_FW_PATH		64
 #define SEC_TS_FW_BLK_SIZE_MAX		(512)
 #define SEC_TS_FW_BLK_SIZE_DEFAULT	(512)	// y761 & y771 ~
@@ -171,6 +171,7 @@
 #define SEC_TS_WRITE_POSITION_FILTER		0x3A
 #define SEC_TS_CMD_WET_MODE			0x3B
 #define SEC_TS_CMD_JIG_MODE			0x3C
+#define SEC_TS_CMD_SET_LOW_POWER_SENSITIVITY	0x40
 #define SEC_TS_CMD_ERASE_FLASH			0x45
 #define SEC_TS_READ_ID				0x52
 #define SEC_TS_READ_BOOT_STATUS			0x55
@@ -197,6 +198,7 @@
 #define SEC_TS_CMD_CALIBRATION_OFFSET_SDC	0x8F
 //#define SEC_TS_CMD_START_LOWPOWER_TEST	0x9B
 #define SEC_TS_CMD_LPM_AOD_OFF_ON		0x9B
+#define SEC_TS_CMD_SIP_MODE			0xB5
 #define SET_TS_CMD_SET_LOWTEMPERATURE_MODE	0xBE
 
 #define SEC_TS_CMD_LPM_AOD_OFF	0x01
@@ -317,6 +319,7 @@
 #define SEC_TS_VENDOR_ACK_LOWPOWER_SELF_TEST_DONE	0x58
 #define SEC_TS_VENDOR_STATE_CHANGED			0x61
 #define SEC_TS_VENDOR_ACK_NOISE_STATUS_NOTI		0x64
+#define SEC_TS_VENDOR_ACK_PRE_NOISE_STATUS_NOTI		0x6D
 
 /* SEC_TS_ERROR : Error event */
 #define SEC_TS_ERR_EVNET_CORE_ERR	0x0
@@ -460,6 +463,9 @@ typedef enum {
 	SPONGE_EVENT_TYPE_AOD_HOMEKEY_RELEASE	= 0x0D,
 	SPONGE_EVENT_TYPE_AOD_HOMEKEY_RELEASE_NO_HAPTIC	= 0x0E
 } SPONGE_EVENT_TYPE;
+
+#define EVENT_TYPE_TSP_SCAN_UNBLOCK	0xE1;
+#define EVENT_TYPE_TSP_SCAN_BLOCK	0xE2;
 
 #define CMD_RESULT_WORD_LEN		10
 
@@ -664,7 +670,8 @@ struct sec_ts_event_coordinate {
 	u8 noise_level;
 	u8 max_strength;
 	u8 hover_id_num:4;
-	u8 reserved10:4;
+	u8 noise_status:2;
+	u8 reserved10:2;
 	u8 reserved11;
 	u8 reserved12;
 	u8 reserved13;
@@ -696,6 +703,7 @@ struct sec_ts_coordinate {
 	u8 noise_level;
 	u8 max_strength;
 	u8 hover_id_num;
+	u8 noise_status;
 };
 
 
@@ -721,6 +729,7 @@ struct sec_ts_data {
 	u8 touchable_area;
 	u8 external_noise_mode;
 	volatile u8 touch_noise_status;
+	volatile u8 touch_pre_noise_status;
 	volatile bool input_closed;
 	long prox_power_off;
 
@@ -734,6 +743,7 @@ struct sec_ts_data {
 	u16 touch_functions;
 	u16 ic_status;
 	u8 charger_mode;
+	bool force_charger_mode;
 	struct sec_ts_event_coordinate touchtype;
 	u8 gesture_status[6];
 	u8 cal_status;
@@ -818,6 +828,7 @@ struct sec_ts_data {
 	u8 ed_enable;
 	u16 proximity_thd;
 	bool proximity_jig_mode; 
+	u8 sip_mode;
 
 	unsigned char ito_test[4];		/* ito panel tx/rx chanel */
 	unsigned char check_multi;
@@ -877,6 +888,8 @@ struct sec_ts_data {
 
 	int debug_flag;
 	int fix_active_mode;
+
+	u8 lp_sensitivity;
 
 	u8 fod_vi_size;
 	u8 press_prop;

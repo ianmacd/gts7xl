@@ -11,18 +11,18 @@
 ** FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 **
 ** File:
-**     tas2560-calib.h
+**     tas25xx-calib.h
 **
 ** Description:
-**     header file for tas2560-calib.c
+**     header file for tas25xx-calib.c
 **
 ** =============================================================================
 */
 
-#ifndef _TAS2560_CALIB_H
-#define _TAS2560_CALIB_H
+#ifndef _TAS25XX_CALIB_H
+#define _TAS25XX_CALIB_H
 
 int tas_calib_init(void);
 void tas_calib_exit(void);
 
-#endif /* _TAS2560_CALIB_H */
+#endif /* _TAS25XX_CALIB_H */

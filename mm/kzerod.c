@@ -140,7 +140,8 @@ struct page *alloc_zeroed_page(void)
 	if (!kzerod_enabled)
 		return NULL;
 
-	spin_lock(&prezeroed_lock);
+	if (unlikely(!spin_trylock(&prezeroed_lock)))
+		return NULL;
 	if (!list_empty(&prezeroed_list)) {
 		page = list_first_entry(&prezeroed_list, struct page, lru);
 		if (trylock_page(page)) {

@@ -271,12 +271,11 @@ static int s2mu107_i2c_probe(struct i2c_client *i2c,
 
 	i2c_set_clientdata(i2c, s2mu107);
 
-	s2mu107_read_reg(s2mu107->i2c, S2MU107_REG_PMICID, &temp);
-	if (temp < 0)
-		pr_err("[s2mu107 mfd] %s : i2c read error\n", __func__);
+	s2mu107_read_reg(s2mu107->i2c, S2MU107_REG_ESREV_NUM, &temp);
 
-	s2mu107->pmic_ver = temp & S2MU107_REG_PMICID_MASK;
-	pr_err("%s : ver=0x%x\n", __func__, s2mu107->pmic_ver);
+	s2mu107->pmic_rev = temp & S2MU107_REG_REV_MASK;
+	s2mu107->pmic_es = temp & S2MU107_REG_ES_MASK;
+	pr_err("%s : rev=0x%x, es=0x%x\n", __func__, s2mu107->pmic_rev, s2mu107->pmic_es);
 
 	/* I2C enable for AFC, MUIC, and Powermeter */
 	s2mu107->muic = i2c_new_dummy(i2c->adapter, I2C_ADDR_7C_SLAVE);

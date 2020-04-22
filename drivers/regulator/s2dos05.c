@@ -581,7 +581,7 @@ static ssize_t enable_fd_show(struct device *dev, struct device_attribute *attr,
 	enabled = !(uvlo_fd & 1);
 
 #if defined(CONFIG_SEC_FACTORY) && \
-	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT))
+	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT))
 	enable_sub_fd_show();
 #endif /* CONFIG_SEC_FACTORY && CONFIG_SEC_WINNERLTE_PROJECT */
 
@@ -611,7 +611,7 @@ static ssize_t enable_fd_store(struct device *dev, struct device_attribute *attr
 	}
 
 #if defined(CONFIG_SEC_FACTORY) && \
-	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT))
+	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT))
 	enable_sub_fd_store(enable);
 #endif /* CONFIG_SEC_FACTORY && CONFIG_SEC_WINNERLTE_PROJECT */
 
@@ -646,7 +646,7 @@ static int fb_state_change(struct notifier_block *nb, unsigned long val,
 	blank = data;
 
 	if (*blank == FB_BLANK_UNBLANK) {
-#if defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT)
+#if defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT)
 		s2mpb02_recovery(1);
 #endif
 		schedule_delayed_work(&fd_work, msecs_to_jiffies(500));

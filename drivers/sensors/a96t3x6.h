@@ -20,6 +20,10 @@
 
 #include <linux/sensor/sensors_core.h>
 
+#define GRIP_ERR(fmt, ...) pr_err("[GRIP] %s: "fmt, __func__, ##__VA_ARGS__)
+#define GRIP_INFO(fmt, ...) pr_info("[GRIP] %s: "fmt, __func__, ##__VA_ARGS__)
+#define GRIP_WARN(fmt, ...) pr_warn("[GRIP] %s: "fmt, __func__, ##__VA_ARGS__)
+
 #define VENDOR_NAME	"ABOV"
 #define MODEL_NAME	"A96T3X6"
 #define MODULE_NAME	"grip_sensor"
@@ -91,9 +95,8 @@
 #define REG_LED_CTRL_ON		0x60
 #define REG_LED_CTRL_OFF	0x70
 #define REG_STOP_MODE		0x80
-
-#define WRITE_RESULT_PASS	0x5A
-#define WRITE_RESULT_FAIL	0x0A
+#define REG_GRIP_ALWAYS_ACTIVE	0x20
+#define GRIP_ALWAYS_ACTIVE_READY	0x21
 
 /* command */
 #define CMD_ON			0x20
@@ -105,20 +108,38 @@
 #define CMD_RESET		0xAA
 #define BOOT_ENTER_RETRY_COUNT		10
 #define BOOT_ENTER_CHECK_RETRY_COUNT	10
-#endif
-
+#define WRITE_RESULT_PASS	0x5A
+#define WRITE_RESULT_FAIL	0x0A
 #define BOOT_DELAY		10000 //45000
 #define RESET_DELAY		200000
+#else
+#define BOOT_DELAY		45000
+#define RESET_DELAY		150000
+#endif
+#define CRC_FAIL		0
+#define CRC_PASS		1
+
 #define FLASH_DELAY		1400000
 #define FLASH_MODE		0x18
 
 #define TK_FW_PATH_BIN 		"abov/abov_noble.fw"
 #define TK_FW_PATH_SDCARD 	"/sdcard/Firmware/Grip/abov_fw.bin"
 #define HALL_PATH		"/sys/class/sec/sec_key/hall_detect"
+#define HALLIC_CERT_PATH	"/sys/class/sec/sec_key/certify_hall_detect"
 #define HALL_CLOSE_STATE        1
+
+/* depends on FW address configuration */
+#ifdef CONFIG_SENSORS_A96T365IF
+#define USER_CODE_ADDRESS 	0x600
+#else
+#define USER_CODE_ADDRESS 	0x800
+#endif
 
 #define I2C_M_WR 0		/* for i2c */
 #define GRIP_LOG_TIME	15 /* 30s */
+
+#define FIRMWARE_VENDOR_CALL_CNT 8
+#define TEST_FIRMWARE_DETECT_VER 0xa0
 
 enum {
 	BUILT_IN = 0,

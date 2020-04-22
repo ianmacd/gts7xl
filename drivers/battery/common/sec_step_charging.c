@@ -35,10 +35,9 @@ void sec_bat_reset_step_charging(struct sec_battery_info *battery)
 
 void sec_bat_exit_step_charging(struct sec_battery_info *battery)
 {
-	battery->pdata->charging_current[battery->cable_type].fast_charging_current =
-		battery->pdata->step_charging_current[battery->step_charging_step-1];
-	if ((battery->step_charging_type & STEP_CHARGING_CONDITION_FLOAT_VOLTAGE) &&
-		(battery->swelling_mode == SWELLING_MODE_NONE)) {
+	sec_vote(battery->fcc_vote, VOTER_STEP_CHARGE, true,
+				battery->pdata->step_charging_current[battery->step_charging_step-1]);
+	if (battery->step_charging_type & STEP_CHARGING_CONDITION_FLOAT_VOLTAGE) {
 		union power_supply_propval val;
 	
 		pr_info("%s : float voltage = %d \n", __func__,
@@ -147,11 +146,10 @@ bool sec_bat_check_step_charging(struct sec_battery_info *battery)
 
 		pr_info("%s : prev=%d, new=%d, value=%d, current=%d, curr_cnt=%d\n", __func__,
 			battery->step_charging_status, i, value, battery->pdata->step_charging_current[i], curr_cnt);
-		battery->pdata->charging_current[battery->cable_type].fast_charging_current = battery->pdata->step_charging_current[i];
+		sec_vote(battery->fcc_vote, VOTER_STEP_CHARGE, true, battery->pdata->step_charging_current[i]);
 		battery->step_charging_status = i;
 
-		if ((battery->step_charging_type & STEP_CHARGING_CONDITION_FLOAT_VOLTAGE) &&
-			(battery->swelling_mode == SWELLING_MODE_NONE)) {
+		if (battery->step_charging_type & STEP_CHARGING_CONDITION_FLOAT_VOLTAGE) {
 			union power_supply_propval val;
 
 			pr_info("%s : float voltage = %d \n", __func__, battery->pdata->step_charging_float_voltage[i]);
@@ -315,34 +313,19 @@ check_dc_step_change:
 			battery->step_charging_status, step, battery->pdata->dc_step_chg_val_iout[step]);
 			battery->pdata->charging_current[battery->cable_type].fast_charging_current = battery->pdata->dc_step_chg_val_iout[step];
 
-		if ((battery->dc_step_chg_type & STEP_CHARGING_CONDITION_FLOAT_VOLTAGE) &&
-			(battery->swelling_mode == SWELLING_MODE_NONE)) {
-			if (battery->step_charging_status < 0) {
-				pr_info("%s : step float voltage = %d \n", __func__, battery->pdata->dc_step_chg_val_vfloat[step]);
-				val.intval = battery->pdata->dc_step_chg_val_vfloat[step];
-				psy_do_property(battery->pdata->charger_name, set,
-					POWER_SUPPLY_EXT_PROP_DIRECT_VOLTAGE_MAX, val);
-			}
-			battery->dc_float_voltage_set = true;
+		if (battery->dc_step_chg_type & STEP_CHARGING_CONDITION_FLOAT_VOLTAGE) {
+			pr_info("%s : step float voltage = %d \n", __func__, battery->pdata->dc_step_chg_val_vfloat[step]);
+			val.intval = battery->pdata->dc_step_chg_val_vfloat[step];
+			psy_do_property(battery->pdata->charger_name, set,
+				POWER_SUPPLY_EXT_PROP_DIRECT_VOLTAGE_MAX, val);
 		}
 		if (battery->dc_step_chg_type & STEP_CHARGING_CONDITION_INPUT_CURRENT) {
-			if (battery->step_charging_status < 0) {
-#if defined(CONFIG_CHARGER_S2MU107_DIRECT)
-				pr_info("%s : step input current = %d, charging current %d\n",
-					__func__, battery->pdata->dc_step_chg_val_iout[step] / 2,
-						battery->pdata->dc_step_chg_val_iout[step]);
-#else
-				pr_info("%s : step input current = %d \n", __func__, battery->pdata->dc_step_chg_val_iout[step] / 2);
-#endif
-				val.intval = battery->pdata->dc_step_chg_val_iout[step] / 2;
-				psy_do_property(battery->pdata->charger_name, set,
-					POWER_SUPPLY_EXT_PROP_DIRECT_CURRENT_MAX, val);
-#if defined(CONFIG_CHARGER_S2MU107_DIRECT)
-				val.intval =  battery->pdata->dc_step_chg_val_iout[step];
-				psy_do_property(battery->pdata->charger_name, set,
-					POWER_SUPPLY_PROP_CURRENT_NOW, val);
-#endif
-			}
+			pr_info("%s : step input current = %d \n", __func__, battery->pdata->dc_step_chg_val_iout[step] / 2);
+			val.intval = battery->pdata->dc_step_chg_val_iout[step] / 2;
+			psy_do_property(battery->pdata->charger_name, set,
+				POWER_SUPPLY_EXT_PROP_DIRECT_CURRENT_MAX, val);
+			sec_vote(battery->fcc_vote, VOTER_CABLE, true, battery->pdata->dc_step_chg_val_iout[step]);
+			sec_vote_refresh(battery->fcc_vote);
 		}
 		battery->step_charging_status = step;
 		battery->dc_step_chg_iin_cnt = 0;

@@ -28,19 +28,31 @@
 
 /* TODO : add IP Header file include*/
 #if defined(CONFIG_CHARGER_S2MU107)
+#if defined(CONFIG_BATTERY_SAMSUNG_LEGO_STYLE)
 #include "../battery/charger/s2mu107_switching_charger.h"
+#else
+#include "../battery_v2/include/charger/s2mu107_switching_charger.h"
+#endif
 #endif
 #if defined(CONFIG_MUIC_S2MU107)
 #include <linux/muic/s2mu107-muic.h>
 #endif
 #if defined(CONFIG_PM_S2MU107)
+#if defined(CONFIG_BATTERY_SAMSUNG_LEGO_STYLE)
 #include "../battery/charger/s2mu107_pmeter.h"
+#else
+#include "../battery_v2/include/s2mu107_pmeter.h"
+#endif
 #endif
 #if defined(CONFIG_LEDS_S2MU107_FLASH)
 #include <linux/leds-s2mu107.h>
 #endif
 #if defined(CONFIG_CHARGER_S2MU107_DIRECT)
+#if defined(CONFIG_BATTERY_SAMSUNG_LEGO_STYLE)
 #include "../battery/charger/s2mu107_direct_charger.h"
+#else
+#include "../battery_v2/include/charger/s2mu107_direct_charger.h"
+#endif
 #endif
 static const u8 s2mu107_mask_reg[] = {
 #if defined(CONFIG_LEDS_S2MU107_FLASH)
@@ -161,6 +173,7 @@ static const struct s2mu107_irq_data s2mu107_irqs[] = {
 	DECLARE_IRQ(S2MU107_FLED_IRQ2_FLASH_DC_INT,		FLED_INT2, MASK(1,1)),
 #endif
 #if defined(CONFIG_CHARGER_S2MU107)
+	DECLARE_IRQ(S2MU107_SC_IRQ2_IVR,			SC_INT2, MASK(1,1)),
 	DECLARE_IRQ(S2MU107_SC_IRQ1_SYS,			SC_INT1, MASK(1,0)),
 	DECLARE_IRQ(S2MU107_SC_IRQ1_CV,				SC_INT1, MASK(1,1)),
 	DECLARE_IRQ(S2MU107_SC_IRQ1_CHG_Fault,			SC_INT1, MASK(1,2)),
@@ -171,7 +184,6 @@ static const struct s2mu107_irq_data s2mu107_irqs[] = {
 	DECLARE_IRQ(S2MU107_SC_IRQ1_CHGIN,			SC_INT1, MASK(1,7)),
 
 	DECLARE_IRQ(S2MU107_SC_IRQ2_ICR,			SC_INT2, MASK(1,0)),
-	DECLARE_IRQ(S2MU107_SC_IRQ2_IVR,			SC_INT2, MASK(1,1)),
 	DECLARE_IRQ(S2MU107_SC_IRQ2_AICL,			SC_INT2, MASK(1,2)),
 	DECLARE_IRQ(S2MU107_SC_IRQ2_VBUS_Short,			SC_INT2, MASK(1,3)),
 	DECLARE_IRQ(S2MU107_SC_IRQ2_BST,			SC_INT2, MASK(1,4)),
@@ -187,6 +199,8 @@ static const struct s2mu107_irq_data s2mu107_irqs[] = {
 	DECLARE_IRQ(S2MU107_SC_IRQ3_BAT_CONTACT_CK_DONE,	SC_INT3, MASK(1,6)),
 #endif
 #if defined(CONFIG_CHARGER_S2MU107_DIRECT)
+	DECLARE_IRQ(S2MU107_DC_IRQ2_DC_DONE,			DC_INT2, MASK(1,7)),
+
 	DECLARE_IRQ(S2MU107_DC_IRQ0_DC_OUT_OVP,			DC_INT0, MASK(1,0)),
 	DECLARE_IRQ(S2MU107_DC_IRQ0_DC_BAT_OKB,			DC_INT0, MASK(1,1)),
 	DECLARE_IRQ(S2MU107_DC_IRQ0_DC_BYP_OVP,			DC_INT0, MASK(1,2)),
@@ -206,15 +220,13 @@ static const struct s2mu107_irq_data s2mu107_irqs[] = {
 
 	DECLARE_IRQ(S2MU107_DC_IRQ2_DC_CHGIN_ICL,		DC_INT2, MASK(1,0)),
 	DECLARE_IRQ(S2MU107_DC_IRQ2_DC_WCIN_ICL,		DC_INT2, MASK(1,1)),
-	DECLARE_IRQ(S2MU107_DC_IRQ2_DC_CHGIN_CV,		DC_INT2, MASK(1,2)),
-	DECLARE_IRQ(S2MU107_DC_IRQ2_DC_WCIN_CV,			DC_INT2, MASK(1,3)),
+	DECLARE_IRQ(S2MU107_DC_IRQ2_DC_CV,			DC_INT2, MASK(1,2)),
+	DECLARE_IRQ(S2MU107_DC_IRQ2_DC_SCP,			DC_INT2, MASK(1,3)),
 	DECLARE_IRQ(S2MU107_DC_IRQ2_DC_THERMAL,			DC_INT2, MASK(1,4)),
 	DECLARE_IRQ(S2MU107_DC_IRQ2_DC_LONG_CC,			DC_INT2, MASK(1,5)),
 	DECLARE_IRQ(S2MU107_DC_IRQ2_DC_PPS_FAIL,		DC_INT2, MASK(1,6)),
-	DECLARE_IRQ(S2MU107_DC_IRQ2_DC_DONE,			DC_INT2, MASK(1,7)),
 
-	DECLARE_IRQ(S2MU107_DC_IRQ3_DC_TFB_RISING,		DC_INT3, MASK(1,0)),
-	DECLARE_IRQ(S2MU107_DC_IRQ3_DC_TFB_FALLING,		DC_INT3, MASK(1,1)),
+	DECLARE_IRQ(S2MU107_DC_IRQ3_DC_TFB,			DC_INT3, MASK(1,0)),
 	DECLARE_IRQ(S2MU107_DC_IRQ3_DC_TSD,			DC_INT3, MASK(1,2)),
 	DECLARE_IRQ(S2MU107_DC_IRQ3_DC_WCIN_DOWN,		DC_INT3, MASK(1,3)),
 	DECLARE_IRQ(S2MU107_DC_IRQ3_DC_WCIN_UP,			DC_INT3, MASK(1,4)),
@@ -370,9 +382,9 @@ static irqreturn_t s2mu107_irq_thread(int irq, void *data)
 			MFD_DEV_NAME, __func__, ret);
 		return IRQ_NONE;
 	}
-	pr_info("%s: Top interrupt(0x%02x)\n", __func__, irq_src);
 
-	if (1) {
+#if defined(CONFIG_LEDS_S2MU107_FLASH)
+	if (irq_src & S2MU107_IRQSRC_FLED) {
 		ret = s2mu107_bulk_read(s2mu107->i2c, S2MU107_FLED_INT1,
 					S2MU107_NUM_IRQ_LED_REGS,
 					&irq_reg[FLED_INT1]);
@@ -381,11 +393,12 @@ static irqreturn_t s2mu107_irq_thread(int irq, void *data)
 				MFD_DEV_NAME, __func__, ret);
 			return IRQ_NONE;
 		}
-		pr_info("%s: FLED intrrupt(0x%02x, 0x%02x)\n",
+		pr_info("%s: FLED interrupt(0x%02x, 0x%02x)\n",
 			__func__, irq_reg[FLED_INT1], irq_reg[FLED_INT2]);
 	}
-
-	if (1) {
+#endif
+#if defined(CONFIG_CHARGER_S2MU107)
+	if (irq_src & S2MU107_IRQSRC_SC) {
 		ret = s2mu107_bulk_read(s2mu107->chg, S2MU107_SC_INT1,
 					S2MU107_NUM_IRQ_SC_REGS,
 					&irq_reg[SC_INT1]);
@@ -394,12 +407,13 @@ static irqreturn_t s2mu107_irq_thread(int irq, void *data)
 				MFD_DEV_NAME, __func__, ret);
 			return IRQ_NONE;
 		}
-		pr_info("%s: CHARGER intrrupt(0x%02x, 0x%02x, 0x%02x)\n",
+		pr_info("%s: CHARGER interrupt(0x%02x, 0x%02x, 0x%02x)\n",
 			__func__, irq_reg[SC_INT1], irq_reg[SC_INT2],
 			irq_reg[SC_INT3]);
 	}
-
-	if (1) {
+#endif
+#if defined(CONFIG_CHARGER_S2MU107_DIRECT)
+	if (irq_src & S2MU107_IRQSRC_DC) {
 		ret = s2mu107_bulk_read(s2mu107->chg, S2MU107_DC_INT0,
 					S2MU107_NUM_IRQ_DC_REGS,
 					&irq_reg[DC_INT0]);
@@ -408,13 +422,14 @@ static irqreturn_t s2mu107_irq_thread(int irq, void *data)
 				MFD_DEV_NAME, __func__, ret);
 			return IRQ_NONE;
 		}
-		pr_info("%s: DIRECT CHARGER intrrupt(0x%02x, 0x%02x, "
+		pr_info("%s: DIRECT CHARGER interrupt(0x%02x, 0x%02x, "
 			"0x%02x, 0x%02x)\n", __func__,
 			irq_reg[DC_INT0], irq_reg[DC_INT1],
 			irq_reg[DC_INT2], irq_reg[DC_INT3]);
 	}
-
-	if (1) {
+#endif
+#if defined(CONFIG_HV_MUIC_S2MU107_AFC)
+	if (irq_src & S2MU107_IRQSRC_AFC) {
 		ret = s2mu107_read_reg(s2mu107->muic,
 				       S2MU107_REG_AFC_INT, &irq_reg[AFC_INT]);
 		if (ret) {
@@ -425,8 +440,9 @@ static irqreturn_t s2mu107_irq_thread(int irq, void *data)
 		pr_info("%s: AFC interrupt(0x%02x)\n",
 			 __func__, irq_reg[AFC_INT]);
 	}
-
-	if (1) {
+#endif
+#if defined(CONFIG_MUIC_S2MU107)
+	if (irq_src & S2MU107_IRQSRC_MUIC) {
 		ret = s2mu107_bulk_read(s2mu107->muic, S2MU107_REG_MUIC_INT1,
 					S2MU107_NUM_IRQ_MUIC_REGS,
 					&irq_reg[MUIC_INT1]);
@@ -435,11 +451,12 @@ static irqreturn_t s2mu107_irq_thread(int irq, void *data)
 				MFD_DEV_NAME, __func__, ret);
 			return IRQ_NONE;
 		}
-		pr_info("%s: MUIC intrrupt(0x%02x, 0x%02x)\n", __func__,
+		pr_info("%s: MUIC interrupt(0x%02x, 0x%02x)\n", __func__,
 			irq_reg[MUIC_INT1], irq_reg[MUIC_INT2]);
 	}
-
-	if (1) {
+#endif
+#if defined(CONFIG_PM_S2MU107)
+	if (irq_src & S2MU107_IRQSRC_PM) {
 		ret = s2mu107_bulk_read(s2mu107->muic, S2MU107_PM_VALUP1,
 					S2MU107_NUM_IRQ_PM_REGS,
 					&irq_reg[PM_VALUP1]);
@@ -448,12 +465,12 @@ static irqreturn_t s2mu107_irq_thread(int irq, void *data)
 				MFD_DEV_NAME, __func__, ret);
 			return IRQ_NONE;
 		}
-		pr_info("%s: PM intrrupt(0x%02x, 0x%02x, "
+		pr_info("%s: PM interrupt(0x%02x, 0x%02x, "
 			"0x%02x, 0x%02x)\n", __func__,
 			irq_reg[PM_VALUP1], irq_reg[PM_VALUP2],
 			irq_reg[PM_INT1], irq_reg[PM_INT2]);
 	}
-
+#endif
 #if defined(CONFIG_LEDS_S2MU107_FLASH) || defined(CONFIG_CHARGER_S2MU107) || \
     defined(CONFIG_CHARGER_S2MU107_DIRECT) || defined(CONFIG_MUIC_S2MU107) || \
     defined(CONFIG_HV_MUIC_S2MU107_AFC) || defined(CONFIG_PM_S2MU107)
@@ -469,6 +486,7 @@ static irqreturn_t s2mu107_irq_thread(int irq, void *data)
 #endif
 	return IRQ_HANDLED;
 }
+
 static int irq_is_enable = true;
 int s2mu107_irq_init(struct s2mu107_dev *s2mu107)
 {

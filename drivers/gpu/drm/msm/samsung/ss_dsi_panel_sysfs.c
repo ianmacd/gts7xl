@@ -601,6 +601,62 @@ static ssize_t ss_disp_acl_store(struct device *dev,
 	return size;
 }
 
+#if defined(CONFIG_SEC_FACTORY)
+int fd_status = 0;
+
+static ssize_t ss_disp_fd_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	int rc = 0;
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		return rc;
+	}
+	rc = snprintf((char *)buf, sizeof(fd_status), "%d\n", fd_status);
+
+	LCD_INFO("fd status: %d\n", *buf);
+
+	return rc;
+}
+
+static ssize_t ss_disp_fd_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int rc = 0;
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		return rc;
+	}
+	if (!ss_is_ready_to_send_cmd(vdd)) {
+		LCD_ERR("Panel is not ready. Panel State(%d)\n", vdd->panel_state);
+		return size;
+	}
+
+	if (sysfs_streq(buf, "1"))
+	{
+		ss_send_cmd(vdd, TX_FD_ON); //TX_FD_ON - 239
+		fd_status = true;
+	}
+	else if (sysfs_streq(buf, "0"))
+	{
+		ss_send_cmd(vdd, TX_FD_OFF); //TX_FD_OFF - 240
+		fd_status = false;
+	}
+	else
+		LCD_INFO("Invalid argument!!");
+
+	LCD_INFO("(%d)\n", fd_status);
+
+	return size;
+}
+#endif
+
 static ssize_t ss_disp_siop_show(struct device *dev,
 			struct device_attribute *attr, char *buf)
 {
@@ -758,6 +814,7 @@ static ssize_t ss_aid_log_store(struct device *dev,
 	len = snprintf(line_buf, LINE_SIZE, "NO,");
 	len += snprintf(line_buf + len, LINE_SIZE - len, "FROM,");
 	len += snprintf(line_buf + len, LINE_SIZE - len, "TO,");
+	len += snprintf(line_buf + len, LINE_SIZE - len, "Brightness,");
 
 	for (i = 0; i < print_size; i++) {
 		for (j = 1; j <= print_table[i].read_size; j++)
@@ -788,6 +845,10 @@ static ssize_t ss_aid_log_store(struct device *dev,
 		len = snprintf(line_buf, LINE_SIZE, "%4d,", idx++);
 		len += snprintf(line_buf + len, LINE_SIZE - len, "%5d,", normal_table->from[i]);
 		len += snprintf(line_buf + len, LINE_SIZE - len, "%5d,", normal_table->end[i]);
+		if (vdd->panel_br_info.itp_mode == FLASH_INTERPOLATION)
+			len += snprintf(line_buf + len, LINE_SIZE - len, "%5d,", vdd->flash_itp.normal.br_aor_table[i].interpolation_br_x10000);
+		else
+			len += snprintf(line_buf + len, LINE_SIZE - len, "%5d,", vdd->table_itp.normal.br_aor_table[i].interpolation_br_x10000);
 
 		/* Write Brightness */
 		ss_brightness_dcs(vdd, normal_table->end[i], BACKLIGHT_NORMAL);
@@ -826,6 +887,10 @@ static ssize_t ss_aid_log_store(struct device *dev,
 		len = snprintf(line_buf, LINE_SIZE, "%4d,", idx++);
 		len += snprintf(line_buf + len, LINE_SIZE - len, "%5d,", hbm_table->from[i]);
 		len += snprintf(line_buf + len, LINE_SIZE - len, "%5d,", hbm_table->end[i]);
+		if (vdd->panel_br_info.itp_mode == FLASH_INTERPOLATION)
+			len += snprintf(line_buf + len, LINE_SIZE - len, "%5d,", vdd->flash_itp.hbm.br_table[i+1].interpolation_br_x10000);
+		else
+			len += snprintf(line_buf + len, LINE_SIZE - len, "%5d,", vdd->table_itp.hbm.br_table[i+1].interpolation_br_x10000);
 
 		/* Write Brightness */
 		ss_brightness_dcs(vdd, hbm_table->from[i], BACKLIGHT_NORMAL);
@@ -851,6 +916,7 @@ static ssize_t ss_aid_log_store(struct device *dev,
 		len = snprintf(line_buf, LINE_SIZE, "%4d,", idx++);
 		len += snprintf(line_buf + len, LINE_SIZE - len, "%5d,", hmd_table->from[i]);
 		len += snprintf(line_buf + len, LINE_SIZE - len, "%5d,", hmd_table->end[i]);
+		len += snprintf(line_buf + len, LINE_SIZE - len, "%5d,", hmd_table->cd[i]);
 
 		/* Write Brightness */
 		ss_brightness_dcs_hmt(vdd, hmd_table->from[i]);
@@ -1762,10 +1828,15 @@ static ssize_t ss_self_move_store(struct device *dev,
 		return size;
 	}
 
+	if (vdd->remove_self_move) {
+		LCD_ERR("not support self display");
+		return size;
+	}
+
 	mutex_lock(&display->display_lock);
 
 	if (sscanf(buf, "%d", &pattern) != 1)
-		return size;
+		goto end;
 
 	if (pattern < 0 || pattern > 4) {
 		LCD_ERR("invalid input");
@@ -1785,9 +1856,46 @@ static ssize_t ss_self_move_store(struct device *dev,
 		ss_send_cmd(vdd, TX_SELF_IDLE_AOD_EXIT);
 	}
 end:
-
 	mutex_unlock(&display->display_lock);
 	return size;
+}
+
+static ssize_t ss_self_mask_check_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+	int i, len = 0, res = -1;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		res = -ENODEV;
+	}
+
+	if (!vdd->self_disp.is_support) {
+		LCD_ERR("self display is not supported..(%d) \n",
+								vdd->self_disp.is_support);
+		return -ENODEV;
+	}
+
+	if (vdd->self_disp.self_mask_check)
+		res = vdd->self_disp.self_mask_check(vdd);
+	else {
+		LCD_ERR("Do not support self mask check..\n");
+	}		
+
+	len += snprintf(buf + len, 60, "%d ", res);
+	
+	if (vdd->self_disp.mask_crc_size) {
+		for (i = 0; i < vdd->self_disp.mask_crc_size; i++) {
+			len += snprintf(buf + len, 60, "%02x ", vdd->self_disp.mask_crc_read_data[i]);
+			vdd->self_disp.mask_crc_read_data[i] = 0x00;
+		}
+	}
+
+	len += snprintf(buf + len, 60, "\n");
+
+	return strlen(buf);
 }
 
 /*
@@ -2966,6 +3074,11 @@ static ssize_t ss_dynamic_freq_show(struct device *dev,
 	return strlen(buf);
 }
 
+/*
+ * ss_dynamic_freq_store() 
+ * 0 : revert fixed idx (use rf_info notifier)
+ * others : fix table idx for mipi_clk/ffc to tesst purpose
+ */
 static ssize_t ss_dynamic_freq_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
@@ -3330,6 +3443,7 @@ static ssize_t ss_disp_flash_gamma_show(struct device *dev,
 {
 	struct samsung_display_driver_data *vdd =
 			(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+	int wait_cnt = 0;
 	int res = READ_FAIL_NOT_LOADING;
 	int len = 0;
 
@@ -3343,19 +3457,35 @@ static ssize_t ss_disp_flash_gamma_show(struct device *dev,
 		goto end;
 	}
 
-	res = flash_gamma_mode_check(vdd);
+	while (!vdd->panel_br_info.flash_data.init_done) {
+		wait_cnt++;
 
-end:
-	len = snprintf(buf, MAX_FLASH_GAMMA_LEN, "%d %08x %08x %08x %08x %08x\n",
+		LCD_ERR("init_done %d, wait 100ms.. %d\n", vdd->panel_br_info.flash_data.init_done, wait_cnt);
+		usleep_range(100*1000, 100*1000);
+
+		if (wait_cnt >= 5)
+			break;
+	}
+
+	/* 1st line: mode count : 8150 not has vrr yet. so it always 1 until now.*/
+	len += snprintf(buf + len, MAX_FLASH_GAMMA_LEN, "1\n");
+
+	/* If 8150 have vrr, need "for sentence" to print for each modes+++ */
+	res = flash_gamma_mode_check(vdd);
+	if (res != READING_OPERATION_DONE)
+		LCD_ERR("res:%d, Not yet done.. Try 1 more time.%d\n", res);
+
+	len = snprintf(buf + len, MAX_FLASH_GAMMA_LEN, "%d %08x %08x %08x %08x %08x\n",
 			res,
 			vdd->panel_br_info.flash_data.check_sum_cal_data,
 			vdd->panel_br_info.flash_data.check_sum_flash_data,
 			vdd->panel_br_info.flash_data.c8_register.check_sum_mtp_data,
 			vdd->panel_br_info.flash_data.c8_register.check_sum_cal_data,
 			vdd->panel_br_info.flash_data.c8_register.check_sum_flash_data);
+	/* If 8150 have vrr, need "for sentence" to print for each modes--- */
 
 	LCD_INFO("%s", buf);
-
+end:
 	return len;
 }
 
@@ -3629,6 +3759,37 @@ static ssize_t ss_ccd_state_show(struct device *dev,
 	ss_send_cmd(vdd, TX_CCD_OFF);
 
 	return ret;
+}
+
+static ssize_t ss_demux_stress_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+	int val = 0;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		goto end;
+	}
+
+	if (!ss_is_ready_to_send_cmd(vdd)) {
+		LCD_ERR("Panel is not ready. Panel State(%d)\n", vdd->panel_state);
+		return size;
+	}
+
+	if (sscanf(buf, "%d", &val) != 1)
+		return size;
+
+	if (val)
+		ss_send_cmd(vdd, TX_DEMUX_STRESS_ON);
+	else
+		ss_send_cmd(vdd, TX_DEMUX_STRESS_OFF);
+
+	LCD_INFO("demux stress : %d\n", val);
+
+end:
+	return size;
 }
 
 static ssize_t ss_isc_store(struct device *dev,
@@ -3906,6 +4067,121 @@ end:
 	return size;
 }
 
+static ssize_t ss_fp_green_circle_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+	int val = 0;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		goto end;
+	}
+
+	if (!ss_is_ready_to_send_cmd(vdd)) {
+		LCD_ERR("Panel is not ready. Panel State(%d)\n", vdd->panel_state);
+		return size;
+	}
+
+	if (sscanf(buf, "%d", &val) != 1)
+		return size;
+
+#if defined(CONFIG_SEC_FACTORY)
+	if (val)
+		ss_send_cmd(vdd, TX_SELF_MASK_GREEN_CIRCLE_ON_FACTORY);
+	else
+		ss_send_cmd(vdd, TX_SELF_MASK_GREEN_CIRCLE_OFF_FACTORY);
+#else
+	if (val)
+		ss_send_cmd(vdd, TX_FP_GREEN_CIRCLE_ON);
+	else
+		ss_send_cmd(vdd, TX_FP_GREEN_CIRCLE_OFF);
+#endif
+	LCD_INFO("Finger Print Green Circle : %d\n", val);
+
+end:
+	return size;
+}
+
+static ssize_t ss_window_color_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+	char color[2];
+	int ret = 0;
+
+	if (!sec_get_param(param_index_window_color, color)) {
+		LCD_ERR("%s : fail to sec_get_param..\n");
+		return ret;
+	}
+
+	LCD_INFO("window_color : vdd[%s], sec_param[%s]\n", vdd->window_color, color);
+
+	ret = snprintf(buf, 20, "%s %s\n", vdd->window_color, color);
+
+	return ret;
+}
+
+static ssize_t ss_window_color_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+	char color[2];
+	int ret = 0;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		goto end;
+	}
+
+	if (sscanf(buf, "%s", color) != 1) {
+		LCD_ERR("size error\n");
+		return size;
+	}
+
+	LCD_INFO("window_color from SVC [%s], vdd [%s]\n", color, vdd->window_color);
+
+	ret = sec_set_param(param_index_window_color, color);
+	if (ret == false) {
+		LCD_ERR("set_set_param failed.. (%d)\n", ret);
+	} else {
+		LCD_ERR("set_set_param success.. (%d)\n", ret);
+		memcpy(vdd->window_color, color, sizeof(vdd->window_color));
+
+		LCD_INFO("change window_color from SVC [%s], vdd [%s]\n", color, vdd->window_color);
+	}
+			
+end:
+	return size;
+}
+
+static ssize_t ss_force_white_flush_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+	int input = 0;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		goto end;
+	}
+
+	if (sscanf(buf, "%d", &input) != 1) {
+		LCD_ERR("size error\n");
+		return size;
+	}
+
+	LCD_INFO("force white = %d\n", input);
+
+	vdd->force_white_flush = input;		
+end:
+	return size;
+}
+
 static DEVICE_ATTR(lcd_type, S_IRUGO, ss_disp_lcdtype_show, NULL);
 static DEVICE_ATTR(cell_id, S_IRUGO, ss_disp_cell_id_show, NULL);
 static DEVICE_ATTR(octa_id, S_IRUGO, ss_disp_octa_id_show, NULL);
@@ -3913,6 +4189,9 @@ static DEVICE_ATTR(window_type, S_IRUGO, ss_disp_windowtype_show, NULL);
 static DEVICE_ATTR(manufacture_date, S_IRUGO, ss_disp_manufacture_date_show, NULL);
 static DEVICE_ATTR(manufacture_code, S_IRUGO, ss_disp_manufacture_code_show, NULL);
 static DEVICE_ATTR(power_reduce, S_IRUGO | S_IWUSR | S_IWGRP, ss_disp_acl_show, ss_disp_acl_store);
+#if defined(CONFIG_SEC_FACTORY)
+static DEVICE_ATTR(enable_fd, S_IRUGO | S_IWUSR | S_IWGRP, ss_disp_fd_show, ss_disp_fd_store);
+#endif
 static DEVICE_ATTR(siop_enable, S_IRUGO | S_IWUSR | S_IWGRP, ss_disp_siop_show, ss_disp_siop_store);
 static DEVICE_ATTR(read_mtp, S_IRUGO | S_IWUSR | S_IWGRP, ss_read_mtp_show, ss_read_mtp_store);
 static DEVICE_ATTR(write_mtp, S_IRUGO | S_IWUSR | S_IWGRP, ss_read_mtp_show, ss_write_mtp_store);
@@ -3925,6 +4204,7 @@ static DEVICE_ATTR(self_mask, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_self_mask_st
 static DEVICE_ATTR(dynamic_hlpm, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_dynamic_hlpm_store);
 static DEVICE_ATTR(self_display, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_self_display_store);
 static DEVICE_ATTR(self_move, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_self_move_store);
+static DEVICE_ATTR(self_mask_check, S_IRUGO | S_IWUSR | S_IWGRP, ss_self_mask_check_show, NULL);
 static DEVICE_ATTR(read_copr, S_IRUGO | S_IWUSR | S_IWGRP, ss_read_copr_show, NULL);
 static DEVICE_ATTR(aid_log, S_IRUGO | S_IWUSR | S_IWGRP, ss_aid_log_show, ss_aid_log_store);
 static DEVICE_ATTR(gamma_interpolation_test, S_IRUGO | S_IWUSR | S_IWGRP, ss_aid_log_show, ss_gamma_interpolation_test_store);
@@ -3945,6 +4225,7 @@ static DEVICE_ATTR(SVC_OCTA, S_IRUGO, ss_disp_SVC_OCTA_show, NULL);
 static DEVICE_ATTR(SVC_OCTA2, S_IRUGO, ss_disp_SVC_OCTA2_show, NULL);
 static DEVICE_ATTR(SVC_OCTA_CHIPID, S_IRUGO, ss_disp_SVC_OCTA_CHIPID_show, NULL);
 static DEVICE_ATTR(SVC_OCTA2_CHIPID, S_IRUGO, ss_disp_SVC_OCTA2_CHIPID_show, NULL);
+static DEVICE_ATTR(SVC_OCTA_DDI_CHIPID, S_IRUGO, ss_disp_manufacture_code_show, NULL);
 static DEVICE_ATTR(esd_check, S_IRUGO, mipi_samsung_esd_check_show, NULL);
 static DEVICE_ATTR(rf_info, S_IRUGO | S_IWUSR | S_IWGRP, ss_rf_info_show, ss_rf_info_store);
 static DEVICE_ATTR(dynamic_freq, S_IRUGO | S_IWUSR | S_IWGRP, ss_dynamic_freq_show, ss_dynamic_freq_store);
@@ -3966,10 +4247,14 @@ static DEVICE_ATTR(gamma_flash, S_IRUGO | S_IWUSR | S_IWGRP, ss_disp_flash_gamma
 static DEVICE_ATTR(read_flash, S_IRUGO | S_IWUSR | S_IWGRP, ss_read_flash_show, ss_read_flash_store);
 static DEVICE_ATTR(spi_if_sel, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_spi_if_sel_store);
 static DEVICE_ATTR(ccd_state, S_IRUGO | S_IWUSR | S_IWGRP, ss_ccd_state_show, NULL);
+static DEVICE_ATTR(demux_stress, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_demux_stress_store);
 static DEVICE_ATTR(isc, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_isc_store);
 static DEVICE_ATTR(stm, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_stm_store);
 static DEVICE_ATTR(partial_disp, S_IRUGO | S_IWUSR | S_IWGRP, ss_partial_disp_show, ss_partial_disp_store);
 static DEVICE_ATTR(dia, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_dia_store);
+static DEVICE_ATTR(fp_green_circle, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_fp_green_circle_store);
+static DEVICE_ATTR(window_color, S_IRUGO | S_IWUSR | S_IWGRP, ss_window_color_show, ss_window_color_store);
+static DEVICE_ATTR(force_white, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_force_white_flush_store);
 
 /* SAMSUNG_FINGERPRINT */
 static DEVICE_ATTR(mask_brightness, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_finger_hbm_store);
@@ -3984,6 +4269,9 @@ static struct attribute *panel_sysfs_attributes[] = {
 	&dev_attr_manufacture_date.attr,
 	&dev_attr_manufacture_code.attr,
 	&dev_attr_power_reduce.attr,
+#if defined(CONFIG_SEC_FACTORY)
+	&dev_attr_enable_fd.attr,
+#endif
 	&dev_attr_siop_enable.attr,
 	&dev_attr_aid_log.attr,
 	&dev_attr_gamma_interpolation_test.attr,
@@ -3997,6 +4285,7 @@ static struct attribute *panel_sysfs_attributes[] = {
 	&dev_attr_dynamic_hlpm.attr,
 	&dev_attr_self_display.attr,
 	&dev_attr_self_move.attr,
+	&dev_attr_self_mask_check.attr,
 	&dev_attr_temperature.attr,
 	&dev_attr_lux.attr,
 	&dev_attr_alpm.attr,
@@ -4012,6 +4301,7 @@ static struct attribute *panel_sysfs_attributes[] = {
 	&dev_attr_SVC_OCTA2.attr,
 	&dev_attr_SVC_OCTA_CHIPID.attr,
 	&dev_attr_SVC_OCTA2_CHIPID.attr,
+	&dev_attr_SVC_OCTA_DDI_CHIPID.attr,
 	&dev_attr_esd_check.attr,
 	&dev_attr_rf_info.attr,
 	&dev_attr_dynamic_freq.attr,
@@ -4019,6 +4309,7 @@ static struct attribute *panel_sysfs_attributes[] = {
 	&dev_attr_gct.attr,
 	&dev_attr_mst.attr,
 	&dev_attr_grayspot.attr,
+	&dev_attr_demux_stress.attr,
 	&dev_attr_isc_defect.attr,
 	&dev_attr_poc.attr,
 	&dev_attr_poc_mca.attr,
@@ -4042,6 +4333,9 @@ static struct attribute *panel_sysfs_attributes[] = {
 	&dev_attr_actual_mask_brightness.attr,
 	&dev_attr_conn_det.attr,
 	&dev_attr_dia.attr,
+	&dev_attr_fp_green_circle.attr,
+	&dev_attr_window_color.attr,
+	&dev_attr_force_white.attr,
 	NULL
 };
 static const struct attribute_group panel_sysfs_group = {

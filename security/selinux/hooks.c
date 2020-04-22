@@ -131,8 +131,18 @@ u8 rkp_ro_page(unsigned long addr);
 
 static inline unsigned int cmp_sec_integrity(const struct cred *cred,struct mm_struct *mm)
 {
+	
+	if (cred->bp_task != current)
+		printk(KERN_ERR "KDP: cred->bp_task: %p, current: %p\n", 
+						cred->bp_task, current);
+
+	if (mm && (mm->pgd != cred->bp_pgd))
+		printk(KERN_ERR "KDP: mm: %p, mm->pgd: %p, cred->bp_pgd: %p\n", 
+						mm, mm->pgd, cred->bp_pgd);
+
 	return ((cred->bp_task != current) || 
 			(mm && (!( in_interrupt() || in_softirq())) && 
+			(cred->bp_pgd != swapper_pg_dir) &&
 			(mm->pgd != cred->bp_pgd)));
 			
 }
@@ -146,31 +156,22 @@ static inline unsigned int rkp_is_valid_cred_sp(u64 cred,u64 sp)
 			( sp == (u64)&init_sec)){
 			return 0;
 		}
-		if(!rkp_ro_page(cred)|| !rkp_ro_page(cred+sizeof(struct cred))||
-			(!rkp_ro_page(sp)|| !rkp_ro_page(sp+sizeof(struct task_security_struct)))) {
+		if (!rkp_ro_page(cred) || !rkp_ro_page(cred+sizeof(struct cred)) ||
+			(!rkp_ro_page(sp) || !rkp_ro_page(sp+sizeof(struct task_security_struct)))) {
+			printk(KERN_ERR, "KDP: rkp_ro_page: cred: %d, cred+sizeof(cred): %d, ", 
+							rkp_ro_page((u64)cred), rkp_ro_page((u64)cred+sizeof(struct cred)));
+			printk(KERN_ERR, "rkp_ro_page(sp): %d, sp+sizeof(task_security_struct): %d\n", 
+							rkp_ro_page(sp), rkp_ro_page(sp+sizeof(struct task_security_struct))); 
 			return 1;
 		}
-		if((u64)tsec->bp_cred != cred) {
+		if ((u64)tsec->bp_cred != cred) {
+			printk(KERN_ERR, "KDP: tesc->bp_cred: %p, cred: %p\n", 
+							(u64)tsec->bp_cred, cred);
 			return 1;
 		}
 		return 0;
 }
 
-inline void rkp_print_debug(void)
-{
-	u64 pgd;
-	struct cred *cred;
-
-	pgd = (u64)(current->mm?current->mm->pgd:swapper_pg_dir);
-	cred = (struct cred *)current_cred();
-
-	printk(KERN_ERR"\n RKP44 cred = %p bp_task = %p bp_pgd = %p pgd = %llx stat = #%d# task = %p mm = %p \n",cred,cred->bp_task,cred->bp_pgd,pgd,(int)rkp_ro_page((unsigned long long)cred),current,current->mm);
-
-	//printk(KERN_ERR"\n RKP44_1 uid = %d gid = %d euid = %d  egid = %d \n",(u32)cred->uid,(u32)cred->gid,(u32)cred->euid,(u32)cred->egid);
-	printk(KERN_ERR"\n RKP44_2 Cred %llx #%d# #%d# Sec ptr %llx #%d# #%d#\n",(u64)cred,rkp_ro_page((u64)cred),rkp_ro_page((u64)cred+sizeof(struct cred)),(u64)cred->security, rkp_ro_page((u64)cred->security),rkp_ro_page((u64)cred->security+sizeof(struct task_security_struct)));
-
-
-}
 /* Main function to verify cred security context of a process */
 int security_integrity_current(void)
 {
@@ -179,7 +180,6 @@ int security_integrity_current(void)
 		(rkp_is_valid_cred_sp((u64)current_cred(),(u64)current_cred()->security)||
 		cmp_sec_integrity(current_cred(),current->mm)||
 		cmp_ns_integrity())) {
-		rkp_print_debug();
 		rcu_read_unlock();
 		panic("RKP CRED PROTECTION VIOLATION\n");
 	}
@@ -599,16 +599,10 @@ static int may_context_mount_inode_relabel(u32 sid,
 	return rc;
 }
 
-static int selinux_is_sblabel_mnt(struct super_block *sb)
+static int selinux_is_genfs_special_handling(struct super_block *sb)
 {
-	struct superblock_security_struct *sbsec = sb->s_security;
-
-	return sbsec->behavior == SECURITY_FS_USE_XATTR ||
-		sbsec->behavior == SECURITY_FS_USE_TRANS ||
-		sbsec->behavior == SECURITY_FS_USE_TASK ||
-		sbsec->behavior == SECURITY_FS_USE_NATIVE ||
-		/* Special handling. Genfs but also in-core setxattr handler */
-		!strcmp(sb->s_type->name, "sysfs") ||
+	/* Special handling. Genfs but also in-core setxattr handler */
+	return	!strcmp(sb->s_type->name, "sysfs") ||
 		!strcmp(sb->s_type->name, "pstore") ||
 		!strcmp(sb->s_type->name, "debugfs") ||
 		!strcmp(sb->s_type->name, "tracefs") ||
@@ -616,6 +610,34 @@ static int selinux_is_sblabel_mnt(struct super_block *sb)
 		(selinux_policycap_cgroupseclabel &&
 		 (!strcmp(sb->s_type->name, "cgroup") ||
 		  !strcmp(sb->s_type->name, "cgroup2")));
+}
+
+static int selinux_is_sblabel_mnt(struct super_block *sb)
+{
+	struct superblock_security_struct *sbsec = sb->s_security;
+
+	/*
+	 * IMPORTANT: Double-check logic in this function when adding a new
+	 * SECURITY_FS_USE_* definition!
+	 */
+	BUILD_BUG_ON(SECURITY_FS_USE_MAX != 7);
+
+	switch (sbsec->behavior) {
+	case SECURITY_FS_USE_XATTR:
+	case SECURITY_FS_USE_TRANS:
+	case SECURITY_FS_USE_TASK:
+	case SECURITY_FS_USE_NATIVE:
+		return 1;
+
+	case SECURITY_FS_USE_GENFS:
+		return selinux_is_genfs_special_handling(sb);
+
+	/* Never allow relabeling on context mounts */
+	case SECURITY_FS_USE_MNTPOINT:
+	case SECURITY_FS_USE_NONE:
+	default:
+		return 0;
+	}
 }
 
 static int sb_finish_set_opts(struct super_block *sb)
@@ -1132,8 +1154,11 @@ static int selinux_sb_clone_mnt_opts(const struct super_block *oldsb,
 	BUG_ON(!(oldsbsec->flags & SE_SBINITIALIZED));
 
 	/* if fs is reusing a sb, make sure that the contexts match */
-	if (newsbsec->flags & SE_SBINITIALIZED)
+	if (newsbsec->flags & SE_SBINITIALIZED) {
+		if ((kern_flags & SECURITY_LSM_NATIVE_LABELS) && !set_context)
+			*set_kern_flags |= SECURITY_LSM_NATIVE_LABELS;
 		return selinux_cmp_sb_context(oldsb, newsb);
+	}
 
 	mutex_lock(&newsbsec->lock);
 
@@ -1742,9 +1767,6 @@ static int inode_doinit_with_dentry(struct inode *inode, struct dentry *opt_dent
 				kfree(context);
 				/* Leave with the unlabeled SID */
 				rc = 0;
-#ifdef CONFIG_SECURITY_DEBUG_UNLABELED
-				BUG_ON(1);
-#endif
 				break;
 			}
 		}
@@ -2026,14 +2048,6 @@ selinux_determine_inode_label(const struct task_security_struct *tsec,
 				 u32 *_new_isid)
 {
 	const struct superblock_security_struct *sbsec = dir->i_sb->s_security;
-	int rc = 0;
-#ifdef CONFIG_SECURITY_DEBUG_UNLABELED
-	struct inode_security_struct *dir_isec = dir->i_security;
-	char *context, *context2;
-	u32 context_len, context_len2;
-	int rc1, rc2;
-	rc1 = security_sid_to_context_force(dir_isec->sid, &context, &context_len);
-#endif
 
 	if ((sbsec->flags & SE_SBINITIALIZED) &&
 	    (sbsec->behavior == SECURITY_FS_USE_MNTPOINT)) {
@@ -2043,26 +2057,11 @@ selinux_determine_inode_label(const struct task_security_struct *tsec,
 		*_new_isid = tsec->create_sid;
 	} else {
 		const struct inode_security_struct *dsec = inode_security(dir);
-		rc = security_transition_sid(tsec->sid, dsec->sid, tclass,
+		return security_transition_sid(tsec->sid, dsec->sid, tclass,
 					       name, _new_isid);
 	}
 
-#ifdef CONFIG_SECURITY_DEBUG_UNLABELED
-	rc2 = security_sid_to_context_force(*_new_isid, &context2, &context_len2);
-	if (!rc1 && !rc2) {
-		if (strstr(context, "data_file") && strstr(context2, "unlabeled")) {
-			printk("[KT] %s / context : %s, context2 : %s\n", __func__, context, context2);
-			BUG_ON(1);
-		}
-		if (strstr(context, "data_file") && *_new_isid == SECINITSID_UNLABELED) {
-			printk("[KT] _new_isid is UNLABELED\n");
-			BUG_ON(1);
-		}
-	}
-	if (!rc1) kfree(context);
-	if (!rc2) kfree(context2);
-#endif
-	return rc;
+	return 0;
 }
 
 /* Check whether a task can create a file. */
@@ -3020,7 +3019,7 @@ static int selinux_sb_kern_mount(struct super_block *sb, int flags, void *data)
 		goto out;
 
 	/* Allow all mounts performed by the kernel */
-	if (flags & MS_KERNMOUNT)
+	if (flags & (MS_KERNMOUNT | MS_SUBMOUNT))
 		goto out;
 
 	ad.type = LSM_AUDIT_DATA_DENTRY;
@@ -3384,11 +3383,6 @@ static int selinux_inode_setxattr(struct dentry *dentry, const char *name,
 	struct common_audit_data ad;
 	u32 newsid, sid = current_sid();
 	int rc = 0;
-#ifdef CONFIG_SECURITY_DEBUG_UNLABELED
-	int rc1, rc2;
-	char *context, *context2;
-	u32 context_len, context_len2;
-#endif
 
 	if (strcmp(name, XATTR_NAME_SELINUX))
 		return selinux_inode_setotherxattr(dentry, name);
@@ -3408,10 +3402,6 @@ static int selinux_inode_setxattr(struct dentry *dentry, const char *name,
 			  FILE__RELABELFROM, &ad);
 	if (rc)
 		return rc;
-
-#ifdef CONFIG_SECURITY_DEBUG_UNLABELED
-	rc1 = security_sid_to_context_force(isec->sid, &context, &context_len);
-#endif
 
 	rc = security_context_to_sid(value, size, &newsid, GFP_KERNEL);
 	if (rc == -EINVAL) {
@@ -3437,53 +3427,22 @@ static int selinux_inode_setxattr(struct dentry *dentry, const char *name,
 			audit_log_n_untrustedstring(ab, value, audit_size);
 			audit_log_end(ab);
 
-#ifdef CONFIG_SECURITY_DEBUG_UNLABELED
-			if (!rc1) kfree(context);
-#endif
 			return rc;
 		}
 		rc = security_context_to_sid_force(value, size, &newsid);
 	}
-	if (rc) {
-#ifdef CONFIG_SECURITY_DEBUG_UNLABELED
-		if (!rc1) kfree(context);
-#endif
+	if (rc)
 		return rc;
-	}
 
 	rc = avc_has_perm(sid, newsid, isec->sclass,
 			  FILE__RELABELTO, &ad);
-	if (rc) {
-#ifdef CONFIG_SECURITY_DEBUG_UNLABELED
-		if (!rc1) kfree(context);
-#endif
+	if (rc)
 		return rc;
-	}
 
 	rc = security_validate_transition(isec->sid, newsid, sid,
 					  isec->sclass);
-	if (rc) {
-#ifdef CONFIG_SECURITY_DEBUG_UNLABELED
-		if (!rc1) kfree(context);
-#endif
+	if (rc)
 		return rc;
-	}
-
-#ifdef CONFIG_SECURITY_DEBUG_UNLABELED
-	rc2 = security_sid_to_context_force(newsid, &context2, &context_len2);
-	if (!rc1 && !rc2) {
-		if (strstr(context, "data_file") && strstr(context2, "unlabeled")) {
-			printk("[KT] %s / context : %s, context2 : %s\n", __func__, context, context2);
-			BUG_ON(1);
-		}
-		if (strstr(context, "data_file") && newsid == SECINITSID_UNLABELED) {
-			printk("[KT] _new_isid is UNLABELED\n");
-			BUG_ON(1);
-		}
-	}
-	if (!rc1) kfree(context);
-	if (!rc2) kfree(context2);
-#endif
 
 	return avc_has_perm(newsid,
 			    sbsec->sid,
@@ -3592,10 +3551,14 @@ static int selinux_inode_setsecurity(struct inode *inode, const char *name,
 				     const void *value, size_t size, int flags)
 {
 	struct inode_security_struct *isec = inode_security_novalidate(inode);
+	struct superblock_security_struct *sbsec = inode->i_sb->s_security;
 	u32 newsid;
 	int rc;
 
 	if (strcmp(name, XATTR_SELINUX_SUFFIX))
+		return -EOPNOTSUPP;
+
+	if (!(sbsec->flags & SBLABEL_MNT))
 		return -EOPNOTSUPP;
 
 	if (!value || !size)
@@ -6354,7 +6317,10 @@ static void selinux_inode_invalidate_secctx(struct inode *inode)
  */
 static int selinux_inode_notifysecctx(struct inode *inode, void *ctx, u32 ctxlen)
 { 
-	return selinux_inode_setsecurity(inode, XATTR_SELINUX_SUFFIX, ctx, ctxlen, 0);
+	int rc = selinux_inode_setsecurity(inode, XATTR_SELINUX_SUFFIX,
+					   ctx, ctxlen, 0);
+	/* Do not return error when suppressing label (SBLABEL_MNT not set). */
+	return rc == -EOPNOTSUPP ? 0 : rc;
 }
 
 /*

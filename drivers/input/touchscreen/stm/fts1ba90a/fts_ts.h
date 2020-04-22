@@ -36,6 +36,8 @@
 #endif
 #define TOUCH_PRINT_INFO_DWORK_TIME	30000	/* 30s */
 
+#define FTS_TS_LOCATION_DETECT_SIZE	6
+
 #define FIRMWARE_IC			"fts_ic"
 #define FTS_MAX_FW_PATH			64
 #define FTS_TS_DRV_NAME			"fts_touch"
@@ -289,11 +291,11 @@ struct fts_sponge_information {
 	u8 sponge_model_name[32];
 } __packed;
 
-#define FTS_CMD_EDGE_HANDLER		0x00
 #define FTS_CMD_EDGE_AREA		0x07
 #define FTS_CMD_DEAD_ZONE		0x08
 #define FTS_CMD_LANDSCAPE_MODE		0x09
 #define FTS_CMD_LANDSCAPE_TOP_BOTTOM	0x0A
+#define FTS_CMD_EDGE_HANDLER		0x0C
 
 enum grip_write_mode {
 	G_NONE				= 0,
@@ -316,9 +318,12 @@ enum grip_set_data {
 struct fts_finger {
 	u8 id;
 	u8 ttype;
+	u8 prev_ttype;
 	u8 action;
 	u16 x;
 	u16 y;
+	u16 p_x;
+	u16 p_y;
 	u8 z;
 	u8 hover_flag;
 	u8 glove_flag;
@@ -596,6 +601,9 @@ struct fts_i2c_platform_data {
 	int bringup;
 
 	bool chip_on_board;
+	u32 area_indicator;
+	u32 area_navigation;
+	u32 area_edge;
 #ifdef CONFIG_INPUT_SEC_SECURE_TOUCH
 	int ss_touch_num;
 #endif

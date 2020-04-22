@@ -191,7 +191,7 @@ extern int s2dos05_update_reg(struct i2c_client *i2c, u8 reg, u8 val, u8 mask);
 #ifdef CONFIG_SEC_FACTORY
 int msm_drm_register_notifier_client(struct notifier_block *nb);
 int msm_drm_unregister_notifier_client(struct notifier_block *nb);
-#if defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT)
+#if defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT)
 int enable_sub_fd_store(int enable);
 int enable_sub_fd_show(void);
 int s2mpb02_recovery(int pmic_id);

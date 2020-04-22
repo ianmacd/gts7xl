@@ -1160,3 +1160,19 @@ void debug_interpolation_log(struct samsung_display_driver_data *vdd)
 	debug_hbm_interpolation(vdd);
 }
 
+/*
+ * gamma_interpolation() - interpolate gamma.
+ * Taget Gamma reg = upper Gamma - ((upper cd - Target cd) / (upper cd - lower cd)) * (upper Gamma - lower Gamma)
+ * Target_cd has up to two decimal places. (ex. 7238600 (723.86))
+ */
+uint gamma_interpolation(int upper_g, int lower_g, int upper_cd, int lower_cd, int target_cd)
+{
+	uint ret = 0;
+
+	ret = (upper_g * 10000) - 
+		((upper_cd * 10000 - target_cd) * (upper_g - lower_g)) /
+		(upper_cd - lower_cd);
+	ret /= 10000;
+
+ 	return ret;
+}

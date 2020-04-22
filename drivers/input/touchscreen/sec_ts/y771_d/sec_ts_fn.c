@@ -102,6 +102,9 @@ static void touch_aging_mode(void *device_data);
 static void fp_int_control(void *device_data);
 static void get_crc_check(void *device_data);
 static void run_prox_intensity_read_all(void *device_data);
+static void get_idle_sensing_fault(void *device_data);
+static void set_low_power_sensitivity(void *device_data);
+static void set_sip_mode(void *device_data);
 static void not_support_cmd(void *device_data);
 
 static int execute_selftest(struct sec_ts_data *ts, bool save_result);
@@ -203,6 +206,9 @@ static struct sec_cmd sec_cmds[] = {
 	{SEC_CMD_H("fp_int_control", fp_int_control),},
 	{SEC_CMD("get_crc_check", get_crc_check),},
 	{SEC_CMD("run_prox_intensity_read_all", run_prox_intensity_read_all),},
+	{SEC_CMD("get_idle_sensing_fault", get_idle_sensing_fault),},
+	{SEC_CMD_H("set_low_power_sensitivity", set_low_power_sensitivity),},
+	{SEC_CMD_H("set_sip_mode", set_sip_mode),},	
 	{SEC_CMD("not_support_cmd", not_support_cmd),},
 };
 
@@ -2500,7 +2506,7 @@ static void run_cmoffset_set_proximity_read_all(void *device_data)
 
 	input_raw_info(true, &ts->client->dev, "%s: called\n", __func__);
 
-	buf[0] = 0x01;
+	buf[0] = 0x03;	/* 00: off, 01:Mutual, 10:Self, 11: Mutual+Self */
 	ret = ts->sec_ts_i2c_write(ts, SEC_TS_SET_EAR_DETECT_MODE, &buf[0], 1);
 	if (ret < 0) {
 		input_err(true, &ts->client->dev,
@@ -5419,6 +5425,115 @@ err:
 	input_info(true, &ts->client->dev, "%s: %s\n", __func__, buff);
 }
 
+/* only for davinci */
+static void get_idle_sensing_fault(void *device_data)
+{
+	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
+	char buff[16] = { 0 };
+	int ret;
+	int chk_idle_sensing = 0;	/* pass */
+	int i = 0;
+	u8 wdata[1] = { 0x46 };
+	u8 rdata[4] = { 0 };
+	u8 *rawdata[3] = { 0 };
+	int raw_size = (ts->tx_count * ts->rx_count) * 2;
+
+	input_info(true, &ts->client->dev, "%s : size(%d)\n", __func__, raw_size);
+
+	sec_cmd_set_default_result(sec);
+
+	for (i = 0; i <3; i++)
+		rawdata[i] = kzalloc(raw_size, GFP_KERNEL);
+
+	if (!rawdata[0])
+		goto NG;
+	
+	if (!rawdata[1]) {
+		kfree(rawdata[0]);
+		goto NG;
+	}
+	
+	if (!rawdata[2]) {
+		kfree(rawdata[0]);
+		kfree(rawdata[1]);
+		goto NG;
+	}
+
+	sec_ts_fix_tmode(ts, TOUCH_SYSTEM_MODE_TOUCH, TOUCH_MODE_STATE_IDLE);
+
+	ret = ts->sec_ts_i2c_write(ts, SEC_TS_CMD_MUTU_RAW_TYPE, wdata, 1);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev, "%s: SEC_TS_CMD_MUTU_RAW_TYPE fail!\n", __func__);
+		goto I2C_FAIL;
+	}
+
+	sec_ts_delay(30);
+
+	ret = ts->sec_ts_i2c_read(ts, SEC_TS_READ_TS_STATUS, rdata, 4);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev, "%s: SEC_TS_READ_TS_STATUS fail!\n", __func__);
+		goto I2C_FAIL;
+	}
+	input_info(true, &ts->client->dev, "%s: READ STATUS DATA[0x%X/0x%X/0x%X/0x%X]\n",
+				__func__, rdata[0], rdata[1], rdata[2], rdata[3]);
+
+	sec_ts_delay(50);
+
+
+	for (i = 0; i < 3; i++) {
+		ret = ts->sec_ts_i2c_read(ts, SEC_TS_READ_TOUCH_RAWDATA, rawdata[i], raw_size);
+		if (ret < 0) {
+			input_err(true, &ts->client->dev, "%s: SEC_TS_READ_TOUCH_RAWDATA fail!\n", __func__);
+			goto I2C_FAIL;
+		}
+		sec_ts_delay(50);
+	}
+
+	for (i = 0 ; i < (ts->rx_count * 2 * 2) ; i += 2) {
+		s16 tmp1 = rawdata[0][i] << 8 | rawdata[0][i + 1];
+		s16 tmp2 = rawdata[1][i] << 8 | rawdata[1][i + 1];
+		s16 tmp3 = rawdata[2][i] << 8 | rawdata[2][i + 1];
+	
+		input_info(false, &ts->client->dev,
+				"%s: rdata1[%d] = [0x%X], rdata2[%d] = [0x%X], rdata3[%d] = [0x%X]\n",
+				__func__, i/2, tmp1, i/2, tmp2, i/2, tmp3);
+	
+		if ((tmp1 != tmp2) || (tmp1 != tmp3))
+			break;
+	}
+
+	if (i == (ts->rx_count * 2 * 2))
+		chk_idle_sensing = 1; /* fail */
+
+	input_info(true, &ts->client->dev, "chk_idle_sensing %s\n",
+						chk_idle_sensing ? "FAIL" : "PASS");
+
+	for (i = 0 ; i < 3 ; i++)
+		kfree(rawdata[i]);
+
+	snprintf(buff, sizeof(buff), "%d", chk_idle_sensing);
+	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	if (sec->cmd_all_factory_state == SEC_CMD_STATUS_RUNNING)
+		sec_cmd_set_cmd_result_all(sec, buff, strnlen(buff, sizeof(buff)), "IDLE_SENSING_FAULT");
+	sec->cmd_state = SEC_CMD_STATUS_OK;
+	input_info(true, &ts->client->dev, "%s: %s\n", __func__, buff);
+	return;
+
+I2C_FAIL:
+	for (i = 0 ; i < 3 ; i++)
+		kfree(rawdata[i]);
+
+NG:
+	snprintf(buff, sizeof(buff), "NG");
+	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	if (sec->cmd_all_factory_state == SEC_CMD_STATUS_RUNNING)
+		sec_cmd_set_cmd_result_all(sec, buff, strnlen(buff, sizeof(buff)), "IDLE_SENSING_FAULT");
+	sec->cmd_state = SEC_CMD_STATUS_FAIL;
+	input_info(true, &ts->client->dev, "%s: %s\n", __func__, buff);
+
+}
+
 static void factory_cmd_result_all(void *device_data)
 {
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
@@ -5456,6 +5571,7 @@ static void factory_cmd_result_all(void *device_data)
 
 	get_wet_mode(sec);
 	get_cmoffset_set_proximity(sec);
+	get_idle_sensing_fault(sec);
 
 	sec->cmd_all_factory_state = SEC_CMD_STATUS_OK;
 
@@ -5497,6 +5613,23 @@ static void set_wirelesscharger_mode(void *device_data)
 
 	sec_cmd_set_default_result(sec);
 
+	if (ts->force_charger_mode == true && sec->cmd_param[1] == 0) {
+		input_err(true, &ts->client->dev,
+				"%s: [force enable] skip %d\n", __func__, sec->cmd_param[0]);
+		goto OK;
+	}
+
+	if (sec->cmd_param[1] == 1) {
+		if (sec->cmd_param[0] == 1) {
+			ts->force_charger_mode = true;
+		} else {
+			ts->force_charger_mode = false;
+			input_err(true, &ts->client->dev,
+					"%s: force enable off\n", __func__);
+			goto OK;
+		}
+	}
+
 	switch (sec->cmd_param[0]) {
 	case TYPE_WIRELESS_CHARGER_NONE:
 		ts->charger_mode = SEC_TS_BIT_CHARGER_MODE_NO;
@@ -5521,6 +5654,7 @@ static void set_wirelesscharger_mode(void *device_data)
 			__func__, ts->charger_mode == SEC_TS_BIT_CHARGER_MODE_NO ? "dis" : "en",
 			ts->charger_mode);
 
+OK:
 	snprintf(buff, sizeof(buff), "OK");
 	sec->cmd_state = SEC_CMD_STATUS_OK;
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
@@ -5945,11 +6079,13 @@ static void fod_enable(void *device_data)
 	else
 		ts->lowpower_mode &= ~SEC_TS_MODE_SPONGE_PRESS;
 
-	ts->press_prop = !!sec->cmd_param[1];
+	ts->press_prop = (sec->cmd_param[1] & 0x01) | ((sec->cmd_param[2] & 0x01) << 1);
 
-	input_info(true, &ts->client->dev, "%s: %s, fast:%d, %02X\n",
+	input_info(true, &ts->client->dev, "%s: %s, fast:%s, strict:%s, %02X\n",
 			__func__, sec->cmd_param[0] ? "on" : "off",
-			ts->press_prop, ts->lowpower_mode);
+			ts->press_prop & 1 ? "on" : "off",
+			ts->press_prop & 2 ? "on" : "off",
+			ts->lowpower_mode);
 
 	mutex_lock(&ts->modechange);
 	if (ts->input_closed && !ts->lowpower_mode && !ts->ed_enable) {
@@ -6790,6 +6926,78 @@ out:
 	sec_cmd_set_cmd_exit(sec);
 
 	return;
+}
+
+static void set_low_power_sensitivity(void *device_data)
+{
+	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
+	char buff[SEC_CMD_STR_LEN] = { 0 };
+	int ret;
+
+	sec_cmd_set_default_result(sec);
+
+	if (ts->power_status == SEC_TS_STATE_POWER_OFF) {
+		input_err(true, &ts->client->dev, "%s: Touch is stopped!\n", __func__);
+		snprintf(buff, sizeof(buff), "NG");
+		goto out;
+	}
+
+	if (sec->cmd_param[0] < 0 || sec->cmd_param[0] > 1) {
+		snprintf(buff, sizeof(buff), "NG");
+		goto out;
+	}
+
+	ts->lp_sensitivity = sec->cmd_param[0];
+
+	ret = ts->sec_ts_i2c_write(ts, SEC_TS_CMD_SET_LOW_POWER_SENSITIVITY, &ts->lp_sensitivity, 1);
+	if (ret < 0) {
+		snprintf(buff, sizeof(buff), "NG");
+		goto out;
+	}
+
+	snprintf(buff, sizeof(buff), "OK");
+out:
+	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	sec->cmd_state = SEC_CMD_STATUS_WAITING;
+	sec_cmd_set_cmd_exit(sec);
+}
+
+static void set_sip_mode(void *device_data)
+{
+	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
+	char buff[SEC_CMD_STR_LEN] = { 0 };
+	int ret;
+
+	sec_cmd_set_default_result(sec);
+
+	input_info(true, &ts->client->dev, "%s: %d\n", __func__, sec->cmd_param[0]);
+
+	if (sec->cmd_param[0] < 0 || sec->cmd_param[0] > 1) {
+		input_err(true, &ts->client->dev, "%s: parm err(%d)\n", __func__, sec->cmd_param[0]);
+		goto NG;
+	}
+
+	ts->sip_mode = sec->cmd_param[0];
+
+	ret = ts->sec_ts_i2c_write(ts, SEC_TS_CMD_SIP_MODE, &ts->sip_mode, 1);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev, "%s: Failed to send aod off_on cmd\n", __func__);
+		goto NG;
+	}
+
+	snprintf(buff, sizeof(buff), "OK");
+	sec->cmd_state = SEC_CMD_STATUS_OK;
+	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	sec_cmd_set_cmd_exit(sec);
+	return;
+
+NG:
+	snprintf(buff, sizeof(buff), "NG");
+	sec->cmd_state = SEC_CMD_STATUS_FAIL;
+	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	sec_cmd_set_cmd_exit(sec);
 }
 
 #ifdef TCLM_CONCEPT

@@ -747,7 +747,7 @@
 			
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
-	
+
 		/* ALPM/HLPM 2nit or 60nit On Commands */
 		samsung,lpm_2nit_tx_cmds_revA = [29 01 00 00 00 00 02 53 03];
 		samsung,lpm_10nit_tx_cmds_revA = [29 01 00 00 00 00 02 53 02];
@@ -755,11 +755,19 @@
 		samsung,lpm_60nit_tx_cmds_revA = [29 01 00 00 00 00 02 53 02];
 
 		/* HLPM / ALPM Control Commands */
+		
+		// temp use hlpm cmds..
+#if 0
 		samsung,lpm_ctrl_alpm_2nit_tx_cmds_revA		= [29 01 00 00 00 00 07 BB 07 0C BB 9E 9E 80];
 		samsung,lpm_ctrl_alpm_10nit_tx_cmds_revA	= [29 01 00 00 00 00 07 BB 07 0C AB 10 9E 80];
 		samsung,lpm_ctrl_alpm_30nit_tx_cmds_revA	= [29 01 00 00 00 00 07 BB 07 0C 6B 42 9E 80];
 		samsung,lpm_ctrl_alpm_60nit_tx_cmds_revA	= [29 01 00 00 00 00 07 BB 07 0C 0B 14 9E 00];
-
+#else
+		samsung,lpm_ctrl_alpm_2nit_tx_cmds_revA		= [29 01 00 00 00 00 07 BB 05 0C BB 9E 9E 80];
+		samsung,lpm_ctrl_alpm_10nit_tx_cmds_revA	= [29 01 00 00 00 00 07 BB 05 0C AB 10 9E 80];
+		samsung,lpm_ctrl_alpm_30nit_tx_cmds_revA	= [29 01 00 00 00 00 07 BB 05 0C 6B 42 9E 80];
+		samsung,lpm_ctrl_alpm_60nit_tx_cmds_revA	= [29 01 00 00 00 00 07 BB 05 0C 0B 14 9E 00];
+#endif
 		samsung,lpm_ctrl_hlpm_2nit_tx_cmds_revA		= [29 01 00 00 00 00 07 BB 05 0C BB 9E 9E 80];
 		samsung,lpm_ctrl_hlpm_10nit_tx_cmds_revA	= [29 01 00 00 00 00 07 BB 05 0C AB 10 9E 80];
 		samsung,lpm_ctrl_hlpm_30nit_tx_cmds_revA	= [29 01 00 00 00 00 07 BB 05 0C 6B 42 9E 80];
@@ -1227,16 +1235,16 @@
 
 		samsung,ffc_tx_cmds_revA = [
 			29 00 00 00 00 00 03 FC 5A 5A			/* TEST KEY3 Enable*/
-			29 00 00 00 00 00 06 C5 09 10 B4 1F 01	/* default: 897.6 Mbps */
+			29 00 00 00 00 00 14 C5 0D 08 50 1B 8F 09 00 1A FC 24 D2 7A 00 10 00 33 00 FF 3C	/* default: 897.6 Mbps */
 			29 00 00 00 00 00 03 FC A5 A5			/* TEST KEY3 Disable*/
 		];
 
 		samsung,dyn_mipi_clk_ffc_cmds_revA = [
-			29 00 00 00 00 00 06 C5 09 10 B4 1F 01	/* 0 Default: 897.6 Mbps */
-			29 00 00 00 00 00 06 C5 09 10 B4 1F 01	/* 1 897.6Mbps */
-			29 00 00 00 00 00 06 C5 09 10 B4 1E D1	/* 2 903Mbps */
-			29 00 00 00 00 00 06 C5 09 10 B4 1E 95 	/* 3 910Mbps */
-			29 00 00 00 00 00 06 C5 09 10 B4 1D EC	/* 4 930Mbps */
+			29 00 00 00 00 00 14 C5 0D 08 50 1B 8F 09 00 1A FC 24 D2 7A 00 10 00 33 00 FF 3C	/* 0 Default: 897.6 Mbps */
+			29 00 00 00 00 00 14 C5 0D 08 50 1B 8F 09 00 1A FC 24 D2 7A 00 10 00 33 00 FF 3C	/* 1 897.6Mbps */
+			29 00 00 00 00 00 14 C5 0D 08 50 1B 65 09 00 1A FC 24 D2 7A 00 10 00 33 00 FF 3C	/* 2 903Mbps */
+			29 00 00 00 00 00 14 C5 0D 08 50 1B 2F 09 00 1A FC 24 D2 7A 00 10 00 33 00 FF 3C 	/* 3 910Mbps */
+			29 00 00 00 00 00 14 C5 0D 08 50 1A 99 09 00 1A FC 24 D2 7A 00 10 00 33 00 FF 3C	/* 4 930Mbps */
 		];
 
 		samsung,dynamic_mipi_clk_timing_table = <
@@ -2367,6 +2375,75 @@
 		];
 
 		/*
+		*************************************************************************************************************************
+		* Self mask check debug (SELF MASK CHECK)
+		*************************************************************************************************************************
+		*/
+
+		samsung,mask_crc_pass_data = [76 C3];
+
+		samsung,self_mask_check_tx_pre1 = [
+			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 FC 5A 5A	/* TEST KEY Enable */
+
+			/* CRC ON */
+			29 01 00 00 00 00 03 B0 27 D8
+			29 01 00 00 00 00 02 D8 10
+			29 01 00 00 00 00 03 B0 28 FE
+			29 01 00 00 00 00 02 FE 08
+
+			/* DBIST ON */
+			29 01 00 00 00 00 0A BF 01 07 00 00 00 10 00 00 00
+			
+			29 01 00 00 14 00 02 7A 00		/* self mask off */
+
+			/* delay 1frame */
+
+			/* side memory write */			
+			29 01 00 00 00 00 02 75 10
+
+			/* write self mask data (4C, 5C) */
+		
+			29 01 00 00 00 00 03 FC A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 9F 5A 5A	/* TEST KEY Enable */
+		];
+
+		samsung,self_mask_check_tx_pre2 = [
+			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 FC 5A 5A	/* TEST KEY Enable */
+
+			29 01 00 00 00 00 02 75 01
+			29 01 00 00 22 00 10 7A			/* self mask on */
+								21 00 00 00 95 
+								01 F4 02 89 08 
+								10 FF FF FF FF
+			/* delay 2frame */
+			29 01 00 00 00 00 03 FC A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 9F 5A 5A	/* TEST KEY Enable */
+		];
+		
+		samsung,self_mask_check_rx_cmds = [ 06 01 00 00 00 00 01 14 02 00];	/* read FB 1st ~ 2nd */
+
+		samsung,self_mask_check_tx_post = [
+			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 FC 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 10 7A				/* self mask & grid restore */
+								21 0B E0 0C 75 
+								0C 26 0C BB 09 
+								0F 00 00 00 00
+			29 01 00 00 00 00 0A BF 00 07 FF 00 00 10 00 00 00	/* Exit DBIST */						
+			29 01 00 00 00 00 03 FC A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 9F 5A 5A	/* TEST KEY Enable */
+		];
+
+
+		/*
 		* ************************************************************************************************************************
 		*  DMS (Dynamic Mode Switch)
 		* ************************************************************************************************************************
@@ -2438,11 +2515,6 @@
 					29 00 00 00 00 00 03 F0 5A 5A
 					29 00 00 00 00 00 03 ED 04 4C		/* ERR_FG */
 					29 00 00 00 00 00 03 F0 A5 A5
-
-					/* FFC Setting (897.6 Mbps) */
-					29 00 00 00 00 00 03 FC 5A 5A		/* TEST KEY3 Enable*/
-					29 00 00 00 00 00 06 C5 0D 10 B4 3E 01
-					29 00 00 00 00 00 03 FC A5 A5		/* TEST KEY3 Disable*/
 
 					/* TSP HSYNC */
 					29 01 00 00 00 00 03 F0 5A 5A
@@ -2609,11 +2681,6 @@
 					29 00 00 00 00 00 03 ED 04 4C		/* ERR_FG */
 					29 00 00 00 00 00 03 F0 A5 A5
 
-					/* FFC Setting (898.5 Mbps) */
-					29 00 00 00 00 00 03 FC 5A 5A		/* TEST KEY3 Enable*/
-					29 00 00 00 00 00 06 C5 0D 10 B4 3E 01
-					29 00 00 00 00 00 03 FC A5 A5		/* TEST KEY3 Disable*/
-
 					/* TSP HSYNC */
 					29 01 00 00 00 00 03 F0 5A 5A
 					29 01 00 00 00 00 0A B9 00 B0 E1 09 00 00 00 11 03	/* TSP HSYNC Setting */
@@ -2779,11 +2846,6 @@
 					29 00 00 00 00 00 03 F0 5A 5A
 					29 00 00 00 00 00 03 ED 04 4C		/* ERR_FG */
 					29 00 00 00 00 00 03 F0 A5 A5
-
-					/* FFC Setting (898.5 Mbps) */
-					29 00 00 00 00 00 03 FC 5A 5A		/* TEST KEY3 Enable*/
-					29 00 00 00 00 00 06 C5 0D 10 B4 3E 01
-					29 00 00 00 00 00 03 FC A5 A5		/* TEST KEY3 Disable*/
 
 					/* TSP HSYNC */
 					29 01 00 00 00 00 03 F0 5A 5A

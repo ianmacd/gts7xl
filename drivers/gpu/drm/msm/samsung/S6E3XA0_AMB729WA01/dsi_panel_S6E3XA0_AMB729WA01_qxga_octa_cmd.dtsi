@@ -149,13 +149,6 @@
 		/*qcom,mdss-dsi-panel-status-irq-trigger1 = "rising";*/
 		qcom,mdss-dsi-panel-status-irq-trigger1 = "falling";
 
-		/* In pba booting mode, SS disables continuous splash mode.
-		 * But QC recommended to enable splash mode as default..
-		 * In case of splash enabled, it should not touch has_src_split  setitng..
-		 * Refer to case 03756419.
-		 */
-		samsung,enable_splash_pba; /* enable continuous spalsh on PBA mode.. */
-
 		samsung,gamma_mode1_interpolation_test_tx_cmds_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A
 			29 01 00 00 00 00 03 B0 95 B1
@@ -871,9 +864,9 @@
 
 		samsung,gray_spot_test_on_tx_cmds_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A
-			29 01 00 00 00 00 08 F6 43 18 A7 03 F4 04 00
+			29 01 00 00 00 00 08 F6 43 16 A7 03 F4 04 00
 			29 01 00 00 64 00 02 F7 03
-			29 01 00 00 00 00 06 F6 43 18 A7 03 F6
+			29 01 00 00 00 00 06 F6 43 16 A7 03 F6
 			29 01 00 00 00 00 08 F2 03 10 08 2B 00 01 00
 			29 01 00 00 00 00 04 F4 B0 13 23
 			29 01 00 00 00 00 3A B5 19 CC 23 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00	/* ELVSS */
@@ -885,8 +878,9 @@
 
 		samsung,gray_spot_test_off_tx_cmds_revA = [
 			29 01 00 00 00 00 03 F0 5A 5A
-			29 01 00 00 00 00 08 F6 43 18 A7 03 F4 04 7A
+			29 01 00 00 00 00 08 F6 43 16 A7 03 F4 04 7A
 			29 01 00 00 64 00 02 F7 03
+			29 01 00 00 00 00 06 F6 43 16 A7 03 F4
 			29 01 00 00 00 00 08 F2 03 10 08 2B 00 11 0D
 			29 01 00 00 00 00 04 F4 B0 13 23
 			29 01 00 00 00 00 3A B5 19 CC 23 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00	/* ELVSS */
@@ -967,6 +961,20 @@
 		samsung,ccd_test_off_tx_cmds_revA = [
 			29 00 00 00 00 00 03 F0 5A 5A
 			29 01 00 00 00 00 02 CC 00
+			29 01 00 00 00 00 03 F0 A5 A5
+		];
+
+		samsung,demux_stress_on_tx_cmds_revA = [
+			29 00 00 00 00 00 03 F0 5A 5A
+			29 01 00 00 00 00 03 B0 24 CB
+			29 01 00 00 00 00 04 CB 14 1B 2E
+			29 01 00 00 00 00 03 F0 A5 A5
+		];
+
+		samsung,demux_stress_off_tx_cmds_revA = [
+			29 00 00 00 00 00 03 F0 5A 5A
+			29 01 00 00 00 00 03 B0 24 CB
+			29 01 00 00 00 00 04 CB 08 27 41
 			29 01 00 00 00 00 03 F0 A5 A5
 		];
 
@@ -2001,6 +2009,72 @@
 			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
 			29 01 00 00 00 00 03 7D 00 00
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
+		];
+
+		/*
+		*************************************************************************************************************************
+		* Self mask check debug (SELF MASK CHECK)
+		*************************************************************************************************************************
+		*/
+
+		samsung,mask_crc_pass_data = [58 6f];
+
+		samsung,self_mask_check_tx_pre1 = [
+			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 FC 5A 5A	/* TEST KEY Enable */
+
+			/* CRC ON */
+			29 01 00 00 00 00 03 B0 27 D8
+			29 01 00 00 00 00 02 D8 10
+			29 01 00 00 00 00 03 B0 25 FE
+			29 01 00 00 00 00 02 FE 08
+
+			/* DBIST ON */
+			29 01 00 00 00 00 0A BF 01 07 00 00 00 10 00 00 00
+			
+			29 01 00 00 14 00 02 7A 00		/* self mask off */
+
+			/* delay 1frame */
+
+			/* side memory write */			
+			29 01 00 00 00 00 02 75 10
+
+			/* write self mask data (4C, 5C) */
+		
+			29 01 00 00 00 00 03 FC A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 9F 5A 5A	/* TEST KEY Enable */
+		];
+
+		samsung,self_mask_check_tx_pre2 = [
+			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 FC 5A 5A	/* TEST KEY Enable */
+
+			29 01 00 00 00 00 02 75 01
+			29 01 00 00 22 00 10 7A			/* self mask on */
+								21 00 00 02 BB 05 38 05
+								FF 09 10 FF FF FF FF
+			/* delay 2frame */
+			29 01 00 00 00 00 03 FC A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 9F 5A 5A	/* TEST KEY Enable */
+		];
+		
+		samsung,self_mask_check_rx_cmds = [ 06 01 00 00 00 00 01 14 02 00];	/* read FB 1st ~ 2nd */
+
+		samsung,self_mask_check_tx_post = [
+			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 FC 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 10 7A				/* self mask & grid restore */
+								21 06 00 06 63 06 64 06 C7 09 10
+								00 00 00 00
+			29 01 00 00 00 00 0A BF 00 07 FF 00 00 10 00 00 00	/* Exit DBIST */						
+			29 01 00 00 00 00 03 FC A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 9F 5A 5A	/* TEST KEY Enable */
 		];
 
 		/*

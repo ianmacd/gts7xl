@@ -59,9 +59,11 @@
 
 #define DIFF_READ_NUM            10
 #define GRIP_LOG_TIME            15 /* 30 sec */
+#define ZERO_DETECT_TIME         5 /* 10 sec */
 
 /* CS Main */
 #define ENABLE_CSX               0x03
+#define REFERENCE_DISABLE        0x02
 
 #define CSX_STATUS_REG           SX9360_STAT_PROXSTAT_FLAG
 
@@ -74,6 +76,7 @@
 #else
 #define HALLIC_PATH		"/sys/class/sec/sec_key/hall_detect"
 #endif
+#define HALLIC_CERT_PATH	"/sys/class/sec/sec_key/certify_hall_detect"
 
 struct sx9360_p {
 	struct i2c_client *client;
@@ -124,7 +127,14 @@ struct sx9360_p {
 	s16 max_normal_diff;
 
 	int debug_count;
+	int debug_zero_count;
 	char hall_ic[6];
+
+	u32 hallic_cert_detect;
+#ifdef CONFIG_SENSORS_GRIP_IC_VOLTAGE_SET_FOR_EACH
+	const char *dvdd_vreg_name;	/* regulator name */
+	struct regulator *dvdd_vreg;	/* regulator */
+#endif
 };
 
 static int sx9360_check_hallic_state(char *file_path, char hall_ic_status[])
@@ -224,7 +234,7 @@ static u8 sx9360_read_irqstate(struct sx9360_p *data)
 static void sx9360_initialize_register(struct sx9360_p *data)
 {
 	u8 val = 0;
-	int idx;
+	unsigned int idx;
 
 	for (idx = 0; idx < (sizeof(setup_reg) >> 1); idx++) {		
 		sx9360_i2c_write(data, setup_reg[idx].reg, setup_reg[idx].val);
@@ -420,7 +430,7 @@ static int sx9360_set_mode(struct sx9360_p *data, unsigned char mode)
 		ret = sx9360_i2c_write(data, SX9360_GNRLCTRL0_REG, SX9360_GNRLCTRL0_VAL_PHOFF);
 	} else if (mode == SX9360_MODE_NORMAL) {
 		ret = sx9360_i2c_write(data, SX9360_GNRLCTRL0_REG,
-			SX9360_GNRLCTRL0_VAL_PHOFF | ENABLE_CSX);
+			SX9360_GNRLCTRL0_VAL_PHOFF | REFERENCE_DISABLE);
 		msleep(20);
 
 		sx9360_set_offset_calibration(data);
@@ -690,12 +700,10 @@ static ssize_t sx9360_avgposfilt_show(struct device *dev,
 		return snprintf(buf, PAGE_SIZE, "1\n");
 	else if (avgposfilt > 1 && avgposfilt < 7)
 		return snprintf(buf, PAGE_SIZE, "1-1/%d\n", 16 << avgposfilt);
-	else if (avgposfilt == 0)
-		return snprintf(buf, PAGE_SIZE, "0\n");
 	else if (avgposfilt == 1)
 		return snprintf(buf, PAGE_SIZE, "1-1/16\n");
 
-	return snprintf(buf, PAGE_SIZE, "not set\n");
+	return snprintf(buf, PAGE_SIZE, "0\n");
 }
 
 static ssize_t sx9360_gain_show(struct device *dev,
@@ -742,10 +750,8 @@ static ssize_t sx9360_rawfilt_show(struct device *dev,
 
 	if (rawfilt > 0 && rawfilt < 8)
 		return snprintf(buf, PAGE_SIZE, "1-1/%d\n", 1 << rawfilt);
-	else if (rawfilt == 0)
-		return snprintf(buf, PAGE_SIZE, "0\n");
 
-	return snprintf(buf, PAGE_SIZE, "not set\n");
+	return snprintf(buf, PAGE_SIZE, "0\n");
 }
 
 static ssize_t sx9360_sampling_freq_show(struct device *dev,
@@ -1219,33 +1225,12 @@ static void sx9360_init_work_func(struct work_struct *work)
 	struct sx9360_p *data = container_of((struct delayed_work *)work,
 		struct sx9360_p, init_work);
 
-	int retry = 0;
-
 	sx9360_initialize_chip(data);
 
 	sx9360_set_mode(data, SX9360_MODE_NORMAL);
 	/* make sure no interrupts are pending since enabling irq
 	 * will only work on next falling edge */
 	sx9360_read_irqstate(data);
-	msleep(20);
-
-	while(retry++ < 10) {
-		sx9360_get_data(data);
-		/* Defence code */
-		if (data->capMain == 0 && data->avg == 0 && data->diff == 0
-			&& data->useful == 0 && data->offset == 0) {
-			pr_info("[SX9360]: Defence code for grip sensor - retry: %d\n", retry);
-
-			sx9360_i2c_write(data, SX9360_SOFTRESET_REG, SX9360_SOFTRESET);
-			msleep(300);
-			sx9360_initialize_chip(data);
-			sx9360_set_mode(data, SX9360_MODE_NORMAL);
-			sx9360_read_irqstate(data);
-			msleep(20);
-		} else {
-			break;
-		}
-	}
 }
 
 static void sx9360_irq_work_func(struct work_struct *work)
@@ -1260,11 +1245,32 @@ static void sx9360_irq_work_func(struct work_struct *work)
 			__func__, sx9360_get_nirq_state(data));
 }
 
+static void sx9360_read_register(struct sx9360_p *data)
+{
+	u8 val, offset = 0;
+	int idx = 0, array_size = 0;
+	char buf[52] = {0,};
+
+	array_size = (int)(ARRAY_SIZE(setup_reg));
+	while (idx < array_size) {
+		sx9360_i2c_read(data, setup_reg[idx].reg, &val);
+		offset += snprintf(buf + offset, sizeof(buf) - offset, "[0x%02x]:0x%02x ", setup_reg[idx].reg, val);
+		idx++;
+		if(!(idx & 0x03) || (idx == array_size)) {
+			pr_info("[SX9360]: %s - %s\n", __func__, buf);
+			offset = 0;
+		}
+	}
+}
+
 static void sx9360_debug_work_func(struct work_struct *work)
 {
 	struct sx9360_p *data = container_of((struct delayed_work *)work,
 		struct sx9360_p, debug_work);
 	static int hall_flag = 1;
+	static int hall_cert_flag = 1;
+	int ret;
+	u8 value = 0;
 
 #if defined(CONFIG_FOLDER_HALL)
 	char str[2] = "0";
@@ -1286,6 +1292,22 @@ static void sx9360_debug_work_func(struct work_struct *work)
 		hall_flag = 1;
 	}
 
+	if (data->hallic_cert_detect) {
+		sx9360_check_hallic_state(HALLIC_CERT_PATH, data->hall_ic);
+
+		data->hall_ic[sizeof(str)-1] = '\0';
+		
+		if (strcmp(data->hall_ic, str) == 0) {
+			if (hall_cert_flag) {
+				pr_info("[SX9360]: %s - cert hall IC is closed\n", __func__);
+				sx9360_set_offset_calibration(data);
+				hall_cert_flag = 0;
+			}
+		} else {
+			hall_cert_flag = 1;
+		}
+	}
+
 	if (atomic_read(&data->enable) == ON) {
 		if (data->abnormal_mode) {
 			sx9360_get_data(data);
@@ -1299,6 +1321,27 @@ static void sx9360_debug_work_func(struct work_struct *work)
 				data->debug_count++;
 			}
 		}
+	}
+
+	/* Zero Detect Defence code*/
+	if(data->debug_zero_count >= ZERO_DETECT_TIME) {
+		ret = sx9360_i2c_read(data, SX9360_GNRLCTRL0_REG, &value);
+		if (ret < 0)
+			pr_err("[SX9360]: fail to read PHEN :0x%02x (%d)\n", value, ret);
+		else if (value == 0) {
+			pr_info("[SX9360]: %s - detected all data zero!!!\n", __func__);
+			sx9360_read_register(data);
+
+			sx9360_i2c_write(data, SX9360_SOFTRESET_REG, SX9360_SOFTRESET);
+			msleep(300);
+			sx9360_initialize_chip(data);
+			sx9360_set_mode(data, SX9360_MODE_NORMAL);
+			sx9360_read_irqstate(data);
+			msleep(20);
+		}
+		data->debug_zero_count = 0;
+	} else {
+		data->debug_zero_count++;
 	}
 
 	schedule_delayed_work(&data->debug_work, msecs_to_jiffies(2000));
@@ -1418,8 +1461,19 @@ static int sx9360_parse_dt(struct sx9360_p *data, struct device *dev)
 	if (data->gpio_nirq < 0) {
 		pr_err("[SX9360]: %s - get gpio_nirq error\n", __func__);
 		return -ENODEV;
+	} else {
+		pr_info("[SX9360]: %s - get gpio_nirq %d\n",
+			__func__, data->gpio_nirq);
 	}
-
+#ifdef CONFIG_SENSORS_GRIP_IC_VOLTAGE_SET_FOR_EACH
+	if (of_property_read_string_index(dNode, "sx9360,dvdd_vreg_name", 0,
+			(const char **)&data->dvdd_vreg_name)) {
+		data->dvdd_vreg_name = NULL;
+	}
+	pr_info("[SX9360] %s - dvdd_vreg_name: %s\n", __func__, data->dvdd_vreg_name);
+#endif
+	if (!sx9360_read_setupreg(dNode, SX9360_GNRLCTRL2, &val))
+		setup_reg[SX9360_GNRLCTRL2_REG_IDX].val = (u8)val;
 	if (!sx9360_read_setupreg(dNode, SX9360_REFRESOLUTION, &val))
 		setup_reg[SX9360_REFRESOLUTION_REG_IDX].val = (u8)val;
 	if (!sx9360_read_setupreg(dNode, SX9360_REFAGAINFREQ, &val))
@@ -1428,6 +1482,8 @@ static int sx9360_parse_dt(struct sx9360_p *data, struct device *dev)
 		setup_reg[SX9360_RESOLUTION_REG_IDX].val = (u8)val;	
 	if (!sx9360_read_setupreg(dNode, SX9360_AGAINFREQ, &val))
 		setup_reg[SX9360_AGAINFREQ_REG_IDX].val = (u8)val;
+	if (!sx9360_read_setupreg(dNode, SX9360_AVGFILT, &val))
+		setup_reg[SX9360_AVGFILT_REG_IDX].val = (u8)val;
 	if (!sx9360_read_setupreg(dNode, SX9360_REFGAINRAWFILT, &val))
 		setup_reg[SX9360_REFGAINRAWFILT_REG_IDX].val = (u8)val;
 	if (!sx9360_read_setupreg(dNode, SX9360_GAINRAWFILT, &val))
@@ -1436,6 +1492,8 @@ static int sx9360_parse_dt(struct sx9360_p *data, struct device *dev)
 		setup_reg[SX9360_HYST_REG_IDX].val = (u8)val;
 	if (!sx9360_read_setupreg(dNode, SX9360_PROXTHRESH, &val))
 		setup_reg[SX9360_PROXTHRESH_REG_IDX].val = (u8)val;
+	if (sx9360_read_setupreg(dNode, SX9360_HALLIC_CERT, &data->hallic_cert_detect))
+		data->hallic_cert_detect = 0;		
 
 	return 0;
 }
@@ -1527,7 +1585,39 @@ static int sx9360_check_chip_id(struct sx9360_p *data)
 
 	return 0;
 }
+#ifdef CONFIG_SENSORS_GRIP_IC_VOLTAGE_SET_FOR_EACH
+static int sx9360_setup_regulator(struct sx9360_p *data)
+{
+	int ret = 0;
+	if (data->dvdd_vreg_name) {
+		if (data->dvdd_vreg == NULL) {
+			data->dvdd_vreg = regulator_get(NULL, data->dvdd_vreg_name);
+			ret = IS_ERR(data->dvdd_vreg);
+			if (ret) {
+				data->dvdd_vreg = NULL;
+				pr_err("[SX9360] %s : failed to get dvdd_vreg %s\n",
+					data->dvdd_vreg_name);
+				return ret;
+			}
 
+			ret = regulator_set_voltage(data->dvdd_vreg, 3000000, 3000000);
+			if (ret) {
+				pr_err("[SX9360] %s : failed to set 3.0v (%d)\n", __func__, ret);
+				return ret;
+			}
+
+			pr_info("[SX9360] %s : normal setting for 3.0v\n", __func__);
+
+			ret = regulator_enable(data->dvdd_vreg);
+			if (ret) {
+				pr_err("[SX9360] %s : 3.0v enable failed\n", __func__);
+			}
+		}
+	}
+	
+	return ret;
+}
+#endif
 static int sx9360_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
@@ -1574,7 +1664,14 @@ static int sx9360_probe(struct i2c_client *client,
 		pr_err("[SX9360]: %s - could not setup pin\n", __func__);
 		goto exit_setup_pin;
 	}
-
+#ifdef CONFIG_SENSORS_GRIP_IC_VOLTAGE_SET_FOR_EACH
+	ret = sx9360_setup_regulator(data);
+	if (ret) {
+		pr_err("[SX9360]: %s - could not setup voltage to 3.0v \n", __func__);
+	} else  {
+		usleep_range(10000, 10000);
+	}
+#endif
 	/* read chip id */
 	ret = sx9360_check_chip_id(data);
 	if (ret < 0) {
@@ -1637,6 +1734,10 @@ exit_register_failed:
 exit_request_threaded_irq:
 exit_chip_reset:
 	gpio_free(data->gpio_nirq);
+#ifdef CONFIG_SENSORS_GRIP_IC_VOLTAGE_SET_FOR_EACH
+	/* free ldo */
+	regulator_put(data->dvdd_vreg);
+#endif
 exit_setup_pin:
 exit_of_node:
 	mutex_destroy(&data->mode_mutex);

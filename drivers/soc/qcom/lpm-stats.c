@@ -821,12 +821,11 @@ EXPORT_SYMBOL(lpm_stats_cluster_exit);
  * Function to communicate the low power mode level that the cpu is
  * prepared to enter.
  */
-void lpm_stats_cpu_enter(uint32_t index, uint64_t time, uint64_t qtime)
+void lpm_stats_cpu_enter(uint32_t index, uint64_t time)
 {
 	struct lpm_stats *stats = &(*this_cpu_ptr(&(cpu_stats)));
 
 	stats->sleep_time = time;
-	stats->sleep_qtime = qtime;
 
 	if (!stats->time_stats)
 		return;
@@ -842,7 +841,7 @@ EXPORT_SYMBOL(lpm_stats_cpu_enter);
  *
  * Function to communicate the low power mode level that the cpu exited.
  */
-void lpm_stats_cpu_exit(uint32_t index, uint64_t time, uint64_t qtime, bool success)
+void lpm_stats_cpu_exit(uint32_t index, uint64_t time, bool success)
 {
 	struct lpm_stats *stats = &(*this_cpu_ptr(&(cpu_stats)));
 
@@ -850,7 +849,6 @@ void lpm_stats_cpu_exit(uint32_t index, uint64_t time, uint64_t qtime, bool succ
 		return;
 
 	stats->sleep_time = time - stats->sleep_time;
-	stats->sleep_qtime = qtime - stats->sleep_qtime;
 
 	update_exit_stats(stats, index, success);
 }

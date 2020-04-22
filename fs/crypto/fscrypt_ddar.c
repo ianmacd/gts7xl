@@ -48,7 +48,9 @@ int update_encryption_context_with_dd_policy(
 	} else if (ret == sizeof(ctx)) {
 		ctx.knox_flags |= policy->flags << FSCRYPT_KNOX_FLG_DDAR_SHIFT & FSCRYPT_KNOX_FLG_DDAR_MASK;
 		dd_verbose("fscrypt_context.knox_flag:0x%08x\n", ctx.knox_flags);
-		ret = inode->i_sb->s_cop->set_context(inode, &ctx, sizeof(ctx), NULL);
+//		ret = inode->i_sb->s_cop->set_context(inode, &ctx, sizeof(ctx), NULL);
+		ret = inode->i_sb->s_cop->set_knox_context(inode, NULL, &ctx, sizeof(ctx), NULL);
+		dd_info("result of set knox context for ino(%ld) : %d\n", inode->i_ino, ret);
 	} else {
 		dd_error("failed to set dd policy. get_context rc:%d\n", ret);
 		ret = -EEXIST;
@@ -219,4 +221,19 @@ int fscrypt_dd_may_submit_bio(struct bio *bio)
 		return -EOPNOTSUPP;
 
 	return fscrypt_dd_submit_bio(inode, bio);
+}
+
+long fscrypt_dd_get_ino(struct bio *bio)
+{
+	struct inode *inode = fscrypt_bio_get_inode(bio);
+	if (fscrypt_dd_encrypted_inode(inode))
+		return inode->i_ino;
+
+	return 0;
+}
+
+int fscrypt_dd_encrypted(struct bio *bio)
+{
+	struct inode *inode = fscrypt_bio_get_inode(bio);
+	return fscrypt_dd_encrypted_inode(inode);
 }

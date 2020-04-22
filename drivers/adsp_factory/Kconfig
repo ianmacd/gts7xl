@@ -181,6 +181,13 @@ config SUPPORT_BRIGHT_COMPENSATION_LUX
 	  provide sysfs for LCD service.
 	  receive aor and brightness level from lcd driver.
 
+config SUPPORT_BRIGHT_SYSFS_COMPENSATION_LUX
+	tristate "Sensors support lux compensation based on brightness"
+	default n
+	help
+	  Support lux compensation based on brightness sysfs.
+	  receive aor and brightness level from hal injection.
+
 config SUPPORT_DUAL_6AXIS
 	tristate "Sensors support dual 6axis"
 	default n
@@ -214,6 +221,12 @@ config SUPPORT_DEVICE_MODE
 	help
 	  Support device mode.
 
+config SUPPORT_AK0997X
+	tristate "Support ak0997x"
+	default n
+	help
+	  Support ak0997x.
+
 config VEML3328_FACTORY
 	tristate "factory test for SSC - veml3328"
 	default n
@@ -222,3 +235,15 @@ config VEML3328_FACTORY
 	  provide sysfs for factory test.
 	  request selftest to adsp_factory.
 	  receive test result from adsp_factory.
+
+config SUPPORT_SSC_MODE
+	tristate "Support ssc mode function for adsp sensor"
+	default n
+	help
+	  Support the ssc mode function.
+
+config SUPPORT_SSC_MODE_FOR_MAG
+	tristate "Support ssc mode for mag function for mag sensor"
+	default n
+	help
+	  Support the ssc mode for mag function.

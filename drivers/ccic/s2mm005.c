@@ -23,7 +23,6 @@
 #include <linux/ccic/s2mm005_fw.h>
 #include <linux/usb_notify.h>
 #include <linux/ccic/ccic_sysfs.h>
-#include <linux/sec_bsp.h>
 #if defined(CONFIG_CCIC_NOTIFIER)
 #include <linux/ccic/ccic_sysfs.h>
 #include <linux/ccic/ccic_core.h>
@@ -201,8 +200,7 @@ int s2mm005_write_byte(const struct i2c_client *i2c, u16 reg, u8 *val, u16 size)
 	struct otg_notify *o_notify = get_otg_notify();
 #endif
 
-	pr_err("%s: size: 0x%x\n",
-				__func__, size);
+	pr_debug("%s: size: 0x%x\n", __func__, size);
 	while(size > sendsz) {
 		data[0] = (reg+cnt) >>8;
 		data[1] = (reg+cnt) & 0xff;
@@ -1149,6 +1147,29 @@ water:
 }
 
 #if defined(CONFIG_OF)
+static unsigned int system_rev __read_mostly;
+
+static int __init sec_hw_rev_setup(char *p)
+{
+	int ret;
+
+	ret = kstrtouint(p, 0, &system_rev);
+	if (unlikely(ret < 0)) {
+		pr_warn("androidboot.revision is malformed (%s)\n", p);
+		return -EINVAL;
+	}
+
+	pr_info("androidboot.revision %x\n", system_rev);
+
+	return 0;
+}
+early_param("androidboot.revision", sec_hw_rev_setup);
+
+static unsigned int sec_hw_rev(void)
+{
+	return system_rev;
+}
+
 static int of_s2mm005_usbpd_dt(struct device *dev,
 			       struct s2mm005_data *usbpd_data)
 {

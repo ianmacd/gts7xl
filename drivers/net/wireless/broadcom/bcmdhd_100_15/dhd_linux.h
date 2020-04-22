@@ -1,7 +1,7 @@
 /*
  * DHD Linux header file (dhd_linux exports for cfg80211 and other components)
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_linux.h 816392 2019-04-24 14:39:02Z $
+ * $Id: dhd_linux.h 828731 2019-07-04 05:25:31Z $
  */
 
 /* wifi platform functions for power, interrupt and pre-alloc, either
@@ -137,6 +137,8 @@ typedef struct dhd_if {
 	uint32 tsyncack_txed;
 	u64 last_sync;
 	struct work_struct  blk_tsfl_work;
+	uint32 tsync_per_sec;
+	bool disconnect_tsync_flood;
 #endif /* DHDTCPSYNC_FLOOD_BLK */
 } dhd_if_t;
 

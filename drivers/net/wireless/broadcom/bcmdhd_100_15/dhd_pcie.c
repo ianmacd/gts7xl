@@ -1,7 +1,7 @@
 /*
  * DHD Bus Module for PCIE
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_pcie.c 825460 2019-06-14 08:31:09Z $
+ * $Id: dhd_pcie.c 851108 2019-11-18 07:01:36Z $
  */
 
 /* include files */
@@ -6558,7 +6558,7 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 		if (DHD_BUS_BUSY_CHECK_RPM_SUSPEND_DONE(bus->dhd)) {
 			bus->bus_wake = 1;
 			OSL_SMP_WMB();
-			wake_up_interruptible(&bus->rpm_queue);
+			wake_up(&bus->rpm_queue);
 		}
 #endif /* DHD_PCIE_RUNTIMEPM */
 		/* resume all interface network queue. */
@@ -11191,7 +11191,7 @@ dhd_pcie_dump_wrapper_regs(dhd_pub_t *dhd)
 	DHD_ERROR(("%s: Master wrapper Reg\n", __FUNCTION__));
 
 	if (si_setcore(sih, PCIE2_CORE_ID, 0) != NULL) {
-		for (i = 0; i < sizeof(wrapper_dump_list) / 4; i++) {
+		for (i = 0; i < (uint32)sizeof(wrapper_dump_list) / 4; i++) {
 			val = si_wrapperreg(sih, wrapper_dump_list[i], 0, 0);
 			DHD_ERROR(("sbreg: addr:0x%x val:0x%x\n", wrapper_dump_list[i], val));
 		}
@@ -11199,7 +11199,7 @@ dhd_pcie_dump_wrapper_regs(dhd_pub_t *dhd)
 
 	if ((cr4regs = si_setcore(sih, ARMCR4_CORE_ID, 0)) != NULL) {
 		DHD_ERROR(("%s: ARM CR4 wrapper Reg\n", __FUNCTION__));
-		for (i = 0; i < sizeof(wrapper_dump_list) / 4; i++) {
+		for (i = 0; i < (uint32)sizeof(wrapper_dump_list) / 4; i++) {
 			val = si_wrapperreg(sih, wrapper_dump_list[i], 0, 0);
 			DHD_ERROR(("sbreg: addr:0x%x val:0x%x\n", wrapper_dump_list[i], val));
 		}

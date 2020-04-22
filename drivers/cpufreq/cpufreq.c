@@ -35,7 +35,6 @@
 #include <linux/ologk.h>
 
 #include <trace/events/power.h>
-#include <linux/mm.h>
 
 static LIST_HEAD(cpufreq_policy_list);
 
@@ -563,13 +562,13 @@ EXPORT_SYMBOL_GPL(cpufreq_policy_transition_delay_us);
  *                          SYSFS INTERFACE                          *
  *********************************************************************/
 static ssize_t show_boost(struct kobject *kobj,
-				 struct attribute *attr, char *buf)
+			  struct kobj_attribute *attr, char *buf)
 {
 	return sprintf(buf, "%d\n", cpufreq_driver->boost_enabled);
 }
 
-static ssize_t store_boost(struct kobject *kobj, struct attribute *attr,
-				  const char *buf, size_t count)
+static ssize_t store_boost(struct kobject *kobj, struct kobj_attribute *attr,
+			   const char *buf, size_t count)
 {
 	int ret, enable;
 
@@ -644,31 +643,6 @@ static int cpufreq_parse_governor(char *str_governor, unsigned int *policy,
 		mutex_unlock(&cpufreq_governor_mutex);
 	}
 	return err;
-}
-
-bool filterByProcName(char* proc_name) {
-	bool ret = false;
-	struct pid *pid = NULL;
-	struct task_struct *task = NULL;
-	int nr = task_tgid_vnr(current);
-	pid = find_get_pid(nr);
-
-	if(pid) {
-		task = get_pid_task(pid, PIDTYPE_PID);
-		put_pid(pid);
-
-		if(task) {
-			char* buf;
-			buf = kzalloc(512, GFP_KERNEL);
-			get_cmdline(task, buf, 512);
-			if(!strcmp(buf, proc_name)) {
-				ret = true;
-			}
-			put_task_struct(task);
-			kfree(buf);
-		}
-	}
-	return ret;
 }
 
 /**
@@ -1591,17 +1565,16 @@ static unsigned int __cpufreq_get(struct cpufreq_policy *policy)
 {
 	unsigned int ret_freq = 0;
 
-	if (!cpufreq_driver->get)
+	if (unlikely(policy_is_inactive(policy)) || !cpufreq_driver->get)
 		return ret_freq;
 
 	ret_freq = cpufreq_driver->get(policy->cpu);
 
 	/*
-	 * Updating inactive policies is invalid, so avoid doing that.  Also
-	 * if fast frequency switching is used with the given policy, the check
+	 * If fast frequency switching is used with the given policy, the check
 	 * against policy->cur is pointless, so skip it in that case too.
 	 */
-	if (unlikely(policy_is_inactive(policy)) || policy->fast_switch_enabled)
+	if (policy->fast_switch_enabled)
 		return ret_freq;
 
 	if (ret_freq && policy->cur &&
@@ -1630,10 +1603,7 @@ unsigned int cpufreq_get(unsigned int cpu)
 
 	if (policy) {
 		down_read(&policy->rwsem);
-
-		if (!policy_is_inactive(policy))
-			ret_freq = __cpufreq_get(policy);
-
+		ret_freq = __cpufreq_get(policy);
 		up_read(&policy->rwsem);
 
 		cpufreq_cpu_put(policy);
@@ -1742,6 +1712,9 @@ void cpufreq_resume(void)
 	int ret;
 
 	if (!cpufreq_driver)
+		return;
+
+	if (unlikely(!cpufreq_suspended))
 		return;
 
 	cpufreq_suspended = false;
@@ -1921,17 +1894,13 @@ EXPORT_SYMBOL(cpufreq_unregister_notifier);
 unsigned int cpufreq_driver_fast_switch(struct cpufreq_policy *policy,
 					unsigned int target_freq)
 {
-	unsigned int next_freq;
-
+	int ret;
 	target_freq = clamp_val(target_freq, policy->min, policy->max);
-	next_freq = cpufreq_driver->fast_switch(policy, target_freq);
 
-	cpufreq_times_record_transition(policy, target_freq);
-
-	if (next_freq && unlikely(cpufreq_stats_on_check(policy)))
-		cpufreq_stats_record_transition(policy, next_freq);
-
-	return next_freq;
+        ret = cpufreq_driver->fast_switch(policy, target_freq);
+	if (ret)
+		cpufreq_times_record_transition(policy, ret);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(cpufreq_driver_fast_switch);
 
@@ -2287,6 +2256,10 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
 			CPUFREQ_ADJUST, new_policy);
 
+	/* adjust if necessary - hardware incompatibility */
+	blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
+			CPUFREQ_INCOMPATIBLE, new_policy);
+
 	/*
 	 * verify the cpu speed can be set within this limit, which might be
 	 * different to the first one
@@ -2308,7 +2281,7 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	if(policy->cpu < NR_CPUS) {
 		if(/*core_min_max_policy[policy->cpu].min != policy->min ||*/ core_min_max_policy[policy->cpu].max != policy->max) {
 			if(policy->max < OLOG_CPU_FREQ_FILTER || core_min_max_policy[policy->cpu].max < OLOG_CPU_FREQ_FILTER) {
-				perflog(PERFLOG_CPUFREQ, "[%d] %lu, %lu", policy->cpu, policy->min / 1000, policy->max / 1000);
+				ologk("%s [%d] %lu, %lu", __func__, policy->cpu, policy->min / 1000, policy->max / 1000);
 			}
 			core_min_max_policy[policy->cpu].min = policy->min;
 			core_min_max_policy[policy->cpu].max = policy->max;

@@ -42,6 +42,12 @@ enum muic_op_mode {
 	OPMODE_CCIC = 1<<0,
 };
 
+/* MUIC One Binary */
+enum {
+	MUIC_ONE_DEFAULT	= 0,
+	MUIC_ONE_S2MU,
+};
+
 /* MUIC Dock Observer Callback parameter */
 enum {
 	MUIC_DOCK_DETACHED	= 0,
@@ -125,6 +131,12 @@ typedef enum {
 	ADC_DONTCARE		= 0xfe, /* ADC don't care for MHL */
 	ADC_ERROR		= 0xff, /* ADC value read error */
 } muic_adc_t;
+
+#define IS_JIG_ADC(adc) \
+	(((adc == ADC_JIG_USB_OFF) \
+	|| (adc == ADC_JIG_USB_ON) \
+	|| (adc == ADC_JIG_UART_OFF) \
+	|| (adc == ADC_JIG_UART_ON)) ? 1 : 0)
 
 /* MUIC attached device type */
 typedef enum {
@@ -231,6 +243,7 @@ typedef enum {
 
 	ATTACHED_DEV_UNKNOWN_MUIC,
 	ATTACHED_DEV_NUM,
+	ATTACHED_DEV_ABNORMAL_OTG_MUIC,
 } muic_attached_dev_t;
 
 #ifdef CONFIG_MUIC_HV_FORCE_LIMIT
@@ -334,11 +347,7 @@ struct muic_platform_data {
 	void (*cleanup_switch_dev_cb) (void);
 
 	/* muic GPIO control function */
-#if defined(CONFIG_CCIC_S2MU107)
-	int (*init_gpio_cb) (void *, int switch_sel);
-#else
 	int (*init_gpio_cb) (int switch_sel);
-#endif
 
 	int (*set_gpio_usb_sel) (int usb_path);
 	int (*set_gpio_uart_sel) (int uart_path);
@@ -398,6 +407,97 @@ enum muic_param_en {
 	MUIC_DISABLE = 0,
 	MUIC_ENABLE
 };
+
+/* Integration */
+#define ENUM_STR(x, r) { case x: r = #x; break; }
+
+#define REQUEST_IRQ(_irq, _dev_id, _name, _func)			\
+do {									\
+	ret = request_threaded_irq(_irq, NULL, _func,			\
+				0, _name, _dev_id);			\
+	if (ret < 0) {							\
+		pr_err("%s:%s Failed to request IRQ #%d: %d\n",		\
+				MUIC_DEV_NAME, __func__, _irq, ret);	\
+		_irq = 0;						\
+	}								\
+} while (0)
+
+#define FREE_IRQ(_irq, _dev_id, _name)					\
+do {									\
+	if (_irq) {							\
+		free_irq(_irq, _dev_id);				\
+		pr_info("%s:%s IRQ(%d):%s free done\n", MUIC_DEV_NAME,	\
+				__func__, _irq, _name);			\
+	}								\
+} while (0)
+
+#define MASK_1b (1)
+#define MASK_2b (0x3)
+#define MASK_3b (0x7)
+#define MASK_4b (0xf)
+#define MASK_5b (0x1f)
+#define MASK_6b (0x3f)
+#define MASK_7b (0x7f)
+#define MASK_8b (0xff)
+
+#if defined(CONFIG_MUIC_HV)
+#define IS_VCHGIN_9V(x) ((8000 <= x) && (x <= 10300))
+#define IS_VCHGIN_5V(x) ((4000 <= x) && (x <= 6000))
+
+#define AFC_MRXRDY_CNT_LIMIT (3)
+#define AFC_MPING_RETRY_CNT_LIMIT (10)
+#define AFC_QC_RETRY_CNT_LIMIT (3)
+#define VCHGIN_CHECK_CNT_LIMIT (3)
+#define AFC_QC_RETRY_WAIT_CNT_LIMIT (3)
+
+typedef enum {
+	AFC_IRQ_VDNMON = 1,
+	AFC_IRQ_DNRES,
+	AFC_IRQ_MPNACK,
+	AFC_IRQ_MRXBUFOW,
+	AFC_IRQ_MRXTRF,
+	AFC_IRQ_MRXPERR,
+	AFC_IRQ_MRXRDY = 7,
+} afc_int_t;
+
+typedef enum {
+	AFC_NOT_MASK = 0,
+	AFC_MASK = 1,
+} int_mask_t;
+
+typedef enum {
+	QC_PROTOCOL,
+	AFC_PROTOCOL,
+} protocol_sw_t;
+
+typedef enum {
+	QC_UNKHOWN,
+	QC_5V,
+	QC_9V,
+	QC_12V,
+} qc_2p0_type_t;
+
+typedef enum {
+	VDNMON_LOW		= 0x00,
+	VDNMON_HIGH		= (0x1 << 1),
+
+	VDNMON_DONTCARE		= 0xff,
+} vdnmon_t;
+
+/* MUIC afc irq type */
+typedef enum {
+	MUIC_AFC_IRQ_VDNMON = 0,
+	MUIC_AFC_IRQ_MRXRDY,
+	MUIC_AFC_IRQ_VBADC,
+	MUIC_AFC_IRQ_MPNACK,
+	MUIC_AFC_IRQ_DONTCARE = 0xff,
+} muic_afc_irq_t;
+
+typedef enum tx_data{
+    MUIC_HV_5V = 0,
+    MUIC_HV_9V,
+} muic_afc_txdata_t;
+#endif
 
 #ifdef CONFIG_IFCONN_NOTIFIER
 #define MUIC_SEND_NOTI_ATTACH(dev) \

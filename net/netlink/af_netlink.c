@@ -683,6 +683,16 @@ static int netlink_create(struct net *net, struct socket *sock, int protocol,
 	nlk->module = module;
 	nlk->netlink_bind = bind;
 	nlk->netlink_unbind = unbind;
+	
+	if ( protocol == NETLINK_GENERIC)
+	{
+		pr_err("%s(%d) proto: %d type: %d sk: %p pid:%u comm: %s\n",
+			__func__, __LINE__,
+			protocol,
+			sock->type,
+			sock->sk,
+			task_pid_nr(current), current->comm);
+	}
 out:
 	return err;
 
@@ -1229,6 +1239,10 @@ static int __netlink_sendskb(struct sock *sk, struct sk_buff *skb)
 
 	netlink_deliver_tap(skb);
 
+    if (sk->sk_protocol ==  NETLINK_GENERIC &&
+		((struct genlmsghdr *)(nlmsg_data((struct nlmsghdr*)skb->data)))->cmd == CTRL_CMD_NEWFAMILY)
+		pr_err("%s(%d) skb:%p queued sk: %p\n", __func__, __LINE__, skb, sk);
+	
 	skb_queue_tail(&sk->sk_receive_queue, skb);
 	sk->sk_data_ready(sk);
 	return len;
@@ -1902,6 +1916,14 @@ static int netlink_recvmsg(struct socket *sock, struct msghdr *msg, size_t len,
 		goto out;
 
 	data_skb = skb;
+    if (sock->sk->sk_protocol ==  NETLINK_GENERIC &&
+    	((struct genlmsghdr *)(nlmsg_data((struct nlmsghdr*)skb->data)))->cmd == CTRL_CMD_NEWFAMILY)
+    {
+		pr_err("%s(%d) skb: %p copy dgram pid:%u comm:%s sk: %p\n",
+			__func__, __LINE__,
+			data_skb, task_pid_nr(current),
+			current->comm, sk);
+    }	
 
 #ifdef CONFIG_COMPAT_NETLINK_MESSAGES
 	if (unlikely(skb_shinfo(skb)->frag_list)) {
@@ -1932,6 +1954,14 @@ static int netlink_recvmsg(struct socket *sock, struct msghdr *msg, size_t len,
 	}
 
 	skb_reset_transport_header(data_skb);
+    if (sock->sk->sk_protocol ==  NETLINK_GENERIC &&
+		((struct genlmsghdr *)(nlmsg_data((struct nlmsghdr*)skb->data)))->cmd == CTRL_CMD_NEWFAMILY)
+    {
+    	pr_err("%s(%d) skb: %p copy dgram pid:%u comm:%s sk: %p\n",
+			__func__, __LINE__,
+			data_skb, task_pid_nr(current),
+			current->comm, sk);
+    }	
 	err = skb_copy_datagram_msg(data_skb, 0, msg, copied);
 
 	if (msg->msg_name) {

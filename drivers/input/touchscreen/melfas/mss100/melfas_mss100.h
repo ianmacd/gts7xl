@@ -53,7 +53,7 @@
 #include <linux/sec_debug.h>
 #endif
 #ifdef CONFIG_TOUCHSCREEN_DUMP_MODE
-#include <linux/sec_debug.h>
+#include <linux/sec_ts_common.h>
 extern struct tsp_dump_callbacks dump_callbacks;
 static struct delayed_work *p_ghost_check;
 #endif
@@ -266,7 +266,7 @@ struct mms_ts_coordinate {
 	u16 y;
 	u16 p_x;
 	u16 p_y;
-	u8 z;
+	u16 z;
 	u8 major;
 	u8 minor;
 	bool palm;
@@ -415,7 +415,6 @@ struct mms_ts_info {
 
 	int open_short_type;
 	int open_short_result;
-	bool use_sponge;
 
 	u32 defect_probability;
 	u8 item_cmdata;
@@ -445,7 +444,9 @@ struct mms_devicetree_data {
 	bool support_fod;
 	bool enable_settings_aot;
 	bool sync_reportrate_120;
+	bool support_open_short_test;
 	bool support_dex;
+	bool regulator_boot_on;
 
 	int max_x;
 	int max_y;

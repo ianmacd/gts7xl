@@ -216,6 +216,7 @@ enum NOTI_SUB_ID {
 	EM_NOISE_PACKET,
 	TSP_STOP_PACKET,
 	OOK_PACKET,
+	CMD_PACKET,
 };
 
 enum REPLY_SUB_ID {
@@ -244,10 +245,10 @@ enum TABLE_SWAP {
 enum {
 	FW_NONE = 0,
 	FW_BUILT_IN,
-	FW_FFU,
+	FW_SPU,
 	FW_HEADER,
 	FW_IN_SDCARD,
-	FW_EX_SDCARD,
+	FW_IN_SDCARD_SIGNED,
 #ifdef CONFIG_SEC_FACTORY
 	FW_FACTORY_GARAGE,
 	FW_FACTORY_UNIT,
@@ -373,6 +374,7 @@ struct wacom_i2c {
 	volatile bool is_mode_change;
 	volatile bool ble_block_flag;
 	u32 chg_time_stamp;
+	u32 check_elec;
 #ifdef CONFIG_SEC_FACTORY
 	volatile bool fac_garage_mode;
 	u32 garage_gain0;

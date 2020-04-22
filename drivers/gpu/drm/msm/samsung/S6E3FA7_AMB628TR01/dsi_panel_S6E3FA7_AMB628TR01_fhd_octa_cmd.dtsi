@@ -509,10 +509,9 @@
 		];
 
 		samsung,winbond_spi_wr_status_reg1 = [08 00 02 01 00];
-		samsung,winbond_spi_wr_status_reg2 = [08 00 02 31 00];
 
-		samsung,winbond_spi_wr_status_reg1_end = [08 00 02 01 5E];
-		samsung,winbond_spi_wr_status_reg2_end = [08 00 02 31 02];
+		/* 0xFC : Block Protection / QE(quad spi mode) disable */
+		samsung,winbond_spi_wr_status_reg1_end = [08 00 02 01 FC];
 
 		/* ERASE */		
 		samsung,winbond_spi_er = [08 00 04 00 00 00 00];
@@ -937,16 +936,16 @@
 
 		samsung,ffc_tx_cmds_revA = [
 			29 00 00 00 00 00 03 FC 5A 5A			/* TEST KEY3 Enable*/
-			29 00 00 00 00 00 14 C5 09 10 C8 1B D5 0E 26 E6 24 D2 7A 77 73 00 FF 78 8B 08 00	/* 0 Default: 1200 Mbps */
+			29 00 00 00 00 00 14 C5 0D 10 64 1B D5 0E 26 E6 24 D2 7A 77 33 00 FF 3C 8B 08 00	/* 0 Default: 1200 Mbps */
 			29 00 00 00 00 00 03 FC A5 A5			/* TEST KEY3 Disable*/
 		];
 
 		samsung,dyn_mipi_clk_ffc_cmds_revA = [
-			29 00 00 00 00 00 14 C5 09 10 C8 1B D5 0E 26 E6 24 D2 7A 77 73 00 FF 78 8B 08 00	/* 0 Default: 1200 Mbps */
-			29 00 00 00 00 00 14 C5 09 10 C8 1C 30 0E 26 E6 24 D2 7A 77 73 00 FF 78 8B 08 00	/* 1 1185Mbps */
-			29 00 00 00 00 00 14 C5 09 10 C8 1C 0B 0E 26 E6 24 D2 7A 77 73 00 FF 78 8B 08 00	/* 2 1191Mbps */
-			29 00 00 00 00 00 14 C5 09 10 C8 1B F9 0E 26 E6 24 D2 7A 77 73 00 FF 78 8B 08 00 	/* 3 1194Mbps */
-			29 00 00 00 00 00 14 C5 09 10 C8 1B D5 0E 26 E6 24 D2 7A 77 73 00 FF 78 8B 08 00	/* 4 1200Mbps */
+			29 00 00 00 00 00 14 C5 0D 10 64 1B D5 0E 26 E6 24 D2 7A 77 33 00 FF 3C 8B 08 00	/* 0 Default: 1200 Mbps */
+			29 00 00 00 00 00 14 C5 0D 10 64 1C 30 0E 26 E6 24 D2 7A 77 33 00 FF 3C 8B 08 00	/* 1 1185Mbps */
+			29 00 00 00 00 00 14 C5 0D 10 64 1C 0B 0E 26 E6 24 D2 7A 77 33 00 FF 3C 8B 08 00	/* 2 1191Mbps */
+			29 00 00 00 00 00 14 C5 0D 10 64 1B F9 0E 26 E6 24 D2 7A 77 33 00 FF 3C 8B 08 00	/* 3 1194Mbps */
+			29 00 00 00 00 00 14 C5 0D 10 64 1B D5 0E 26 E6 24 D2 7A 77 33 00 FF 3C 8B 08 00	/* 4 1200Mbps */
 		];
 
 		samsung,dynamic_mipi_clk_timing_table = <
@@ -2071,6 +2070,67 @@
 		];
 
 		/*
+		*************************************************************************************************************************
+		* Self mask check debug (SELF MASK CHECK)
+		*************************************************************************************************************************
+		*/
+
+		samsung,mask_crc_pass_data = [71 C9 06 3A 51 CF 8D 16];
+
+		samsung,self_mask_check_tx_pre1 = [
+			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 FC 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 02 B0 1B
+			29 01 00 00 00 00 02 FE 80
+			29 01 00 00 00 00 02 B0 2F
+			29 01 00 00 00 00 02 FE 25
+			29 01 00 00 00 00 07 BF 01 07 00 00 00 10
+			29 01 00 00 14 00 02 7A 00		/* self mask off */
+
+			/* delay 1frame */
+
+			/* side memory write */			
+			29 01 00 00 00 00 02 75 10
+
+			/* write self mask data (4C, 5C) */
+		
+			29 01 00 00 00 00 03 FC A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 9F 5A 5A	/* TEST KEY Enable */
+		];
+
+		samsung,self_mask_check_tx_pre2 = [
+			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 FC 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 22 00 10 7A			/* self mask enable */
+								01 00 00 00 95 
+								08 52 08 E7 08 
+								10 FF FF FF FF
+			/* delay 2frame */
+			29 01 00 00 00 00 03 FC A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 9F 5A 5A	/* TEST KEY Enable */
+		];
+		
+		samsung,self_mask_check_rx_cmds = [ 06 01 00 00 00 00 01 FB 08 0C];	/* read FB 13th ~ 20th */
+
+		samsung,self_mask_check_tx_post = [
+			29 01 00 00 00 00 03 9F A5 A5	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 F0 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 03 FC 5A 5A	/* TEST KEY Enable */
+			29 01 00 00 00 00 10 7A				/* self mask & grid restore */
+								01 08 E8 09 7D 
+								09 7E 0A 13 08 
+								10 00 00 00 00
+			29 01 00 00 00 00 07 BF 00 07 FF 00 00 10								
+			29 01 00 00 00 00 03 FC A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
+			29 01 00 00 00 00 03 9F 5A 5A	/* TEST KEY Enable */
+		];
+
+		/*
 		* ************************************************************************************************************************
 		*  DMS (Dynamic Mode Switch)
 		* ************************************************************************************************************************
@@ -2123,11 +2183,6 @@
 					29 00 00 00 00 00 03 F0 5A 5A
 					29 00 00 00 00 00 10 B9 00 00 14 00 18 00 00 00 00 11 03 02 40 02 40
 					29 00 00 00 00 00 03 F0 A5 A5
-
-					/* FFC setting (for 1200Mbps) */
-					29 00 00 00 00 00 03 F0 5A 5A
-					29 00 00 00 00 00 14 C5 09 10 C8 1B D5 0E 26 E6 24 D2 7A 77 73 00 FF 78 8B 08 00
-					29 01 00 00 00 00 03 F0 A5 A5
 
 					/* COPR */
 					29 00 00 00 00 00 03 F0 5A 5A

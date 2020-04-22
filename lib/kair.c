@@ -453,7 +453,7 @@ l1_nomem:
 l2_nomem:
 	kfree(tpdf_inf);
 l3_nomem:
-	return -ENOMEM;
+		return -ENOMEM;
 
 exit:
 #else
@@ -469,7 +469,7 @@ exit:
 #endif
 
 	vessel->capa_denom = ilog2(weight_sum + 1);
-	return 0;
+	return 0; 
 }
 EXPORT_SYMBOL(kair_build_tpdf_cascade);
 
@@ -821,7 +821,7 @@ static inline void kair_tpdf_carving_out(struct tpdf *self)
  * function of given job intensity looks like.
  **/
 static void kair_job_probability_collapse(struct kair_class *self,
-					  struct rand_var *v)
+					   struct rand_var *v)
 {
 	struct tpdf *level;
 	unsigned int scope;

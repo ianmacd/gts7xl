@@ -26,8 +26,34 @@
 #if defined(CONFIG_SUPPORT_BHL_COMPENSATION_FOR_LIGHT_SENSOR) || \
 	defined(CONFIG_SUPPORT_BRIGHT_COMPENSATION_LUX)
 #include <linux/panel_notify.h>
-unsigned int sec_hw_rev(void);
 
+#if defined(CONFIG_SEC_BEYOND0QLTE_PROJECT) || \
+	defined(CONFIG_SEC_BEYOND1QLTE_PROJECT) || \
+	defined(CONFIG_SEC_BEYOND2QLTE_PROJECT) || \
+	defined(CONFIG_SEC_R5Q_PROJECT)
+static unsigned int system_rev __read_mostly;
+
+static int __init sec_hw_rev_setup(char *p)
+{
+	int ret;
+
+	ret = kstrtouint(p, 0, &system_rev);
+	if (unlikely(ret < 0)) {
+		pr_warn("androidboot.revision is malformed (%s)\n", p);
+		return -EINVAL;
+	}
+
+	pr_info("androidboot.revision %x\n", system_rev);
+
+	return 0;
+}
+early_param("androidboot.revision", sec_hw_rev_setup);
+
+static unsigned int sec_hw_rev(void)
+{
+	return system_rev;
+}
+#endif
 #define LIGHT_FACTORY_CAL_PATH "/efs/FactoryApp/light_factory_cal"
 #define LIGHT_UB_CELL_ID_PATH "/efs/FactoryApp/light_ub_cell_id"
 #define UB_CELL_ID_PATH "/sys/class/lcd/panel/SVC_OCTA"
@@ -35,19 +61,8 @@ unsigned int sec_hw_rev(void);
 
 #define LIGHT_CAL_PASS 1
 #define LIGHT_CAL_FAIL 0
-
-enum {
-	OPTION_TYPE_COPR_ENABLE,
-	OPTION_TYPE_BOLED_ENABLE,
-	OPTION_TYPE_LCD_ONOFF,
-	OPTION_TYPE_GET_COPR,
-	OPTION_TYPE_GET_CHIP_ID,
-	OPTION_TYPE_SET_HALLIC_INFO,
-	OPTION_TYPE_GET_LIGHT_CAL,
-	OPTION_TYPE_SET_LIGHT_CAL,
-	OPTION_TYPE_MAX
-};
 #endif
+
 /*************************************************************************/
 /* factory Sysfs							 */
 /*************************************************************************/
@@ -136,6 +151,28 @@ static ssize_t light_get_dhr_sensor_info_show(struct device *dev,
 	return data->msg_buf[light_idx][0];
 }
 
+#if defined(CONFIG_SUPPORT_BRIGHT_SYSFS_COMPENSATION_LUX)
+static ssize_t light_brightness_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct adsp_data *data = dev_get_drvdata(dev);
+	uint16_t light_idx = get_light_sidx(data);
+	int brightness = 0;
+
+	if (sscanf(buf, "%3d", &brightness) != 1) {
+		pr_err("[FACTORY]: %s - The number of data are wrong\n",
+			__func__);
+		return -EINVAL;
+	}
+
+	mutex_lock(&data->light_factory_mutex);
+	adsp_unicast(&brightness, sizeof(brightness), light_idx, 0, MSG_TYPE_SET_CAL_DATA);
+	mutex_unlock(&data->light_factory_mutex);
+
+	return size;
+}
+#endif
+
 #if defined(CONFIG_SUPPORT_BHL_COMPENSATION_FOR_LIGHT_SENSOR) || \
 	defined(CONFIG_SUPPORT_BRIGHT_COMPENSATION_LUX)
 int light_panel_data_notify(struct notifier_block *nb,
@@ -144,13 +181,6 @@ int light_panel_data_notify(struct notifier_block *nb,
 	static int32_t pre_bl_level = -1;
 	int32_t brightness_data[2] = {0, };
 	struct panel_bl_event_data *panel_data = v;
-
-#ifdef CONFIG_SEC_R3Q_PROJECT
-	if (sec_hw_rev() < 3) {
-		pr_info("[FACTORY] %s : not supported\n", __func__);
-		return 0;
-	}
-#endif
 
 	if (val == PANEL_EVENT_BL_CHANGED) {
 		brightness_data[0] = panel_data->bl_level / 100;
@@ -377,41 +407,14 @@ static ssize_t light_hallic_info_store(struct device *dev,
 	int new_value;
 
 	if (sysfs_streq(buf, "0"))
-		new_value = 1;
-	else if (sysfs_streq(buf, "1"))
 		new_value = 0;
+	else if (sysfs_streq(buf, "1"))
+		new_value = 1;
 	else
 		return size;
 
 	pr_info("[FACTORY] %s: new_value %d\n", __func__, new_value);
 	msg_buf[0] = OPTION_TYPE_SET_HALLIC_INFO;
-	msg_buf[1] = new_value;
-
-	mutex_lock(&data->light_factory_mutex);
-	adsp_unicast(msg_buf, sizeof(msg_buf),
-		light_idx, 0, MSG_TYPE_OPTION_DEFINE);
-	mutex_unlock(&data->light_factory_mutex);
-
-	return size;
-}
-
-static ssize_t light_lcd_onoff_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t size)
-{
-	struct adsp_data *data = dev_get_drvdata(dev);
-	uint16_t light_idx = get_light_sidx(data);
-	int32_t msg_buf[2];
-	int new_value;
-
-	if (sysfs_streq(buf, "0"))
-		new_value = 0;
-	else if (sysfs_streq(buf, "1"))
-		new_value = 1;
-	else
-		return size;
-
-	pr_info("[FACTORY] %s: new_value %d\n", __func__, new_value);
-	msg_buf[0] = OPTION_TYPE_LCD_ONOFF;
 	msg_buf[1] = new_value;
 
 	mutex_lock(&data->light_factory_mutex);
@@ -444,10 +447,17 @@ static ssize_t light_circle_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "26.8 7.3 2.2\n");
 #elif defined(CONFIG_SEC_D1Q_PROJECT) || defined(CONFIG_SEC_D1XQ_PROJECT)
 	return snprintf(buf, PAGE_SIZE, "41.3 7.1 2.4\n");
-#elif defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D2XQ_PROJECT)
+#elif defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2XQ2_PROJECT)
 	return snprintf(buf, PAGE_SIZE, "43.8 6.7 2.4\n");
 #elif defined(CONFIG_SEC_R3Q_PROJECT)
-	return snprintf(buf, PAGE_SIZE, "27.57 2.82 2.2\n");
+	return snprintf(buf, PAGE_SIZE, "27.1 6.2 2.4\n");
+#elif defined(CONFIG_SEC_R5Q_PROJECT)
+	if (sec_hw_rev() < 6)
+		return snprintf(buf, PAGE_SIZE, "31.9 13.8 2.4\n");
+	else
+		return snprintf(buf, PAGE_SIZE, "45.4 5.1 2.4\n");
+#elif defined(CONFIG_SEC_BLOOMQ_PROJECT)
+	return snprintf(buf, PAGE_SIZE, "34.1 11.6 2.4\n");
 #else
 	return snprintf(buf, PAGE_SIZE, "0 0 0\n");
 #endif
@@ -704,14 +714,8 @@ void light_factory_init_work(struct adsp_data *data)
 	bool ub_check = false;
 	char *efs_id_str = kzalloc(UB_CELL_ID_LENGTH, GFP_KERNEL);
 	char *cur_id_str = kzalloc(UB_CELL_ID_LENGTH, GFP_KERNEL);
-	data->light_cal = -1;
 
-#ifdef CONFIG_SEC_R3Q_PROJECT
-	if (sec_hw_rev() < 3) {
-		pr_info("[FACTORY] %s : not supported light cal\n", __func__);
-		return;
-	}
-#endif
+	data->light_cal = -1;
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
@@ -944,7 +948,6 @@ static ssize_t light_test_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d, %d\n",data->light_cal, test_value);
 }
 
-static DEVICE_ATTR(lcd_onoff, 0220, NULL, light_lcd_onoff_store);
 static DEVICE_ATTR(read_copr, 0664, light_read_copr_show, light_read_copr_store);
 static DEVICE_ATTR(test_copr, 0444, light_test_copr_show, NULL);
 static DEVICE_ATTR(boled_enable, 0220, NULL, light_boled_enable_store);
@@ -964,6 +967,9 @@ static DEVICE_ATTR(name, 0444, light_name_show, NULL);
 static DEVICE_ATTR(lux, 0444, light_raw_data_show, NULL);
 static DEVICE_ATTR(raw_data, 0444, light_raw_data_show, NULL);
 static DEVICE_ATTR(dhr_sensor_info, 0444, light_get_dhr_sensor_info_show, NULL);
+#if defined(CONFIG_SUPPORT_BRIGHT_SYSFS_COMPENSATION_LUX)
+static DEVICE_ATTR(brightness, 0220, NULL, light_brightness_store);
+#endif
 
 static struct device_attribute *light_attrs[] = {
 	&dev_attr_vendor,
@@ -972,7 +978,6 @@ static struct device_attribute *light_attrs[] = {
 	&dev_attr_raw_data,
 	&dev_attr_dhr_sensor_info,
 #ifdef CONFIG_SUPPORT_BHL_COMPENSATION_FOR_LIGHT_SENSOR
-	&dev_attr_lcd_onoff,
 	&dev_attr_read_copr,
 	&dev_attr_test_copr,
 	&dev_attr_boled_enable,
@@ -985,17 +990,23 @@ static struct device_attribute *light_attrs[] = {
 	&dev_attr_light_cal,
 	&dev_attr_light_test,
 #endif
+#if defined(CONFIG_SUPPORT_BRIGHT_SYSFS_COMPENSATION_LUX)
+	&dev_attr_brightness,
+#endif
 	NULL,
 };
 
 static int __init tmd490x_light_factory_init(void)
 {
 	adsp_factory_register(MSG_LIGHT, light_attrs);
+#if defined(CONFIG_SUPPORT_BRIGHT_SYSFS_COMPENSATION_LUX)
+	return 0;
+#endif
+
 #if defined(CONFIG_SUPPORT_BHL_COMPENSATION_FOR_LIGHT_SENSOR) || \
 	defined(CONFIG_SUPPORT_BRIGHT_COMPENSATION_LUX)
         panel_notifier_register(&light_panel_data_notifier);
 #endif
-
 	pr_info("[FACTORY] %s\n", __func__);
 
 	return 0;
@@ -1004,11 +1015,14 @@ static int __init tmd490x_light_factory_init(void)
 static void __exit tmd490x_light_factory_exit(void)
 {
 	adsp_factory_unregister(MSG_LIGHT);
+#if defined(CONFIG_SUPPORT_BRIGHT_SYSFS_COMPENSATION_LUX)
+	return;
+#endif
+
 #if defined(CONFIG_SUPPORT_BHL_COMPENSATION_FOR_LIGHT_SENSOR) || \
 	defined(CONFIG_SUPPORT_BRIGHT_COMPENSATION_LUX)
         panel_notifier_unregister(&light_panel_data_notifier);
 #endif
-
 	pr_info("[FACTORY] %s\n", __func__);
 }
 module_init(tmd490x_light_factory_init);

@@ -4099,7 +4099,8 @@ struct cam_sensor_i2c_reg_array retention_sram1_full_30_burst_reg_array[] = {
 	{0x6F12, 0x0000, 0x00, 0x00},
 };
 
-#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)
+#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)\
+	|| defined(CONFIG_SEC_D2XQ2_PROJECT) || defined(CONFIG_SEC_BLOOMQ_PROJECT)
 struct cam_sensor_i2c_reg_array retention_sram1_full_30_burst_reg_array_rev1[] = {
 	{0x6F12, 0xFFFD, 0x00, 0x00},
 	{0x6F12, 0x6214, 0x00, 0x00},
@@ -5984,7 +5985,8 @@ struct cam_sensor_i2c_reg_array retention_sram2_4k2k_30_burst_reg_array[] = {
 	{0x6F12, 0x0000, 0x00, 0x00},
 };
 
-#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)
+#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)\
+	|| defined(CONFIG_SEC_D2XQ2_PROJECT) || defined(CONFIG_SEC_BLOOMQ_PROJECT)
 struct cam_sensor_i2c_reg_array retention_sram2_4k2k_30_burst_reg_array_rev1[] = {
 	{0x6F12, 0xFFFD, 0x00, 0x00},
 	{0x6F12, 0x6214, 0x00, 0x00},
@@ -7774,7 +7776,8 @@ struct cam_sensor_i2c_reg_array retention_sram3_4k2k_60_burst_reg_array[] = {
 	{0x6F12, 0x0000, 0x00, 0x00},
 };
 
-#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)
+#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)\
+	|| defined(CONFIG_SEC_D2XQ2_PROJECT) || defined(CONFIG_SEC_BLOOMQ_PROJECT)
 struct cam_sensor_i2c_reg_array retention_sram3_4k2k_60_burst_reg_array_rev1[] = {
 	{0x6F12, 0xFFFD, 0x00, 0x00},
 	{0x6F12, 0x6214, 0x00, 0x00},
@@ -9350,7 +9353,8 @@ struct cam_sensor_i2c_reg_array retention_sram4_wvga_120_burst_reg_array[] = {
 	{0x6F12, 0x0000, 0x00, 0x00},
 };
 
-#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)
+#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)\
+	|| defined(CONFIG_SEC_D2XQ2_PROJECT) || defined(CONFIG_SEC_BLOOMQ_PROJECT)
 struct cam_sensor_i2c_reg_array retention_sram4_wvga_120_burst_reg_array_rev1[] = {
 	{0x6F12, 0xFFFD, 0x00, 0x00},
 	{0x6F12, 0x6214, 0x00, 0x00},
@@ -10376,7 +10380,8 @@ struct cam_sensor_i2c_reg_array retention_initial_boot_reg_array_rev1[] = {
 	{0x0100, 0x0000, 0x00, 0x00},
 };
 
-#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)
+#if defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)\
+	|| defined(CONFIG_SEC_D2XQ2_PROJECT) || defined(CONFIG_SEC_BLOOMQ_PROJECT)
 struct cam_sensor_i2c_reg_array retention_mode_full_reg_array[] = {
 	{0x021E, 0x0100, 0x00, 0x00},
 	{0x6028, 0x2000, 0x00, 0x00},

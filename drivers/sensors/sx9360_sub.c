@@ -62,6 +62,7 @@
 
 /* CS Main */
 #define ENABLE_CSX               0x03
+#define REFERENCE_DISABLE        0x02
 
 #define CSX_STATUS_REG           SX9360_STAT_PROXSTAT_FLAG
 
@@ -417,7 +418,7 @@ static int sx9360_set_mode(struct sx9360_p *data, unsigned char mode)
 		ret = sx9360_i2c_write(data, SX9360_GNRLCTRL0_REG, SX9360_GNRLCTRL0_VAL_PHOFF);
 	} else if (mode == SX9360_MODE_NORMAL) {
 		ret = sx9360_i2c_write(data, SX9360_GNRLCTRL0_REG,
-			SX9360_GNRLCTRL0_VAL_PHOFF | ENABLE_CSX);
+			SX9360_GNRLCTRL0_VAL_PHOFF | REFERENCE_DISABLE);
 		msleep(20);
 
 		sx9360_set_offset_calibration(data);

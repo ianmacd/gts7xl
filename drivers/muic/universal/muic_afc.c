@@ -325,7 +325,7 @@ int muic_restart_afc(int noti)
 	}
 	cancel_delayed_work(&gpmuic->afc_retry_work);
 	schedule_delayed_work(&gpmuic->afc_retry_work, msecs_to_jiffies(5000)); // 5sec
-	
+
 	muic_afc_delay_check_state(0);
 //12085272???
 #ifdef CONFIG_MUIC_SM5705_AFC_18W_TA_SUPPORT

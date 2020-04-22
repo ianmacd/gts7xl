@@ -49,7 +49,7 @@ typedef enum {
 	CCIC_NOTIFY_ID_POWER_STATUS,
 	CCIC_NOTIFY_ID_WATER,
 	CCIC_NOTIFY_ID_VCONN,
-#ifdef CONFIG_MUIC_S2MU107
+#if defined(CONFIG_MUIC_S2MU107) || defined(CONFIG_MUIC_S2MU106) || defined(CONFIG_CCIC_S2MU106)
 	CCIC_NOTIFY_ID_OTG,
 	CCIC_NOTIFY_ID_TA,
 #endif
@@ -191,7 +191,7 @@ extern int ccic_notifier_unregister(struct notifier_block *nb);
 extern int ccic_notifier_init(void);
 
 #define CCIC_NOTI_DEST_NUM	(12)
-#define CCIC_NOTI_ID_NUM	(15)
+#define CCIC_NOTI_ID_NUM	(17)
 #define CCIC_NOTI_RID_NUM	(8)
 #define CCIC_NOTI_USB_STATUS_NUM (5)
 #define CCIC_NOTI_PIN_STATUS_NUM	(8)
@@ -201,7 +201,4 @@ extern char CCIC_NOTI_ID_Print[CCIC_NOTI_ID_NUM][20];
 extern char CCIC_NOTI_RID_Print[CCIC_NOTI_RID_NUM][15];
 extern char CCIC_NOTI_USB_STATUS_Print[CCIC_NOTI_USB_STATUS_NUM][20];
 
-#ifdef CONFIG_CCIC_S2MU107
-extern void ccic_uevent_work(int id, int state);
-#endif
 #endif /* __CCIC_NOTIFIER_H__ */

@@ -482,7 +482,7 @@ void ist40xx_special_cmd(struct ist40xx_data *data, int cmd)
 	input_err(true, &data->client->dev, "Not support gesture cmd: 0x%02X\n", cmd);
 }
 
-void location_detect(struct ist40xx_data *data, char *loc, int x, int y)
+static void ist40xx_location_detect(struct ist40xx_data *data, char *loc, int x, int y)
 {
 	if (x < data->dt_data->area_edge)
 		strncat(loc, "E.", 2);
@@ -561,7 +561,7 @@ static void report_input_data(struct ist40xx_data *data)
 					/*for getting coordinate of the last point of move event*/
 					data->r_x[id] = fingers[idx].b.x;
 					data->r_y[id] = fingers[idx].b.y;
-					location_detect(data, location, data->r_x[id],
+					ist40xx_location_detect(data, location, data->r_x[id],
 							data->r_y[id]);
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 					tsp_debug("%s%d (%d, %d) loc:%s (p:%d, ma:%d, mi:%d, z:%d) "
@@ -610,7 +610,7 @@ static void report_input_data(struct ist40xx_data *data)
 					/*for getting coordinate of pressed point*/
 					data->p_x[id] = data->r_x[id] = fingers[idx].b.x;
 					data->p_y[id] = data->r_y[id] = fingers[idx].b.y;
-					location_detect(data, location, data->p_x[id],
+					ist40xx_location_detect(data, location, data->p_x[id],
 							data->p_y[id]);
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 					input_info(true, &data->client->dev,
@@ -635,7 +635,7 @@ static void report_input_data(struct ist40xx_data *data)
 					/*for getting coordinate of the last point of move event*/
 					data->r_x[id] = fingers[idx].b.x;
 					data->r_y[id] = fingers[idx].b.y;
-					location_detect(data, location, data->r_x[id],
+					ist40xx_location_detect(data, location, data->r_x[id],
 							data->r_y[id]);
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 					tsp_debug("%s%d (%d, %d) loc:%s (p:%d, ma:%d, mi:%d, "
@@ -659,7 +659,7 @@ static void report_input_data(struct ist40xx_data *data)
 
 					data->r_x[id] = fingers[idx].b.x;
 					data->r_y[id] = fingers[idx].b.y;
-					location_detect(data, location, data->r_x[id],
+					ist40xx_location_detect(data, location, data->r_x[id],
 							data->r_y[id]);
 #ifdef TCLM_CONCEPT
 					input_info(true, &data->client->dev,
@@ -697,7 +697,7 @@ static void report_input_data(struct ist40xx_data *data)
 
 				data->touch_pressed_num--;
 
-				location_detect(data, location, data->r_x[id], data->r_y[id]);
+				ist40xx_location_detect(data, location, data->r_x[id], data->r_y[id]);
 #ifdef TCLM_CONCEPT
 				input_info(true, &data->client->dev,
 					   "%s%d loc:%s dX,dY:%d,%d mc:%d (0x%02x) (test_result data :%x) (C%02XT%04X.%4s%s) by force\n",
@@ -1862,7 +1862,7 @@ static int ist40xx_parse_dt(struct device *dev, struct ist40xx_data *data)
 	return 0;
 }
 
-void sec_tclm_parse_dt(struct i2c_client *client, struct sec_tclm_data *tdata)
+static void ist40xx_tclm_parse_dt(struct i2c_client *client, struct sec_tclm_data *tdata)
 {
 	struct device *dev = &client->dev;
 	struct device_node *np = dev->of_node;
@@ -1987,7 +1987,7 @@ static void ist40xx_run_rawdata(struct ist40xx_data *data)
 }
 
 #if defined(CONFIG_TOUCHSCREEN_DUMP_MODE)
-#include <linux/sec_debug.h>
+#include <linux/sec_ts_common.h>
 extern struct tsp_dump_callbacks dump_callbacks;
 static struct delayed_work *p_ghost_check;
 
@@ -2148,7 +2148,7 @@ static int ist40xx_probe(struct i2c_client *client,
 		if (!tdata)
 			goto error_alloc_tdata;
 
-		sec_tclm_parse_dt(client, tdata);
+		ist40xx_tclm_parse_dt(client, tdata);
 	} else {
 		data->dt_data = NULL;
 		input_err(true, &client->dev, "don't exist of_node\n");
@@ -2210,7 +2210,7 @@ static int ist40xx_probe(struct i2c_client *client,
 	data->tdata->tclm_write = ist40xx_tclm_data_write;
 	data->tdata->tclm_execute_force_calibration = ist40xx_execute_force_calibration;
 	data->tdata->external_factory = false;
-	data->tdata->tclm_parse_dt = sec_tclm_parse_dt;
+	data->tdata->tclm_parse_dt = ist40xx_tclm_parse_dt;
 #endif
 	INIT_DELAYED_WORK(&data->work_read_info, ist40xx_read_info_work);
 

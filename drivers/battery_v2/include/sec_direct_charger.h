@@ -69,12 +69,15 @@ struct sec_direct_charger_info {
 	unsigned int charger_mode_direct;
 	unsigned int dc_retry_cnt;
 
+
 	int cable_type;
 	int input_current;
 	int charging_current;
 	int topoff_current;
 	int float_voltage;
 	bool dc_err;
+	bool ta_alert_wa;
+	int ta_alert_mode;
 	bool is_charging;
 	int batt_status;
 	int capacity;

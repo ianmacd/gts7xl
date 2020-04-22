@@ -97,19 +97,19 @@ enum cisd_data_per_day {
 	CISD_DATA_AICL_COUNT_PER_DAY,
 	CISD_DATA_BATT_TEMP_MAX_PER_DAY,
 	CISD_DATA_BATT_TEMP_MIN_PER_DAY,
+	CISD_DATA_SUB_BATT_TEMP_MAX_PER_DAY,
+	CISD_DATA_SUB_BATT_TEMP_MIN_PER_DAY,
 	CISD_DATA_CHG_TEMP_MAX_PER_DAY,
 	CISD_DATA_CHG_TEMP_MIN_PER_DAY,
-	CISD_DATA_WPC_TEMP_MAX_PER_DAY,
-	CISD_DATA_WPC_TEMP_MIN_PER_DAY,
 	CISD_DATA_USB_TEMP_MAX_PER_DAY,
 	CISD_DATA_USB_TEMP_MIN_PER_DAY,
 
 	CISD_DATA_CHG_BATT_TEMP_MAX_PER_DAY,
 	CISD_DATA_CHG_BATT_TEMP_MIN_PER_DAY,
+	CISD_DATA_CHG_SUB_BATT_TEMP_MAX_PER_DAY,
+	CISD_DATA_CHG_SUB_BATT_TEMP_MIN_PER_DAY,
 	CISD_DATA_CHG_CHG_TEMP_MAX_PER_DAY,
 	CISD_DATA_CHG_CHG_TEMP_MIN_PER_DAY,
-	CISD_DATA_CHG_WPC_TEMP_MAX_PER_DAY,
-	CISD_DATA_CHG_WPC_TEMP_MIN_PER_DAY,
 	CISD_DATA_CHG_USB_TEMP_MAX_PER_DAY,
 	CISD_DATA_CHG_USB_TEMP_MIN_PER_DAY,
 	CISD_DATA_USB_OVERHEAT_CHARGING_PER_DAY,
@@ -165,10 +165,18 @@ enum {
 	TX_DATA_MAX,
 };
 
+enum {
+	EVENT_DC_ERR = 0,
+	EVENT_TA_OCP_DET,
+	EVENT_TA_OCP_ON,
+	EVENT_DATA_MAX,
+};
+
 extern const char *cisd_data_str[];
 extern const char *cisd_data_str_d[];
 extern const char *cisd_cable_data_str[];
 extern const char *cisd_tx_data_str[];
+extern const char *cisd_event_data_str[];
 
 #define PAD_INDEX_STRING	"COUNT"
 #define PAD_JSON_STRING		"PAD_0x"
@@ -205,6 +213,7 @@ struct cisd {
 	int data[CISD_DATA_MAX_PER_DAY];
 	int cable_data[CISD_CABLE_TYPE_MAX];
 	unsigned int tx_data[TX_DATA_MAX];
+	unsigned int event_data[EVENT_DATA_MAX];
 
 	struct mutex padlock;
 	struct mutex powerlock;

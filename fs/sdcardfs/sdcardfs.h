@@ -223,7 +223,9 @@ struct sdcardfs_mount_options {
 	bool multiuser;
 	bool gid_derivation;
 	bool default_normal;
+	bool unshared_obb;
 	unsigned int reserved_mb;
+	bool nocache;
 };
 
 struct sdcardfs_vfsmount_options {
@@ -615,6 +617,8 @@ out_unlock:
 	path_put(&parent);
 	return err;
 }
+
+#define AID_USE_ROOT_RESERVED KGIDT_INIT(5678)
 
 /*
  * Return 1, if a disk has enough free space, otherwise 0.

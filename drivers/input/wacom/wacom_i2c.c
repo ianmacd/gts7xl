@@ -27,6 +27,7 @@
 #include <linux/firmware.h>
 #include <linux/regulator/consumer.h>
 #include <linux/of_gpio.h>
+#include <linux/spu-verify.h>
 
 #include <linux/usb/manager/usb_typec_manager_notifier.h>
 
@@ -42,8 +43,9 @@ int get_lcd_info(char *arg);
 
 #define WACOM_I2C_RETRY		3
 
-#define WACOM_FW_PATH_SDCARD	"/sdcard/FIRMWARE/WACOM/wacom_firm.fw"
-#define WACOM_FW_PATH_FFU	"/spu/WACOM/ffu_wacom.bin"
+#define WACOM_PATH_EXTERNAL_FW			"/sdcard/FIRMWARE/WACOM/wacom.bin"
+#define WACOM_PATH_EXTERNAL_FW_SIGNED	"/sdcard/FIRMWARE/WACOM/wacom_signed.bin"
+#define WACOM_PATH_SPU_FW_SIGNED		"/spu/WACOM/ffu_wacom.bin"
 
 #define WACOM_INVALID_IRQ_COUNT	2
 
@@ -435,6 +437,12 @@ void wacom_select_survey_mode(struct wacom_i2c *wac_i2c, bool enable)
 
 			wacom_i2c_set_survey_mode(wac_i2c,
 						  EPEN_SURVEY_MODE_NONE);
+#if defined(CONFIG_EPEN_WACOM_W9020)
+			wac_i2c->reset_flag = true;
+			msleep(200);
+			input_info(true, &client->dev, "%s: reset_flag %d\n",
+				   __func__, wac_i2c->reset_flag);
+#endif
 		} else {
 			input_info(true, &client->dev, "%s: power on\n",
 				   __func__);
@@ -997,6 +1005,10 @@ static void wac_i2c_table_swap_reply(struct wacom_i2c *wac_i2c, char *data)
 static void wacom_i2c_reply_handler(struct wacom_i2c *wac_i2c, char *data)
 {
 	char pack_sub_id;
+#if !defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+	char buff;
+	int ret;
+#endif
 
 	pack_sub_id = data[1];
 
@@ -1004,11 +1016,47 @@ static void wacom_i2c_reply_handler(struct wacom_i2c *wac_i2c, char *data)
 	case SWAP_PACKET:
 		wac_i2c_table_swap_reply(wac_i2c, data);
 		break;
+	case ELEC_TEST_PACKET:
+		wac_i2c->check_elec++;
+#if !defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+		buff = COM_SAMPLERATE_STOP;
+		ret = wacom_i2c_send(wac_i2c, &buff, 1, WACOM_I2C_MODE_NORMAL);
+		if (ret != 1) {
+			input_err(true, &wac_i2c->client->dev,
+				  "%s: failed to send data(%02x %02x)\n",
+				  __func__, buff, ret);
+		} else {
+			wac_i2c->samplerate_state = false;
+		}
+
+		msleep(50);
+
+		buff = COM_SAMPLERATE_133;
+		ret = wacom_i2c_send(wac_i2c, &buff, 1, WACOM_I2C_MODE_NORMAL);
+		if (ret != 1) {
+			input_err(true, &wac_i2c->client->dev,
+				  "%s: failed to send data(%02x %02x)\n",
+				  __func__, buff, ret);
+			return;
+		} else {
+			wac_i2c->samplerate_state = true;
+		}
+#endif
+		break;
 	default:
 		input_info(true, &wac_i2c->client->dev, "%s: unexpected packet %d\n",
 			   __func__, pack_sub_id);
 		break;
 	};
+}
+
+static void wac_i2c_cmd_noti_handler(struct wacom_i2c *wac_i2c, char *data)
+{
+#if defined(CONFIG_EPEN_WACOM_W9020)
+	wac_i2c->reset_flag = false;
+	input_info(true, &wac_i2c->client->dev, "%s: reset_flag %d\n", __func__,
+		   wac_i2c->reset_flag);
+#endif
 }
 
 static void wac_i2c_block_tsp_scan(struct wacom_i2c *wac_i2c, char *data)
@@ -1052,6 +1100,9 @@ static void wacom_i2c_noti_handler(struct wacom_i2c *wac_i2c, char *data)
 		wac_i2c_block_tsp_scan(wac_i2c, data);
 		break;
 	case OOK_PACKET:
+		break;
+	case CMD_PACKET:
+		wac_i2c_cmd_noti_handler(wac_i2c, data);
 		break;
 	default:
 		input_info(true, &wac_i2c->client->dev, "%s: unexpected packet %d\n",
@@ -1674,15 +1725,15 @@ static void wacom_i2c_input_close(struct input_dev *dev)
 {
 	struct wacom_i2c *wac_i2c = input_get_drvdata(dev);
 
+	input_info(true, &wac_i2c->client->dev, "%s(%s)\n", __func__,
+		  dev->name);
+
 #ifdef CONFIG_SEC_FACTORY
 	if (wac_i2c->epen_blocked){
 		input_err(true, &wac_i2c->client->dev, "%s : FAC epen_blocked SKIP!!\n", __func__);
 		return;
 	}
 #endif
-
-	input_info(true, &wac_i2c->client->dev, "%s(%s)\n", __func__,
-		  dev->name);
 
 	wacom_sleep_sequence(wac_i2c);
 }
@@ -1746,7 +1797,7 @@ void wacom_print_info(struct wacom_i2c *wac_i2c)
 		wac_i2c->scan_info_fail_cnt = 1000;
 
 	input_info(true, &wac_i2c->client->dev,
-		"%s: garage %s, ps %s, pen %s, chg %s, ble_mode(0x%x), epen %s, cover %s, count(%u,%u,%u), mode(%d), block_cnt(%d), ver[0x%x] #%d\n",
+		"%s: garage %s, ps %s, pen %s, chg %s, ble_mode(0x%x), epen %s, cover %s, count(%u,%u,%u), mode(%d), block_cnt(%d), check(%d), ver[0x%x] #%d\n",
 		__func__, wac_i2c->pdata->use_garage ? "used" : "unused",
 		wac_i2c->battery_saving_mode ?  "on" : "off",
 		(wac_i2c->function_result & EPEN_EVENT_PEN_OUT) ? "out" : "in",
@@ -1754,7 +1805,7 @@ void wacom_print_info(struct wacom_i2c *wac_i2c)
 		wac_i2c->epen_blocked ? "blocked" : "unblocked",
 		wac_i2c->keyboard_cover_mode ? "on" : "off",
 		wac_i2c->i2c_fail_count, wac_i2c->abnormal_reset_count, wac_i2c->scan_info_fail_cnt,
-		wac_i2c->check_survey_mode, wac_i2c->tsp_block_cnt,
+		wac_i2c->check_survey_mode, wac_i2c->tsp_block_cnt, wac_i2c->check_elec,
 		wac_i2c->fw_ver_ic, wac_i2c->print_info_cnt_open);
 }
 
@@ -1954,6 +2005,8 @@ static int load_fw_sdcard(struct wacom_i2c *wac_i2c, const char *file_path)
 	unsigned int nSize;
 	unsigned long nSize2;
 	u8 *ums_data;
+	long spu_fsize, spu_ret;
+	u8 *spu_ums_data;
 
 	nSize = wacom_i2c_get_fw_size(wac_i2c);
 	nSize2 = nSize + sizeof(struct fw_image);
@@ -1975,6 +2028,13 @@ static int load_fw_sdcard(struct wacom_i2c *wac_i2c, const char *file_path)
 	input_info(true, &client->dev, "start, file path %s, size %ld Bytes\n",
 		   file_path, fsize);
 
+	if (strncmp(file_path, WACOM_PATH_EXTERNAL_FW_SIGNED, strlen(WACOM_PATH_EXTERNAL_FW_SIGNED)) == 0
+		|| strncmp(file_path, WACOM_PATH_SPU_FW_SIGNED, strlen(WACOM_PATH_SPU_FW_SIGNED)) == 0) {
+		/* name 5, digest 32, signature 512 */
+		spu_fsize = fsize;
+		fsize -= SPU_METADATA_SIZE(WACOM);
+	}
+
 	if ((fsize != nSize) && (fsize != nSize2)) {
 		input_err(true, &client->dev,
 			  "UMS firmware size is different\n");
@@ -1982,22 +2042,63 @@ static int load_fw_sdcard(struct wacom_i2c *wac_i2c, const char *file_path)
 		goto out;
 	}
 
-	ums_data = kmalloc(fsize, GFP_KERNEL);
+	ums_data = kzalloc(fsize, GFP_KERNEL);
 	if (!ums_data) {
-		input_err(true, &client->dev, "%s, kmalloc failed\n", __func__);
+		input_err(true, &client->dev, "%s, kzalloc failed\n", __func__);
 		ret = -EFAULT;
 		goto out;
 	}
 
-	nread = vfs_read(fp, (char __user *)ums_data, fsize, &fp->f_pos);
-	input_info(true, &client->dev, "nread %ld Bytes\n", nread);
-	if (nread != fsize) {
-		input_err(true, &client->dev,
-			  "failed to read firmware file, nread %ld Bytes\n",
-			  nread);
-		ret = -EIO;
-		kfree(ums_data);
-		goto out;
+	if (strncmp(file_path, WACOM_PATH_EXTERNAL_FW_SIGNED, strlen(WACOM_PATH_EXTERNAL_FW_SIGNED)) == 0
+		|| strncmp(file_path, WACOM_PATH_SPU_FW_SIGNED, strlen(WACOM_PATH_SPU_FW_SIGNED)) == 0) {
+		spu_ums_data = kzalloc(spu_fsize, GFP_KERNEL);
+		if (!spu_ums_data) {
+			input_err(true, &client->dev, "%s, kzalloc failed\n", __func__);
+			ret = -EFAULT;
+			kfree(ums_data);
+			goto out;
+		}
+
+		nread = vfs_read(fp, (char __user *)spu_ums_data, spu_fsize, &fp->f_pos);
+		input_info(true, &client->dev, "nread %ld Bytes\n", nread);
+		if (nread != spu_fsize) {
+			input_err(true, &client->dev,
+				  "failed to read spu firmware file, nread %ld Bytes\n",
+				  nread);
+			ret = -EIO;
+		
+			kfree(spu_ums_data);
+			kfree(ums_data);
+			goto out;
+		}
+
+		spu_ret = spu_firmware_signature_verify("WACOM", spu_ums_data, spu_fsize);
+		
+		input_info(true, &client->dev, "%s: spu_ret : %ld, spu_fsize : %ld // fsize:%ld\n", __func__, spu_ret, spu_fsize, fsize);
+
+		if (spu_ret != fsize) {
+			input_err(true, &client->dev, "%s: signature verify failed, %ld\n", __func__, spu_ret);
+			ret = -ENOENT;
+			kfree(spu_ums_data);
+			kfree(ums_data);
+			goto out;
+		}
+
+		memcpy(ums_data, spu_ums_data, fsize);
+		kfree(spu_ums_data);
+
+	} else {
+
+		nread = vfs_read(fp, (char __user *)ums_data, fsize, &fp->f_pos);
+		input_info(true, &client->dev, "nread %ld Bytes\n", nread);
+		if (nread != fsize) {
+			input_err(true, &client->dev,
+				  "failed to read firmware file, nread %ld Bytes\n",
+				  nread);
+			ret = -EIO;
+			kfree(ums_data);
+			goto out;
+		}
 	}
 
 	filp_close(fp, current->files);
@@ -2048,10 +2149,13 @@ int wacom_i2c_load_fw(struct wacom_i2c *wac_i2c, u8 fw_path)
 		ret = load_fw_built_in(wac_i2c, fw_path);
 		break;
 	case FW_IN_SDCARD:
-		ret = load_fw_sdcard(wac_i2c, WACOM_FW_PATH_SDCARD);
+		ret = load_fw_sdcard(wac_i2c, WACOM_PATH_EXTERNAL_FW);
 		break;
-	case FW_FFU:
-		ret = load_fw_sdcard(wac_i2c, WACOM_FW_PATH_FFU);
+	case FW_IN_SDCARD_SIGNED:
+		ret = load_fw_sdcard(wac_i2c, WACOM_PATH_EXTERNAL_FW_SIGNED);
+		break;
+	case FW_SPU:
+		ret = load_fw_sdcard(wac_i2c, WACOM_PATH_SPU_FW_SIGNED);
 		break;
 	default:
 		input_info(true, &client->dev, "unknown path(%d)\n", fw_path);
@@ -2067,9 +2171,9 @@ int wacom_i2c_load_fw(struct wacom_i2c *wac_i2c, u8 fw_path)
 	if (fw_img->hdr_ver == 1 && fw_img->hdr_len == sizeof(struct fw_image)) {
 		wac_i2c->fw_data = (u8 *) fw_img->data;
 #if !defined(CONFIG_SEC_FACTORY)
-		if ((fw_path == FW_BUILT_IN) || (fw_path == FW_FFU)) {
+		if (fw_path == FW_BUILT_IN) {
 #else
-		if ((fw_path == FW_BUILT_IN) || (fw_path == FW_FFU) ||
+		if ((fw_path == FW_BUILT_IN) ||
 		    (fw_path == FW_FACTORY_UNIT) || (fw_path == FW_FACTORY_GARAGE)) {
 #endif
 			wac_i2c->fw_ver_bin = fw_img->fw_ver1;
@@ -2098,7 +2202,8 @@ void wacom_i2c_unload_fw(struct wacom_i2c *wac_i2c)
 		release_firmware(wac_i2c->firm_data);
 		break;
 	case FW_IN_SDCARD:
-	case FW_FFU:
+	case FW_IN_SDCARD_SIGNED:
+	case FW_SPU:
 		kfree(wac_i2c->fw_img);
 		break;
 	default:
@@ -2150,23 +2255,28 @@ int wacom_fw_update(struct wacom_i2c *wac_i2c, u8 fw_update_way, bool bforced)
 		   wac_i2c->fw_ver_ic, wac_i2c->fw_ver_bin);
 
 	if (wac_i2c->pdata->bringup == 1) {
-		input_info(true, &client->dev,
-			   "bringup. do not update\n", __func__);
+		input_info(true, &client->dev, "bringup. do not update\n");
 		wac_i2c->update_status = FW_UPDATE_FAIL;
 		goto out_update_fw;
 	}
 
 	if (wac_i2c->pdata->bringup == 3) {
-		input_info(true, &client->dev,
-			   "bringup. force update\n", __func__);
+		input_info(true, &client->dev, "bringup. force update\n");
 		bforced = true;
 	}
 
 	/* If FFU firmware version is lower than IC's version, do not run update routine */
-	if (fw_update_way == FW_FFU && fw_ver_ic >= wac_i2c->fw_ver_bin) {
-		input_info(true, &client->dev, "FFU. update condition is failed\n", __func__);
-		wac_i2c->update_status = FW_UPDATE_FAIL;
-		goto out_update_fw;
+	if (fw_update_way == FW_SPU && fw_ver_ic >= wac_i2c->fw_ver_bin) {
+		input_info(true, &client->dev, "FFU. update is skipped\n");
+		wac_i2c->update_status = FW_UPDATE_PASS;
+
+		wacom_i2c_unload_fw(wac_i2c);
+		wacom_enable_irq(wac_i2c, true);
+		wacom_enable_pdct_irq(wac_i2c, true);
+		mutex_unlock(&wac_i2c->update_lock);
+
+		wac_i2c->probe_done = true;
+		return 0;
 	}
 
 	if (!bforced) {
@@ -2174,6 +2284,12 @@ int wacom_fw_update(struct wacom_i2c *wac_i2c, u8 fw_update_way, bool bforced)
 			input_info(true, &client->dev, "pass fw update\n");
 			wac_i2c->do_crc_check = true;
 			/* need to check crc */
+		} else if (wac_i2c->pdata->fw_force_update_from > 0 &&
+				fw_ver_ic >= wac_i2c->pdata->fw_force_update_from) {
+			/* need to update */
+			input_info(true, &client->dev,
+				   "need to update because ic version is higher than 0x%04X\n",
+				   wac_i2c->pdata->fw_force_update_from);
 		} else if (fw_ver_ic > wac_i2c->fw_ver_bin) {
 			input_info(true, &client->dev,
 				   "dont need to update fw\n");
@@ -2767,6 +2883,10 @@ static struct wacom_g5_platform_data *wacom_parse_dt(struct i2c_client *client)
 			  "failed to read fw_path %d\n", ret);
 	}
 
+	ret = of_property_read_u32(np, "wacom,fw_force_update_from", &pdata->fw_force_update_from);
+	if (ret)
+		pdata->fw_force_update_from = 0;
+
 	ret = of_property_read_u32(np, "wacom,module_ver", &pdata->module_ver);
 	if (ret) {
 		input_err(true, &client->dev,
@@ -2803,13 +2923,13 @@ static struct wacom_g5_platform_data *wacom_parse_dt(struct i2c_client *client)
 	input_info(true, &client->dev,
 		   "boot_addr: 0x%X, origin: (%d,%d), max_coords: (%d,%d), "
 		   "max_pressure: %d, max_height: %d, max_tilt: (%d,%d) "
-		   "invert: (%d,%d,%d), fw_path: %s, ic_type: %d, "
+		   "invert: (%d,%d,%d), fw_path: %s (force update from 0x%04X ver), ic_type: %d, "
 		   "table_swap:%d%s%s\n",
 		   pdata->boot_addr, pdata->origin[0], pdata->origin[1],
 		   pdata->max_x, pdata->max_y, pdata->max_pressure,
 		   pdata->max_height, pdata->max_x_tilt, pdata->max_y_tilt,
 		   pdata->x_invert, pdata->y_invert, pdata->xy_switch,
-		   pdata->fw_path, pdata->ic_type, pdata->table_swap,
+		   pdata->fw_path, pdata->fw_force_update_from, pdata->ic_type, pdata->table_swap,
 		   pdata->use_garage ? ", use garage" : "",
 		   pdata->use_vddio ? ", control vddio" : "");
 
@@ -2892,7 +3012,6 @@ static int wacom_i2c_probe(struct i2c_client *client,
 #else
 	wac_i2c->battery_saving_mode = false;
 #endif
-	
 	wac_i2c->reset_flag = false;
 	wac_i2c->pm_suspend = false;
 	wac_i2c->samplerate_state = true;

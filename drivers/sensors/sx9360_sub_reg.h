@@ -130,7 +130,7 @@ static struct smtc_reg_data setup_reg[] = {
 	/* 0x10~0x12, General Control*/
     {
         .reg = SX9360_GNRLCTRL0_REG,
-        .val = SX9360_GNRLCTRL0_VAL_PHOFF | 0x03,//PHEN
+        .val = SX9360_GNRLCTRL0_VAL_PHOFF | 0x02,//PHEN
     },
     {
         .reg = SX9360_GNRLCTRL1_REG,

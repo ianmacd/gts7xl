@@ -1,7 +1,7 @@
 /*
  * Customer HW 4 dependant file
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -63,6 +63,15 @@
 #define _dhd_sec_feature_h_
 
 #include <linuxver.h>
+
+#if defined(ANDROID_PLATFORM_VERSION)
+#if (ANDROID_PLATFORM_VERSION >= 10)
+//#define STA_RANDMAC_ENFORCED
+#define WL_USE_RANDOMIZED_SCAN
+#define WL_STA_ASSOC_RAND
+#define RANDOM_MAC_CONTROL
+#endif // endif
+#endif /* ANDROID_PLATFORM_VERSION */
 
 /* For COB type feature */
 #ifdef CONFIG_WIFI_BROADCOM_COB

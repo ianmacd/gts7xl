@@ -8,6 +8,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/ktime.h>
+#include <linux/wakelock.h>
 
 #define MAX_CHARGING_VOLT		12000 /* 12V */
 #define USBPD_VOLT_UNIT			50 /* 50mV */
@@ -30,19 +31,23 @@
 #define tSrcTransition		(25)	/* 25~35 ms */
 #define tPSSourceOn		(420)	/* 390~480 ms */
 #define tPSSourceOff		(750)	/* 750~960 ms */
+#if defined(CONFIG_SEC_FACTORY)
+#define tSenderResponse		(1100)	/* for UCT300 */
+#else
 #define tSenderResponse		(25)	/* 24~30ms */
+#endif
 #define tSenderResponseSRC	(300)	/* 1000 ms */
 #define tSendSourceCap		(10)	/* 1~2 s */
 #define tPSHardReset		(22)	/* 25~35 ms */
 #define tSinkWaitCap		(2500)	/* 2.1~2.5 s  */
-#define tPSTransition		(450)	/* 450~550 ms */
+#define tPSTransition		(550)	/* 450~550 ms */
 #define tVCONNSourceOn		(100)	/* 24~30 ms */
 #define tVDMSenderResponse	(35)	/* 24~30 ms */
 #define tVDMWaitModeEntry	(50)	/* 40~50  ms */
 #define tVDMWaitModeExit	(50)    /* 40~50  ms */
 #define tDiscoverIdentity	(50)	/* 40~50  ms */
 #define tSwapSourceStart        (20)	/* 20  ms */
-#define tTypeCSinkWaitCap       (310)	/* 310~620 ms */
+#define tTypeCSinkWaitCap       (600)	/* 310~620 ms */
 #define tTypeCSendSourceCap (100) /* 100~200ms */
 #define tSrcRecover (880) /* 660~1000ms */
 #define tNoResponse (5500) /* 660~1000ms */
@@ -312,6 +317,7 @@ typedef enum usbpd_manager_event {
 	MANAGER_START_DISCOVER_IDENTITY	= 18,
 	MANAGER_GET_SRC_CAP			= 19,
 	MANAGER_SEND_PR_SWAP	= 20,
+	MANAGER_SEND_DR_SWAP	= 21,
 } usbpd_manager_event_type;
 
 enum usbpd_msg_status {
@@ -435,6 +441,20 @@ typedef enum {
 	PPS_ENABLE = 1,
 } PPS_ENABLE_SEL;
 
+enum  {
+	S2MU106_USBPD_IP,
+	S2MU107_USBPD_IP,
+};
+
+enum usbpd_pdic_rid {
+    REG_RID_UNDF = 0x00,
+    REG_RID_255K = 0x03,
+    REG_RID_301K = 0x04,
+    REG_RID_523K = 0x05,
+    REG_RID_619K = 0x06,
+    REG_RID_OPEN = 0x07,
+    REG_RID_MAX  = 0x08,
+};
 
 typedef struct usbpd_phy_ops {
 	/*    1st param should be 'usbpd_data *'    */
@@ -454,16 +474,36 @@ typedef struct usbpd_phy_ops {
 	void   (*driver_reset)(void *);
 	int    (*set_otg_control)(void *, int);
 	void    (*get_vbus_short_check)(void *, bool *);
+	void    (*pd_vbus_short_check)(void *);
 	int    (*set_cc_control)(void *, int);
 	void    (*pr_swap)(void *, int);
 	int    (*vbus_on_check)(void *);
 	int		(*get_side_check)(void *_data);
 	int    (*set_rp_control)(void *, int);
-	int    (*cc_instead_of_vbus)(void *);
+#if defined(CONFIG_TYPEC)
+	void	(*set_pwr_opmode)(void *, int);
+#endif
+	int    (*cc_instead_of_vbus)(void *, int);
 	int    (*op_mode_clear)(void *);
-	int    (*pps_enable)(void *, int);
-	void    (*send_psrdy)(void *);
+	int    (*get_lpm_mode)(void *);
+	void    (*set_lpm_mode)(void *);
+	void    (*set_normal_mode)(void *);
+	int    (*get_rid)(void *);
+	void    (*control_option_command)(void *, int);
+#if defined(CONFIG_SEC_FACTORY)
+	int    (*power_off_water_check)(void *);
+#endif
+	int    (*get_water_detect)(void *);
+#if defined(CONFIG_PDIC_PD30)
 	int    (*get_pps_voltage)(void *);
+	void    (*send_hard_reset_dc)(void *);
+	void    (*force_pps_disable)(void *);
+	void    (*send_psrdy)(void *);
+	int    (*pps_enable)(void *, int);
+	int    (*get_pps_enable)(void *, int *);
+	void    (*send_ocp_info)(void *);
+#endif
+	void    (*send_pd_info)(void *, int);
 } usbpd_phy_ops_type;
 
 struct policy_data {
@@ -483,6 +523,8 @@ struct policy_data {
 	bool			txhardresetflag;
 	bool			pd_support;
 	bool			pps_enable;
+	bool			send_ocp;
+	bool			check_ps_ready_retry;
 };
 
 struct protocol_data {
@@ -600,6 +642,10 @@ struct usbpd_data {
 
 	struct timeval		time1;
 	struct timeval		time2;
+	struct timeval		check_time;
+
+	struct wake_lock	policy_wake;
+	int					ip_num;
 };
 
 static inline struct usbpd_data *protocol_rx_to_usbpd(struct protocol_data *rx)
@@ -650,7 +696,9 @@ extern data_obj_type usbpd_manager_select_capability(struct usbpd_data *);
 extern bool usbpd_manager_vdm_request_enabled(struct usbpd_data *);
 extern void usbpd_manager_acc_handler_cancel(struct device *);
 extern void usbpd_manager_acc_detach_handler(struct work_struct *);
+extern int usbpd_manager_check_accessory(struct usbpd_manager_data *manager);
 extern void usbpd_manager_send_pr_swap(struct device *);
+extern void usbpd_manager_send_dr_swap(struct device *);
 extern void usbpd_policy_work(struct work_struct *);
 extern void usbpd_protocol_tx(struct usbpd_data *);
 extern void usbpd_protocol_rx(struct usbpd_data *);
@@ -676,8 +724,8 @@ extern void usbpd_init_counters(struct usbpd_data *);
 /* for usbpd certification polling */
 /* for usbpd certification polling */
 void usbpd_timer1_start(struct usbpd_data *pd_data);
-int usbpd_check_time1(struct usbpd_data *pd_data);
+long long usbpd_check_time1(struct usbpd_data *pd_data);
 void usbpd_timer2_start(struct usbpd_data *pd_data);
-int usbpd_check_time2(struct usbpd_data *pd_data);
+long long usbpd_check_time2(struct usbpd_data *pd_data);
 
 #endif

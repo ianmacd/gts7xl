@@ -29,21 +29,11 @@
 #include <ipc/apr_tal.h>
 #include "adsp_err.h"
 #include "q6afecal-hwdep.h"
-
-#ifdef CONFIG_SEC_SND_ADAPTATION
-#include <dsp/sec_adaptation.h>
-#endif /* CONFIG_SEC_SND_ADAPTATION */
 #ifdef CONFIG_TAS25XX_ALGO
 #include <dsp/smart_amp.h>
 #endif /*CONFIG_TAS25XX_ALGO*/
 
 #define WAKELOCK_TIMEOUT	5000
-
-#ifdef CONFIG_TAS25XX_ALGO
-static int32_t smartamp_algo_callback(uint32_t opcode, uint32_t *payload,
-				    uint32_t payload_size);
-#endif /*CONFIG_TAS25XX_ALGO*/
-
 enum {
 	AFE_COMMON_RX_CAL = 0,
 	AFE_COMMON_TX_CAL,
@@ -198,6 +188,11 @@ bool afe_close_done[2] = {true, true};
 static int afe_get_cal_hw_delay(int32_t path,
 				struct audio_cal_hw_delay_entry *entry);
 static int remap_cal_data(struct cal_block_data *cal_block, int cal_index);
+
+#ifdef CONFIG_TAS25XX_ALGO
+static int32_t smartamp_algo_callback(uint32_t opcode, uint32_t *payload,
+				    uint32_t payload_size);
+#endif /*CONFIG_TAS25XX_ALGO*/
 
 int afe_get_spk_initial_cal(void)
 {
@@ -556,12 +551,6 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 		/*
 		 * Pass reset events to proxy driver, if cb is registered
 		 */
-		if (data->payload_size < sizeof(uint32_t)) {
-			pr_err("%s: Error: size %d is less than expected\n",
-				__func__, data->payload_size);
-			return -EINVAL;
-		}
-
 		if (this_afe.tx_cb) {
 			this_afe.tx_cb(data->opcode, data->token,
 					data->payload,
@@ -591,6 +580,10 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 			return -EINVAL;
 		}
 
+		if (rtac_make_afe_callback(data->payload,
+					   data->payload_size))
+			return 0;
+
 		if (data->opcode == AFE_PORT_CMDRSP_GET_PARAM_V3)
 			param_id_pos = 4;
 		else
@@ -608,15 +601,14 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 			av_dev_drift_afe_cb_handler(data->opcode, data->payload,
 						    data->payload_size);
 		} else {
-			if (rtac_make_afe_callback(data->payload,
-						   data->payload_size))
-				return 0;
-
 #ifdef CONFIG_TAS25XX_ALGO
-			if((payload[1] == AFE_SMARTAMP_MODULE_RX)||(payload[1] == AFE_SMARTAMP_MODULE_TX)) {
-				if (smartamp_algo_callback(data->opcode, data->payload, data->payload_size))
+			if ((payload[1] == AFE_SMARTAMP_MODULE_RX) ||
+				(payload[1] == AFE_SMARTAMP_MODULE_TX)) {
+				if (smartamp_algo_callback(data->opcode, data->payload, 
+							 data->payload_size))
 					return -EINVAL;
-			} else if (sp_make_afe_callback(data->opcode, data->payload, data->payload_size))
+			} else if (sp_make_afe_callback(data->opcode, data->payload,
+						 data->payload_size))
 				return -EINVAL;
 #else
 			if (sp_make_afe_callback(data->opcode, data->payload,
@@ -1739,7 +1731,8 @@ done:
 }
 
 static int q6afe_svc_set_params(int index, struct mem_mapping_hdr *mem_hdr,
-				u8 *packed_param_data, u32 packed_data_size)
+				u8 *packed_param_data, u32 packed_data_size,
+				bool is_iid_supported)
 {
 	int ret;
 
@@ -1749,7 +1742,7 @@ static int q6afe_svc_set_params(int index, struct mem_mapping_hdr *mem_hdr,
 		return ret;
 	}
 
-	if (q6common_is_instance_id_supported())
+	if (is_iid_supported)
 		return q6afe_svc_set_params_v2(index, mem_hdr,
 					       packed_param_data,
 					       packed_data_size);
@@ -1767,13 +1760,15 @@ static int q6afe_svc_pack_and_set_param_in_band(int index,
 	u32 packed_data_size =
 		sizeof(struct param_hdr_v3) + param_hdr.param_size;
 	int ret = 0;
+	bool is_iid_supported = q6common_is_instance_id_supported();
 
 	packed_param_data = kzalloc(packed_data_size, GFP_KERNEL);
 	if (!packed_param_data)
 		return -ENOMEM;
 
-	ret = q6common_pack_pp_params(packed_param_data, &param_hdr, param_data,
-				      &packed_data_size);
+	ret = q6common_pack_pp_params_v2(packed_param_data, &param_hdr,
+					param_data, &packed_data_size,
+					is_iid_supported);
 	if (ret) {
 		pr_err("%s: Failed to pack parameter header and data, error %d\n",
 		       __func__, ret);
@@ -1781,7 +1776,7 @@ static int q6afe_svc_pack_and_set_param_in_band(int index,
 	}
 
 	ret = q6afe_svc_set_params(index, NULL, packed_param_data,
-				   packed_data_size);
+				   packed_data_size, is_iid_supported);
 
 done:
 	kfree(packed_param_data);
@@ -2440,27 +2435,6 @@ unlock:
 	return ret;
 }
 
-#if defined(CONFIG_SEC_SND_ADAPTATION) && \
-	!defined(CONFIG_SND_SOC_WSA881X)
-static int afe_validate_cal(u16 port_id)
-{
-	int ret = 0;
-	u32 topology_id = 0;
-
-	ret = afe_get_cal_topology_id(port_id, &topology_id, AFE_TOPOLOGY_CAL);
-	if (ret || !topology_id) {
-		pr_debug("%s: AFE port[%d] get_cal_topology[%d] invalid!\n",
-				__func__, port_id, topology_id);
-		goto done;
-	}
-
-	ret = q6audio_get_afe_cal_validation(port_id, topology_id);
-
-done:
-	return ret;
-}
-#endif
-
 static int afe_send_port_topology_id(u16 port_id)
 {
 	struct afe_param_id_set_topology_cfg topology;
@@ -2889,6 +2863,7 @@ static int afe_send_codec_reg_config(
 	struct param_hdr_v3 param_hdr;
 	int idx = 0;
 	int ret = -EINVAL;
+	bool is_iid_supported = q6common_is_instance_id_supported();
 
 	memset(&param_hdr, 0, sizeof(param_hdr));
 	max_single_param = sizeof(struct param_hdr_v3) +
@@ -2911,10 +2886,10 @@ static int afe_send_codec_reg_config(
 
 		while (packed_data_size + max_single_param < max_data_size &&
 		       idx < cdc_reg_cfg->num_registers) {
-			ret = q6common_pack_pp_params(
+			ret = q6common_pack_pp_params_v2(
 				packed_param_data + packed_data_size,
 				&param_hdr, (u8 *) &cdc_reg_cfg->reg_data[idx],
-				&single_param_size);
+				&single_param_size, is_iid_supported);
 			if (ret) {
 				pr_err("%s: Failed to pack parameters with error %d\n",
 				       __func__, ret);
@@ -2925,7 +2900,8 @@ static int afe_send_codec_reg_config(
 		}
 
 		ret = q6afe_svc_set_params(IDX_GLOBAL_CFG, NULL,
-					   packed_param_data, packed_data_size);
+					   packed_param_data, packed_data_size,
+					   is_iid_supported);
 		if (ret) {
 			pr_err("%s: AFE_PARAM_ID_CDC_REG_CFG failed %d\n",
 				__func__, ret);
@@ -3706,19 +3682,11 @@ int afe_tdm_port_start(u16 port_id, struct afe_tdm_port_config *tdm_port,
 
 	/* Also send the topology id here: */
 	if (!(this_afe.afe_cal_mode[port_index] == AFE_CAL_MODE_NONE)) {
-#if defined(CONFIG_SEC_SND_ADAPTATION) && \
-	!defined(CONFIG_SND_SOC_WSA881X)
-		if (afe_validate_cal(port_id)) {
-#endif
-			/* One time call: only for first time */
-			afe_send_custom_topology();
-			afe_send_port_topology_id(port_id);
-			afe_send_cal(port_id);
-			afe_send_hw_delay(port_id, rate);
-#if defined(CONFIG_SEC_SND_ADAPTATION) && \
-	!defined(CONFIG_SND_SOC_WSA881X)
-		}
-#endif
+		/* One time call: only for first time */
+		afe_send_custom_topology();
+		afe_send_port_topology_id(port_id);
+		afe_send_cal(port_id);
+		afe_send_hw_delay(port_id, rate);
 	}
 
 	/* Start SW MAD module */
@@ -4574,17 +4542,9 @@ static int __afe_port_start(u16 port_id, union afe_port_config *afe_config,
 	/* Also send the topology id here: */
 	if (!(this_afe.afe_cal_mode[port_index] == AFE_CAL_MODE_NONE)) {
 		/* One time call: only for first time */
-#if defined(CONFIG_SEC_SND_ADAPTATION) && \
-	!defined(CONFIG_SND_SOC_WSA881X)
-		if (afe_validate_cal(port_id)) {
-#endif
-			afe_send_custom_topology();
-			afe_send_port_topology_id(port_id);
-			afe_send_cal(port_id);
-#if defined(CONFIG_SEC_SND_ADAPTATION) && \
-	!defined(CONFIG_SND_SOC_WSA881X)
-		}
-#endif
+		afe_send_custom_topology();
+		afe_send_port_topology_id(port_id);
+		afe_send_cal(port_id);
 		afe_send_hw_delay(port_id, rate);
 	}
 
@@ -8164,7 +8124,7 @@ int afe_get_sp_rx_tmax_xmax_logging_data(
 
 	memcpy(xt_logging, &this_afe.xt_logging_resp.param,
 		sizeof(this_afe.xt_logging_resp.param));
-	pr_debug("%s: max_excursion %d %d count_exceeded_excursion %d %d max_temperature %d %d count_exceeded_temperature %d %d\n",
+	pr_info("%s: max_excursion %d %d count_exceeded_excursion %d %d max_temperature %d %d count_exceeded_temperature %d %d\n",
 		 __func__, xt_logging->max_excursion[SP_V2_SPKR_1],
 		 xt_logging->max_excursion[SP_V2_SPKR_2],
 		 xt_logging->count_exceeded_excursion[SP_V2_SPKR_1],
@@ -8584,6 +8544,7 @@ static int afe_set_cal_sp_th_vi_cfg(int32_t cal_type, size_t data_size,
 	uint32_t mode;
 
 	if (cal_data == NULL ||
+	    data_size > sizeof(*cal_data) ||
 	    this_afe.cal_data[AFE_FB_SPKR_PROT_TH_VI_CAL] == NULL)
 		goto done;
 
@@ -8727,6 +8688,7 @@ static int afe_get_cal_sp_th_vi_param(int32_t cal_type, size_t data_size,
 	int ret = 0;
 
 	if (cal_data == NULL ||
+	    data_size > sizeof(*cal_data) ||
 	    this_afe.cal_data[AFE_FB_SPKR_PROT_TH_VI_CAL] == NULL)
 		return 0;
 

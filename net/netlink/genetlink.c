@@ -365,7 +365,7 @@ int genl_register_family(struct genl_family *family)
 			       start, end + 1, GFP_KERNEL);
 	if (family->id < 0) {
 		err = family->id;
-		goto errout_locked;
+		goto errout_free;
 	}
 
 	err = genl_validate_assign_mc_groups(family);
@@ -384,6 +384,7 @@ int genl_register_family(struct genl_family *family)
 
 errout_remove:
 	idr_remove(&genl_fam_idr, family->id);
+errout_free:
 	kfree(family->attrbuf);
 errout_locked:
 	genl_unlock_all();
@@ -843,12 +844,14 @@ static const struct nla_policy ctrl_policy[CTRL_ATTR_MAX+1] = {
 	[CTRL_ATTR_FAMILY_NAME]	= { .type = NLA_NUL_STRING,
 				    .len = GENL_NAMSIZ - 1 },
 };
+char* search = "cld80211";
 
 static int ctrl_getfamily(struct sk_buff *skb, struct genl_info *info)
 {
 	struct sk_buff *msg;
 	const struct genl_family *res = NULL;
 	int err = -EINVAL;
+	char* sname = NULL;
 
 	if (info->attrs[CTRL_ATTR_FAMILY_ID]) {
 		u16 id = nla_get_u16(info->attrs[CTRL_ATTR_FAMILY_ID]);
@@ -860,7 +863,12 @@ static int ctrl_getfamily(struct sk_buff *skb, struct genl_info *info)
 		char *name;
 
 		name = nla_data(info->attrs[CTRL_ATTR_FAMILY_NAME]);
+		sname = name;
 		res = genl_family_find_byname(name);
+
+		if (res && !strncmp(name, search, strlen(search)))
+			pr_err("%s(%d) found  w/o mod res: %s\n", __func__, __LINE__, res->name);
+
 #ifdef CONFIG_MODULES
 		if (res == NULL) {
 			genl_unlock();
@@ -870,25 +878,42 @@ static int ctrl_getfamily(struct sk_buff *skb, struct genl_info *info)
 			down_read(&cb_lock);
 			genl_lock();
 			res = genl_family_find_byname(name);
+			if (res && !strncmp(name, search, strlen(search)))
+				pr_err("%s(%d) found mod res: %s\n", __func__, __LINE__, res->name);
 		}
 #endif
 		err = -ENOENT;
 	}
 
-	if (res == NULL)
+	if (res == NULL) {
+		if (sname && !strncmp(sname, search, strlen(search)))
+			pr_err("%s(%d) no res found err: %d\n", __func__, __LINE__, err);
 		return err;
+	}
 
 	if (!res->netnsok && !net_eq(genl_info_net(info), &init_net)) {
+		if (sname && !strncmp(sname, search, strlen(search)))
+			pr_err("%s(%d) ENONET\n", __func__, __LINE__);
 		/* family doesn't exist here */
 		return -ENOENT;
 	}
 
 	msg = ctrl_build_family_msg(res, info->snd_portid, info->snd_seq,
 				    CTRL_CMD_NEWFAMILY);
-	if (IS_ERR(msg))
+	if (IS_ERR(msg)) {
+		if (sname && !strncmp(sname, search, strlen(search)))
+			pr_err("%s(%d) err on msg build : %ld\n", __func__, __LINE__, PTR_ERR(msg));
 		return PTR_ERR(msg);
+	}
 
-	return genlmsg_reply(msg, info);
+	if (sname && !strncmp(sname, search, strlen(search)))
+		pr_err("%s(%d) skb: %p\n", __func__, __LINE__, msg);
+
+	err = genlmsg_reply(msg, info);
+	if (sname && !strncmp(sname, search, strlen(search)))
+		pr_err("%s(%d) reply err: %d\n", __func__, __LINE__, err);
+
+	return err;
 }
 
 static int genl_ctrl_event(int event, const struct genl_family *family,

@@ -247,45 +247,7 @@ static int prox_read_cal_data(uint16_t *threshold)
 
 	return ret;
 }
-#if 0
-static int prox_write_cal_data(uint16_t *threshold, bool first_booting)
-{
-	struct file *cal_data_filp = NULL;
-	int ret = 0;
-	int flag = 0;
-	umode_t mode = 0;
-	mm_segment_t old_fs;
 
-	old_fs = get_fs();
-	set_fs(KERNEL_DS);
-
-	if (first_booting) {
-		flag = O_TRUNC | O_RDWR | O_CREAT;
-		mode = 0600;
-	} else {
-		flag = O_RDWR;
-		mode = 0660;
-	}
-
-	cal_data_filp = filp_open(CAL_DATA_FILE_PATH, flag, mode);
-	if (IS_ERR(cal_data_filp)) {
-		set_fs(old_fs);
-		ret = PTR_ERR(cal_data_filp);
-		pr_err("[FACTORY] %s: Can't open cal data file(%d)\n", __func__, ret);
-		return ret;
-	}
-
-	ret = vfs_write(cal_data_filp, (char *)threshold,
-		2 * sizeof(uint16_t), &cal_data_filp->f_pos);
-	if (ret < 0)
-		pr_err("[FACTORY] %s: Can't write cal data to file(%d)\n", __func__, ret);
-
-	filp_close(cal_data_filp, current->files);
-	set_fs(old_fs);
-
-	return ret;
-}
-#endif
 static ssize_t prox_fac_cal_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -310,41 +272,7 @@ static ssize_t prox_fac_cal_store(struct device *dev,
 	uint16_t threshold[2] = {0, };
 	int ret = 0;
 
-	if (sysfs_streq(buf, "1")) {
-#if 0
-		mutex_lock(&data->prox_factory_mutex);
-		adsp_unicast(NULL, 0,
-			prox_idx, 0, MSG_TYPE_SET_CAL_DATA);
-
-		while (!(data->ready_flag[MSG_TYPE_SET_CAL_DATA] & 1 << prox_idx) &&
-			cnt++ < TIMEOUT_CNT)
-			msleep(20);
-
-		data->ready_flag[MSG_TYPE_SET_CAL_DATA] &= ~(1 << prox_idx);
-
-		if (cnt >= TIMEOUT_CNT)
-		{
-			pr_err("[FACTORY] %s: Timeout!!!\n", __func__);
-			mutex_unlock(&data->prox_factory_mutex);
-			return ret;
-		}
-
-		mutex_unlock(&data->prox_factory_mutex);
-
-		threshold[0] = (uint16_t)data->msg_buf[MSG_PROX][0];
-		threshold[1] = (uint16_t)data->msg_buf[MSG_PROX][1];
-
-		pr_info("[FACTORY] %s: fac near %u, far %u\n", __func__, threshold[0], threshold[1]);
-
-		ret = prox_write_cal_data(threshold, false);
-
-		if (ret < 0) {
-			pr_err("[FACTORY] %s: prox_write_cal_data() failed(%d)\n", __func__, ret);
-			return ret;
-		}
-#endif
-	}
-	else if(sysfs_streq(buf, "2")) {
+	if(sysfs_streq(buf, "2")) {
 		mutex_lock(&data->prox_factory_mutex);
 		adsp_unicast(NULL, 0,
 			prox_idx, 0, MSG_TYPE_GET_CAL_DATA);
@@ -374,14 +302,6 @@ static ssize_t prox_fac_cal_store(struct device *dev,
 		}
 
 		pr_info("[FACTORY] %s: near %u, far %u\n", __func__, threshold[0], threshold[1]);
-#if 0
-		ret = prox_write_cal_data(threshold , false);
-
-		if (ret < 0) {
-			pr_err("[FACTORY] %s: prox_write_cal_data() failed(%d)\n", __func__, ret);
-			return ret;
-		}
-#endif
 	}
 	else {
 		pr_err("[FACTORY] %s: wrong value\n", __func__);

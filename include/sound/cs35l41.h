@@ -38,6 +38,7 @@ struct cs35l41_platform_data {
 	bool amp_gain_zc;
 	bool dsp_ng_enable;
 	bool inv_pcm;
+	bool use_fsync_errata;	
 	int bst_ind;
 	int bst_vctrl;
 	int bst_ipk;

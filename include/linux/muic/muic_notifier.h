@@ -99,7 +99,7 @@ extern void muic_notifier_chg_off(muic_attached_dev_t new_dev);
 extern void keyboard_notifier_attach(void);
 extern void keyboard_notifier_detach(void);
 #endif
-#if defined(CONFIG_CCIC_S2MU107)
+#if defined(CONFIG_CCIC_S2MU107) || defined(CONFIG_CCIC_S2MU106)
 extern int muic_ccic_notifier_register(struct notifier_block *nb,
 		notifier_fn_t notifier, muic_notifier_device_t listener);
 extern int muic_ccic_notifier_unregister(struct notifier_block *nb);

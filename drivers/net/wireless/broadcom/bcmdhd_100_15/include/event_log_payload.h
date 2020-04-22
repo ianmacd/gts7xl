@@ -4,7 +4,7 @@
  * This file describes the payloads of event log entries that are data buffers
  * rather than formatted string entries. The contents are generally XTLVs.
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -26,8 +26,6 @@
  *
  *
  * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: event_log_payload.h 823424 2019-06-04 05:26:07Z $
  */
 
 #ifndef _EVENT_LOG_PAYLOAD_H_
@@ -37,6 +35,35 @@
 #include <bcmutils.h>
 #include <ethernet.h>
 #include <event_log_tag.h>
+
+/**
+ * A (legacy) timestamp message
+ */
+typedef struct ts_message {
+	uint32 timestamp;
+	uint32 cyclecount;
+} ts_msg_t;
+
+/**
+ * Enhanced timestamp message
+ */
+typedef struct enhanced_ts_message {
+	uint32 version;
+	/* More data, depending on version */
+	uint8 data[];
+} ets_msg_t;
+
+#define ENHANCED_TS_MSG_VERSION_1 (1u)
+
+/**
+ * Enhanced timestamp message, version 1
+ */
+typedef struct enhanced_ts_message_v1 {
+	uint32 version;
+	uint32 timestamp; /* PMU time, in milliseconds */
+	uint32 cyclecount;
+	uint32 cpu_freq;
+} ets_msg_v1_t;
 
 #define EVENT_LOG_XTLV_ID_STR                   0  /**< XTLV ID for a string */
 #define EVENT_LOG_XTLV_ID_TXQ_SUM               1  /**< XTLV ID for txq_summary_t */
@@ -890,6 +917,7 @@ typedef enum {
 	ROAM_LOG_NBR_REP = 5,		/* EVT log for Neighbor REP */
 	ROAM_LOG_BCN_REQ = 6,		/* EVT log for BCNRPT REQ */
 	ROAM_LOG_BCN_REP = 7,		/* EVT log for BCNRPT REP */
+	ROAM_LOG_BTM_REP = 8,		/* EVT log for BTM REP */
 	PRSV_PERIODIC_ID_MAX
 } prsv_periodic_id_enum_t;
 
@@ -900,7 +928,8 @@ typedef struct prsv_periodic_log_hdr {
 } prsv_periodic_log_hdr_t;
 
 #define ROAM_LOG_VER_1	(1u)
-#define ROAM_LOG_TRIG_VER	(1u)
+#define ROAM_LOG_VER_2	(2u)
+#define ROAM_LOG_VER_3	(3u)
 #define ROAM_SSID_LEN	(32u)
 typedef struct roam_log_trig_v1 {
 	prsv_periodic_log_hdr_t hdr;
@@ -924,11 +953,38 @@ typedef struct roam_log_trig_v1 {
 	};
 } roam_log_trig_v1_t;
 
+typedef struct roam_log_trig_v2 {
+	prsv_periodic_log_hdr_t hdr;
+	int8 rssi;
+	uint8 current_cu;
+	uint8 full_scan;
+	uint8 pad;
+	uint reason;
+	int result;
+	union {
+		struct {
+			uint rcvd_reason;
+		} prt_roam;
+		struct {
+			uint8 req_mode;
+			uint8 token;
+			uint16 nbrlist_size;
+			uint32 disassoc_dur;
+			uint32 validity_dur;
+			uint32 bss_term_dur;
+		} bss_trans;
+		struct {
+			int rssi_threshold;
+		} low_rssi;
+	};
+} roam_log_trig_v2_t;
+
 #define ROAM_LOG_RPT_SCAN_LIST_SIZE 3
 #define ROAM_LOG_INVALID_TPUT 0xFFFFFFFFu
 typedef struct roam_scan_ap_info {
 	int8 rssi;
-	uint8 pad[3];
+	uint8 cu;
+	uint8 pad[2];
 	uint32 score;
 	uint16 chanspec;
 	struct ether_addr addr;
@@ -946,42 +1002,138 @@ typedef struct roam_log_scan_cmplt_v1 {
 	roam_scan_ap_info_t scan_list[ROAM_LOG_RPT_SCAN_LIST_SIZE];
 } roam_log_scan_cmplt_v1_t;
 
+#define ROAM_CHN_UNI_2A		36u
+#define ROAM_CHN_UNI_2A_MAX	64u
+#define ROAM_CHN_UNI_2C		100u
+#define ROAM_CHN_UNI_2C_MAX	144u
+#define ROAM_CHN_UNI_3		149u
+#define ROAM_CHN_UNI_3_MAX	165u
+#define ROAM_CHN_SPACE		2u /* channel index space for 5G */
+
+typedef struct roam_log_scan_cmplt_v2 {
+	prsv_periodic_log_hdr_t hdr;
+	uint8 scan_count;
+	uint8 scan_list_size;
+	uint8 chan_num;
+	uint8 pad;
+	uint16 band2g_chan_list;
+	uint16 uni2a_chan_list;
+	uint8 uni2c_chan_list[3];
+	uint8 uni3_chan_list;
+	int32 score_delta;
+	roam_scan_ap_info_t cur_info;
+	roam_scan_ap_info_t scan_list[ROAM_LOG_RPT_SCAN_LIST_SIZE];
+} roam_log_scan_cmplt_v2_t;
+
 typedef struct roam_log_cmplt_v1 {
 	prsv_periodic_log_hdr_t hdr;
-	uint status;
-	uint reason;
-	uint16	chanspec;
-	struct ether_addr addr;
+	uint status;	/* status code WLC_E STATUS */
+	uint reason;	/* roam trigger reason */
+	uint16	chanspec; /* new bssid chansepc */
+	struct ether_addr addr; /* ether addr */
 	uint8 pad[3];
 	uint8 retry;
 } roam_log_cmplt_v1_t;
+
+typedef roam_log_cmplt_v1_t roam_log_cmplt_v2_t;
 
 typedef struct roam_log_nbrrep {
 	prsv_periodic_log_hdr_t hdr;
 	uint channel_num;
 } roam_log_nbrrep_v1_t;
 
+typedef struct roam_log_nbrrep_v2 {
+	prsv_periodic_log_hdr_t hdr;
+	uint channel_num;
+	uint16 band2g_chan_list; /* channel bit map */
+	uint16 uni2a_chan_list;
+	uint8 uni2c_chan_list[3];
+	uint8 uni3_chan_list;
+} roam_log_nbrrep_v2_t;
+
 typedef struct roam_log_nbrreq {
 	prsv_periodic_log_hdr_t hdr;
 	uint token;
 } roam_log_nbrreq_v1_t;
 
+typedef roam_log_nbrreq_v1_t roam_log_nbrreq_v2_t;
+
 typedef struct roam_log_bcnrptreq {
 	prsv_periodic_log_hdr_t hdr;
 	int32 result;
-	uint8 reg;
-	uint8 channel;
-	uint8 mode;
-	uint8 bssid_wild;
-	uint8 ssid_len;
+	uint8 reg;	/* operating class */
+	uint8 channel;  /* number of requesting channel */
+	uint8 mode;		/* request mode d11 rmreq bcn */
+	uint8 bssid_wild; /* is wild bssid */
+	uint8 ssid_len;		/* length of SSID */
 	uint8 pad;
-	uint16 duration;
+	uint16 duration;	/* duration */
 	uint8 ssid[ROAM_SSID_LEN];
 } roam_log_bcnrpt_req_v1_t;
+
+typedef roam_log_bcnrpt_req_v1_t roam_log_bcnrpt_req_v2_t;
 
 typedef struct roam_log_bcnrptrep {
 	prsv_periodic_log_hdr_t hdr;
 	uint32 count;
 } roam_log_bcnrpt_rep_v1_t;
+
+typedef struct roam_log_bcnrptrep_v2 {
+	prsv_periodic_log_hdr_t hdr;
+	uint8 scan_inprogress; /* if scan in progress TRUE */
+	uint8 reason;			/* report mode d11 RMREP mode */
+	uint32 count;
+} roam_log_bcnrpt_rep_v2_t;
+
+typedef struct roam_log_btmrep_v2 {
+	prsv_periodic_log_hdr_t hdr;
+	uint8 req_mode; /* d11 BSSTRANS req mode */
+	uint8 status; /* d11 BSSTRANS response status code */
+	uint16 pad[2];
+	int	result;
+} roam_log_btm_rep_v2_t;
+
+/* ROAM_LOG_VER_3 specific structures */
+typedef struct roam_log_btmrep_v3 {
+	prsv_periodic_log_hdr_t hdr;
+	uint8 req_mode; /* d11 BSSTRANS req mode */
+	uint8 status; /* d11 BSSTRANS response status code */
+	uint16 pad[2];
+	struct ether_addr target_addr; /* bssid to move */
+	int	result;
+} roam_log_btm_rep_v3_t;
+
+typedef struct roam_log_bcnrptreq_v3 {
+	prsv_periodic_log_hdr_t hdr;
+	int32 result;
+	uint8 reg;	/* operating class */
+	uint8 channel;  /* number of requesting channel */
+	uint8 mode;		/* request mode d11 rmreq bcn */
+	uint8 bssid_wild; /* is wild bssid */
+	uint8 ssid_len;		/* length of SSID */
+	uint8 pad;
+	uint16 duration;	/* duration */
+	uint8 ssid[ROAM_SSID_LEN];
+	uint channel_num;	/* number of scan channel */
+	uint16 band2g_chan_list; /* channel bit map */
+	uint16 uni2a_chan_list;
+	uint8 uni2c_chan_list[3];
+	uint8 uni3_chan_list;
+} roam_log_bcnrpt_req_v3_t;
+
+#define BCNRPT_RSN_SUCCESS	0
+#define BCNRPT_RSN_BADARG	1
+#define BCNRPT_RSN_SCAN_ING	2
+#define BCNRPT_RSN_SCAN_FAIL	3
+
+typedef struct roam_log_bcnrptrep_v3 {
+	prsv_periodic_log_hdr_t hdr;
+	uint8 scan_status;		/* scan status */
+	uint8 reason;			/* report mode d11 RMREP mode */
+	uint16 reason_detail;
+	uint32 count;
+	uint16 duration;		/* duration */
+	uint16 pad;
+} roam_log_bcnrpt_rep_v3_t;
 
 #endif /* _EVENT_LOG_PAYLOAD_H_ */

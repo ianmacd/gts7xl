@@ -27,6 +27,9 @@
 #if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
 #include "cam_ois_mcu_stm32g.h"
 #endif
+#if defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
+#include "cam_ois_rumba_s4.h"
+#endif
 
 #if defined(CONFIG_USE_CAMERA_HW_BIG_DATA)
 #include "cam_sensor_cmn_header.h"
@@ -39,6 +42,10 @@
 
 #if 0 //EARLY_RETENTION
 extern int32_t cam_sensor_early_retention(void);
+#endif
+
+#if defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
+uint32_t isOisPoweredUp = 0;
 #endif
 
 #if defined(CONFIG_CAMERA_SSM_I2C_ENV)
@@ -66,6 +73,9 @@ extern ssize_t flash_power_store(struct device *dev, struct device_attribute *at
 #endif
 
 extern char tof_freq[10];
+#if defined(CONFIG_CAMERA_DYNAMIC_MIPI)
+extern char band_info[20];
+#endif
 
 extern struct kset *devices_kset;
 struct class *camera_class;
@@ -185,7 +195,7 @@ static ssize_t rear_type_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	int rc = 0;
-#if defined(CONFIG_SEC_GTS5L_PROJECT) || defined(CONFIG_SEC_GTS5LWIFI_PROJECT) || defined(CONFIG_SEC_GTS6L_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
+#if defined(CONFIG_SEC_GTS5L_PROJECT) || defined(CONFIG_SEC_GTS5LWIFI_PROJECT) || defined(CONFIG_SEC_GTS6L_PROJECT) ||  defined(CONFIG_SEC_GTS6X_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
 	char cam_type_lsi[] = "SLSI_S5K3M5\n";
 #else
 	char cam_type_lsi[] = "SLSI_SAK2L4SX\n";
@@ -205,7 +215,7 @@ static ssize_t front_camera_type_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	int rc = 0;
-#if defined(CONFIG_SEC_GTS5L_PROJECT) || defined(CONFIG_SEC_GTS5LWIFI_PROJECT) || defined(CONFIG_SEC_GTS6L_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
+#if defined(CONFIG_SEC_GTS5L_PROJECT) || defined(CONFIG_SEC_GTS5LWIFI_PROJECT) || defined(CONFIG_SEC_GTS6L_PROJECT) || defined(CONFIG_SEC_GTS6X_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
 	char cam_type[] = "SLSI_S5K4HA\n";
 #else
 	char cam_type[] = "SONY_IMX374\n";
@@ -716,6 +726,9 @@ static ssize_t front_camera_afcal_show(struct device *dev,
 
 	pr_info("[FW_DBG] front_af_cal_pan: %d, front_af_cal_macro: %d\n", front_af_cal_pan, front_af_cal_macro);
 	rc = scnprintf(buf, PAGE_SIZE, "1 %d %d\n", front_af_cal_macro, front_af_cal_pan);
+#ifdef CONFIG_SEC_BLOOMQ_PROJECT
+	rc = scnprintf(buf, PAGE_SIZE, "1 %c %c\n", 'N', 'N');
+#endif
 	if (rc)
 		return rc;
 	return 0;
@@ -1170,12 +1183,19 @@ static ssize_t front3_camera_moduleid_show(struct device *dev,
 }
 #endif
 
-#if defined(CONFIG_SEC_R3Q_PROJECT) // For R3 Bringup
+#if defined(CONFIG_SEC_R3Q_PROJECT)
 char supported_camera_ids[] = {
         0,   //REAR_0,
         1,   //FRONT_1
 	50,  // REAR_UW
         52,  // REAR_DEPTH
+};
+#elif defined(CONFIG_SEC_BLOOMQ_PROJECT)
+char supported_camera_ids[] = {
+    0,   //REAR_0,
+    3,
+    23,
+    50,
 };
 #else
 char supported_camera_ids[] = {
@@ -1192,12 +1212,6 @@ char supported_camera_ids[] = {
 #endif
 #if defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE)
 	23, //DUAL_REAR_PORTRAIT, SW and W
-#endif
-#if defined(CONFIG_SAMSUNG_REAR_TOF)
-	40, //REAR_TOF_DEPTH
-#endif
-#if defined(CONFIG_SAMSUNG_FRONT_TOF)
-	41, //FRONT_TOF_DEPTH
 #endif
 #if defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE)
 	50, //REAR_2ND
@@ -1515,6 +1529,314 @@ static ssize_t ssrm_camera_info_store(struct device *dev,
 	return size;
 }
 
+#if defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
+extern struct cam_ois_ctrl_t *g_o_ctrl;
+extern struct cam_actuator_ctrl_t *g_a_ctrls[2];
+uint32_t ois_autotest_threshold = 150;
+static ssize_t ois_autotest_show(struct device *dev,
+					 struct device_attribute *attr, char *buf)
+{
+	bool ret = false;
+	int result = 0;
+	bool x1_result = true, y1_result = true;
+	int cnt = 0;
+	struct cam_ois_sinewave_t sinewave[1];
+	pr_info("%s: E\n", __func__);
+
+	if(!isOisPoweredUp)	//If ois is not powered up then dont execute this test
+		return 256;	
+	
+	if (g_a_ctrls[0] != NULL)
+		cam_actuator_power_up(g_a_ctrls[0]);
+	cam_actuator_move_for_ois_test(g_a_ctrls[0]);
+	ret = cam_ois_sine_wavecheck(g_o_ctrl, ois_autotest_threshold, sinewave, &result, 1);
+	if (ret)
+		x1_result = y1_result = true;
+	else {
+		if (result & 0x01) {
+			// Module#1 X Axis Fail
+			x1_result = false;
+		}
+		if (result & 0x02) {
+			// Module#1 Y Axis Fail
+			y1_result = false;
+		}
+	}
+
+	cnt = scnprintf(buf, PAGE_SIZE, "%s, %d, %s, %d",
+		(x1_result ? "pass" : "fail"), (x1_result ? 0 : sinewave[0].sin_x),
+		(y1_result ? "pass" : "fail"), (y1_result ? 0 : sinewave[0].sin_y));
+	pr_info("%s: result : %s\n", __func__, buf);
+
+	if (g_a_ctrls[0] != NULL)
+		cam_actuator_power_down(g_a_ctrls[0]);
+
+	pr_info("%s: X\n", __func__);
+
+	if (cnt)
+		return cnt;
+	return 0;
+}
+
+static ssize_t ois_autotest_store(struct device *dev,
+					  struct device_attribute *attr, const char *buf, size_t size)
+{
+	uint32_t value = 0;
+
+	if (buf == NULL || kstrtouint(buf, 10, &value))
+		return -1;
+	ois_autotest_threshold = value;
+	return size;
+}
+
+static ssize_t ois_power_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
+{
+	if (g_o_ctrl == NULL){
+	    pr_err("%s: OIS Ctrl Pointer is NULL", __func__);
+	    return size;
+	}
+	if (g_o_ctrl->io_master_info.cci_client == NULL){
+	    pr_err("%s: OIS CCI client Pointer is NULL", __func__);
+	    return size;
+	}
+	mutex_lock(&(g_o_ctrl->ois_mutex));
+	if (g_o_ctrl->cam_ois_state != CAM_OIS_INIT) {
+		pr_err("%s: Not in right state to control OIS power %d",
+			__func__, g_o_ctrl->cam_ois_state);
+		goto error;
+	}
+	switch (buf[0]) {
+	case '0':
+		cam_ois_power_down(g_o_ctrl);
+		isOisPoweredUp = 0;
+		pr_info("%s: power down", __func__);
+		break;
+	case '1':
+		cam_ois_power_up(g_o_ctrl);
+		isOisPoweredUp = 1;
+		msleep(200);
+		pr_info("%s: power up", __func__);
+		break;
+
+	default:
+		break;
+	}
+
+error:
+	mutex_unlock(&(g_o_ctrl->ois_mutex));
+	return size;
+}
+
+static ssize_t gyro_calibration_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	int result = 0;
+	long raw_data_x = 0, raw_data_y = 0;
+
+	if (g_o_ctrl == NULL) {
+		CAM_ERR(CAM_OIS, "g_o_ctrl ptr is NULL");
+		return 0;
+	}
+
+	result = cam_ois_gyro_sensor_calibration(g_o_ctrl, &raw_data_x, &raw_data_y);
+
+	if (raw_data_x < 0 && raw_data_y < 0) {
+		return scnprintf(buf, PAGE_SIZE, "%d,-%ld.%03ld,-%ld.%03ld\n", result, abs(raw_data_x / 1000),
+			abs(raw_data_x % 1000), abs(raw_data_y / 1000), abs(raw_data_y % 1000));
+	} else if (raw_data_x < 0) {
+		return scnprintf(buf, PAGE_SIZE, "%d,-%ld.%03ld,%ld.%03ld\n", result, abs(raw_data_x / 1000),
+			abs(raw_data_x % 1000), raw_data_y / 1000, raw_data_y % 1000);
+	} else if (raw_data_y < 0) {
+		return scnprintf(buf, PAGE_SIZE, "%d,%ld.%03ld,-%ld.%03ld\n", result, raw_data_x / 1000,
+			raw_data_x % 1000, abs(raw_data_y / 1000), abs(raw_data_y % 1000));
+	} else {
+		return scnprintf(buf, PAGE_SIZE, "%d,%ld.%03ld,%ld.%03ld\n", result, raw_data_x / 1000,
+			raw_data_x % 1000, raw_data_y / 1000, raw_data_y % 1000);
+	}
+}
+
+static ssize_t gyro_selftest_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int result_total = 0;
+	bool result_offset = 0, result_selftest = 0;
+	uint32_t selftest_ret = 0;
+	long raw_data_x = 0, raw_data_y = 0;
+
+	cam_ois_offset_test(g_o_ctrl, &raw_data_x, &raw_data_y, 1);
+	msleep(50);
+	selftest_ret = cam_ois_self_test(g_o_ctrl);
+
+	if (selftest_ret == 0x0)
+		result_selftest = true;
+	else
+		result_selftest = false;
+
+	if (abs(raw_data_x) > 30000 || abs(raw_data_y) > 30000)
+		result_offset = false;
+	else
+		result_offset = true;
+
+	if (result_offset && result_selftest)
+		result_total = 0;
+	else if (!result_offset && !result_selftest)
+		result_total = 3;
+	else if (!result_offset)
+		result_total = 1;
+	else if (!result_selftest)
+		result_total = 2;
+
+	pr_info("%s: Result : 0 (success), 1 (offset fail), 2 (selftest fail) , 3 (both fail)\n", __func__);
+	sprintf(buf, "Result : %d, result x = %ld.%03ld, result y = %ld.%03ld\n",
+		result_total, raw_data_x / 1000, (long int)abs(raw_data_x % 1000),
+		raw_data_y / 1000, (long int)abs(raw_data_y % 1000));
+	pr_info("%s", buf);
+
+	if (raw_data_x < 0 && raw_data_y < 0) {
+		return sprintf(buf, "%d,-%ld.%03ld,-%ld.%03ld\n", result_total,
+			(long int)abs(raw_data_x / 1000), (long int)abs(raw_data_x % 1000),
+			(long int)abs(raw_data_y / 1000), (long int)abs(raw_data_y % 1000));
+	} else if (raw_data_x < 0) {
+		return sprintf(buf, "%d,-%ld.%03ld,%ld.%03ld\n", result_total,
+			(long int)abs(raw_data_x / 1000), (long int)abs(raw_data_x % 1000),
+			raw_data_y / 1000, raw_data_y % 1000);
+	} else if (raw_data_y < 0) {
+		return sprintf(buf, "%d,%ld.%03ld,-%ld.%03ld\n", result_total,
+			raw_data_x / 1000, raw_data_x % 1000,
+			(long int)abs(raw_data_y / 1000), (long int)abs(raw_data_y % 1000));
+	} else {
+		return sprintf(buf, "%d,%ld.%03ld,%ld.%03ld\n",
+			result_total, raw_data_x / 1000, raw_data_x % 1000,
+			raw_data_y / 1000, raw_data_y % 1000);
+	}
+}
+
+static ssize_t gyro_rawdata_test_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	long raw_data_x = 0, raw_data_y = 0;
+
+	cam_ois_get_offset_data(g_o_ctrl, &raw_data_x, &raw_data_y);
+
+	pr_info("%s: raw data x = %ld.%03ld, raw data y = %ld.%03ld\n", __func__,
+		raw_data_x / 1000, raw_data_x % 1000,
+		raw_data_y / 1000, raw_data_y % 1000);
+
+	if (raw_data_x < 0 && raw_data_y < 0) {
+		return sprintf(buf, "-%ld.%03ld,-%ld.%03ld\n",
+			(long int)abs(raw_data_x / 1000), (long int)abs(raw_data_x % 1000),
+			(long int)abs(raw_data_y / 1000), (long int)abs(raw_data_y % 1000));
+	} else if (raw_data_x < 0) {
+		return sprintf(buf, "-%ld.%03ld,%ld.%03ld\n",
+			(long int)abs(raw_data_x / 1000), (long int)abs(raw_data_x % 1000),
+			raw_data_y / 1000, raw_data_y % 1000);
+	} else if (raw_data_y < 0) {
+		return sprintf(buf, "%ld.%03ld,-%ld.%03ld\n",
+			raw_data_x / 1000, raw_data_x % 1000,
+			(long int)abs(raw_data_y / 1000), (long int)abs(raw_data_y % 1000));
+	} else {
+		return sprintf(buf, "%ld.%03ld,%ld.%03ld\n",
+			raw_data_x / 1000, raw_data_x % 1000,
+			raw_data_y / 1000, raw_data_y % 1000);
+	}
+}
+
+char ois_fw_full[SYSFS_FW_VER_SIZE] = "NULL NULL\n";
+static ssize_t ois_fw_full_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	int rc = 0;
+
+	pr_info("[FW_DBG] OIS_fw_ver : %s\n", ois_fw_full);
+	rc = scnprintf(buf, PAGE_SIZE, "%s", ois_fw_full);
+	if (rc)
+		return rc;
+	return 0;
+}
+
+static ssize_t ois_fw_full_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	pr_info("[FW_DBG] buf : %s\n", buf);
+	scnprintf(ois_fw_full, sizeof(ois_fw_full), "%s", buf);
+
+	return size;
+}
+
+char ois_debug[40] = "NULL NULL NULL\n";
+static ssize_t ois_exif_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	int rc = 0;
+
+	pr_info("[FW_DBG] ois_debug : %s\n", ois_debug);
+	rc = scnprintf(buf, PAGE_SIZE, "%s", ois_debug);
+	if (rc)
+		return rc;
+	return 0;
+}
+
+static ssize_t ois_exif_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	pr_info("[FW_DBG] buf: %s\n", buf);
+	scnprintf(ois_debug, sizeof(ois_debug), "%s", buf);
+
+	return size;
+}
+
+extern uint8_t ois_wide_xygg[OIS_XYGG_SIZE];
+extern uint8_t ois_wide_cal_mark;
+int ois_gain_rear_result = 2; //0:normal, 1: No cal, 2: rear cal fail
+static ssize_t ois_gain_rear_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	int rc = 0;
+	uint32_t xgg = 0, ygg = 0;
+
+	pr_info("[FW_DBG] ois_gain_rear_result : %d\n",
+		ois_gain_rear_result);
+	if (ois_gain_rear_result == 0) {
+		memcpy(&xgg, &ois_wide_xygg[0], 4);
+		memcpy(&ygg, &ois_wide_xygg[4], 4);
+		rc = scnprintf(buf, PAGE_SIZE, "%d,0x%x,0x%x",
+			ois_gain_rear_result, xgg, ygg);
+	} else {
+		rc = scnprintf(buf, PAGE_SIZE, "%d",
+			ois_gain_rear_result);
+	}
+	if (rc)
+		return rc;
+	return 0;
+}
+
+
+extern uint8_t ois_wide_xysr[OIS_XYSR_SIZE];
+int ois_sr_rear_result = 2; //0:normal, 1: No cal, 2: rear cal fail
+static ssize_t ois_supperssion_ratio_rear_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	int rc = 0;
+	uint32_t xsr = 0, ysr = 0;
+
+	pr_info("[FW_DBG] ois_sr_rear_result : %d\n",
+		ois_sr_rear_result);
+	if (ois_sr_rear_result == 0) {
+		memcpy(&xsr, &ois_wide_xysr[0], 2);
+		memcpy(&ysr, &ois_wide_xysr[2], 2);
+		rc = scnprintf(buf, PAGE_SIZE, "%d,%u.%02u,%u.%02u",
+			ois_sr_rear_result, (xsr / 100), (xsr % 100), (ysr / 100), (ysr % 100));
+	} else {
+		rc = scnprintf(buf, PAGE_SIZE, "%d",
+			ois_sr_rear_result);
+	}
+
+	if (rc)
+		return rc;
+	return 0;
+}
+
+#endif //defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
+
 #if defined(CONFIG_SAMSUNG_REAR_TRIPLE)
 char cam3_fw_ver[SYSFS_FW_VER_SIZE] = "NULL NULL\n";//multi module
 static ssize_t rear3_firmware_show(struct device *dev,
@@ -1676,9 +1998,10 @@ static ssize_t rear3_type_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	int rc = 0;
-#if defined(CONFIG_SEC_GTS5L_PROJECT) || defined(CONFIG_SEC_GTS5LWIFI_PROJECT) || defined(CONFIG_SEC_GTS6L_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
+#if defined(CONFIG_SEC_GTS5L_PROJECT) || defined(CONFIG_SEC_GTS5LWIFI_PROJECT) || defined(CONFIG_SEC_GTS6X_PROJECT) || defined(CONFIG_SEC_GTS6L_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
 	char cam_type[] = "NULL\n";
-#elif defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)
+#elif defined(CONFIG_SEC_D2XQ_PROJECT) || defined(CONFIG_SEC_D2Q_PROJECT) || defined(CONFIG_SEC_D1Q_PROJECT)\
+	|| defined(CONFIG_SEC_D2XQ2_PROJECT)
 	char cam_type[] = "SLSI_S5K3M5\n";
 #else
 	char cam_type[] = "SLSI_S5K3M3\n";
@@ -2030,7 +2353,7 @@ static ssize_t rear2_firmware_full_store(struct device *dev,
 	return size;
 }
 
-#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT) && (defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE))
+#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6X_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT) && (defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE))
 uint8_t rear2_dual_cal[FROM_REAR_DUAL_CAL_SIZE + 1] = "\0";
 static ssize_t rear2_dual_cal_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
@@ -2118,7 +2441,7 @@ static ssize_t rear2_type_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	int rc = 0;
-#if defined(CONFIG_SEC_GTS5L_PROJECT) || defined(CONFIG_SEC_GTS5LWIFI_PROJECT) || defined(CONFIG_SEC_GTS6L_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
+#if defined(CONFIG_SEC_GTS5L_PROJECT) || defined(CONFIG_SEC_GTS5LWIFI_PROJECT) || defined(CONFIG_SEC_GTS6L_PROJECT) || defined(CONFIG_SEC_GTS6X_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
 	char cam_type[] = "SLSI_S5K5E9\n";
 #else
 	char cam_type[] = "SLSI_S5K3P9\n";
@@ -2149,8 +2472,12 @@ static ssize_t ois_autotest_show(struct device *dev,
 
 	pr_info("%s: E\n", __func__);
 
-	if (g_a_ctrls[0] != NULL)
-		cam_actuator_power_up(g_a_ctrls[0]);
+	if (g_a_ctrls[0] == NULL || g_o_ctrl == NULL) {
+		CAM_ERR(CAM_OIS, "g_o_ctrl or g_a_ctrls ptr is NULL");
+		return 0;
+	}
+
+	cam_actuator_power_up(g_a_ctrls[0]);
 	msleep(100);
 
 	cam_actuator_move_for_ois_test(g_a_ctrls[0]);
@@ -2174,8 +2501,7 @@ static ssize_t ois_autotest_show(struct device *dev,
 		(y1_result ? "pass" : "fail"), (y1_result ? 0 : sinewave[0].sin_y));
 	pr_info("%s: result : %s\n", __func__, buf);
 
-	if (g_a_ctrls[0] != NULL)
-		cam_actuator_power_down(g_a_ctrls[0]);
+	cam_actuator_power_down(g_a_ctrls[0]);
 
 	pr_info("%s: X\n", __func__);
 
@@ -2207,12 +2533,15 @@ static ssize_t ois_autotest_2nd_show(struct device *dev,
 
 	pr_info("%s: E\n", __func__);
 
+	if (g_a_ctrls[0] == NULL || g_a_ctrls[1] == NULL || g_o_ctrl == NULL) {
+		CAM_ERR(CAM_OIS, "g_o_ctrl or g_a_ctrls ptr is NULL");
+		return 0;
+	}
+
 	for (i = 0; i < 2; i++) {
-		if (g_a_ctrls[i] != NULL) {
-			cam_actuator_power_up(g_a_ctrls[i]);
-			msleep(5);
-			cam_actuator_move_for_ois_test(g_a_ctrls[i]);
-		}
+		cam_actuator_power_up(g_a_ctrls[i]);
+		msleep(5);
+		cam_actuator_move_for_ois_test(g_a_ctrls[i]);
 	}
 	msleep(100);
 
@@ -2246,8 +2575,7 @@ static ssize_t ois_autotest_2nd_show(struct device *dev,
 	pr_info("%s: result : %s\n", __func__, buf);
 
 	for (i = 0; i < 2; i++) {
-		if (g_a_ctrls[i] != NULL)
-			cam_actuator_power_down(g_a_ctrls[i]);
+		cam_actuator_power_down(g_a_ctrls[i]);
 	}
 	pr_info("%s: X\n", __func__);
 
@@ -2269,8 +2597,10 @@ static ssize_t ois_autotest_2nd_store(struct device *dev,
 static ssize_t ois_power_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
-	if (g_o_ctrl == NULL || g_o_ctrl->io_master_info.client == NULL)
+	if (g_o_ctrl == NULL || g_o_ctrl->io_master_info.client == NULL) {
+		CAM_ERR(CAM_OIS, "g_o_ctrl ptr or g_o_ctrl->io_master_info.client is NULL");
 		return size;
+	}
 
 	mutex_lock(&(g_o_ctrl->ois_mutex));
 	if (g_o_ctrl->cam_ois_state != CAM_OIS_INIT) {
@@ -2306,6 +2636,11 @@ static ssize_t gyro_calibration_show(struct device *dev,
 	int result = 0;
 	long raw_data_x = 0, raw_data_y = 0;
 
+	if (g_o_ctrl == NULL) {
+		CAM_ERR(CAM_OIS, "g_o_ctrl ptr is NULL");
+		return 0;
+	}
+
 	result = cam_ois_gyro_sensor_calibration(g_o_ctrl, &raw_data_x, &raw_data_y);
 
 	if (raw_data_x < 0 && raw_data_y < 0) {
@@ -2333,6 +2668,11 @@ static ssize_t gyro_selftest_show(struct device *dev, struct device_attribute *a
 	uint32_t selftest_ret = 0;
 	long raw_data_x = 0, raw_data_y = 0;
 	int OIS_GYRO_OFFSET_SPEC = 10000;
+
+	if (g_o_ctrl == NULL) {
+		CAM_ERR(CAM_OIS, "g_o_ctrl ptr is NULL");
+		return 0;
+	}
 
 	result = cam_ois_offset_test(g_o_ctrl, &raw_data_x, &raw_data_y, 1);
 	msleep(50);
@@ -2395,6 +2735,11 @@ static ssize_t gyro_rawdata_test_show(struct device *dev,
 {
 	int rc = 0;
 	long raw_data_x = 0, raw_data_y = 0;
+
+	if (g_o_ctrl == NULL) {
+		CAM_ERR(CAM_OIS, "g_o_ctrl ptr is NULL");
+		return 0;
+	}
 
 	raw_init_x = 0;
 	raw_init_y = 0;
@@ -2583,8 +2928,10 @@ static ssize_t ois_reset_check(struct device *dev,
 {
 	int rc = 0;
 
-	if (g_o_ctrl == NULL)
+	if (g_o_ctrl == NULL) {
+		CAM_ERR(CAM_OIS, "g_o_ctrl ptr is NULL");
 		return 0;
+	}
 
 	pr_info("ois reset_check : %d\n", g_o_ctrl->ois_mode);
 	rc = scnprintf(buf, PAGE_SIZE, "%d", g_o_ctrl->ois_mode);
@@ -3670,8 +4017,10 @@ static ssize_t rear_tof_ld_onoff_show(struct device *dev,
 	uint32_t read_data1 = -1;
 	int rc = 0;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return 0;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_7)
 		return 0;
 
@@ -3694,8 +4043,10 @@ static ssize_t rear_tof_ld_onoff_store(struct device *dev,
 {
 	int value = -1;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return -1;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_7)
 		return -1;
 
@@ -3722,8 +4073,10 @@ static ssize_t rear_tof_ae_value_show(struct device *dev,
 	uint32_t reg_data3, reg_data2, reg_data1, reg_data0 = 0;
 	int rc = 0;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return 0;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_7)
 		return 0;
 
@@ -3765,8 +4118,10 @@ static ssize_t rear_tof_ae_value_store(struct device *dev,
 	uint32_t reg_data3, reg_data2, reg_data1, reg_data0 = 0;
 	uint32_t hmax = 0x02FE;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return 0;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_7)
 		return 0;
 
@@ -3822,8 +4177,10 @@ static ssize_t rear_tof_check_pd_show(struct device *dev,
 	uint32_t reg_data1, reg_data0 = 0;
 	int rc = 0;
 
-        if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return 0;
+	}
 
 	if(g_s_ctrl_tof->id == CAMERA_7)
 		return 0;
@@ -3880,8 +4237,10 @@ static ssize_t rear_tof_check_pd_store(struct device *dev,
 	struct cam_camera_slave_info *slave_info;
 	uint32_t value = 0;
 
-	if (g_s_ctrl_tof == NULL)
+	if (g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return -1;
+	}
 
 	if (g_s_ctrl_tof->id == CAMERA_7)
 		return -1;
@@ -4191,8 +4550,10 @@ static ssize_t rear_tof_fps_show(struct device *dev,
 {
 	int rc = 0;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return 0;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_7)
 		return 0;
 
@@ -4208,8 +4569,10 @@ static ssize_t rear_tof_fps_store(struct device *dev,
 	uint32_t value = 0;
 	struct cam_camera_slave_info *slave_info;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return 0;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_7)
 		return 0;
 
@@ -4341,16 +4704,6 @@ static ssize_t rear_tof_fps_store(struct device *dev,
 						pr_info("[TOF] QVGA fps : %d\n", value);
 						break;
 
-					case 24:
-						cam_sensor_tof_i2c_write(0x0104, 0x01, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE); //GroupHold On
-						cam_sensor_tof_i2c_write(0x2110, 0x00, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
-						cam_sensor_tof_i2c_write(0x2111, 0x00, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
-						cam_sensor_tof_i2c_write(0x2112, 0x1b, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
-						cam_sensor_tof_i2c_write(0x2113, 0x42, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
-						cam_sensor_tof_i2c_write(0x0104, 0x00, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE); //GroupHold Off
-						pr_info("[TOF] QVGA fps : %d\n", value);
-						break;
-
 					case 20:
 						cam_sensor_tof_i2c_write(0x0104, 0x01, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE); //GroupHold On
 						cam_sensor_tof_i2c_write(0x2110, 0x00, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
@@ -4459,16 +4812,6 @@ static ssize_t rear_tof_fps_store(struct device *dev,
 						cam_sensor_tof_i2c_write(0x2111, 0x00, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
 						cam_sensor_tof_i2c_write(0x2112, 0x13, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
 						cam_sensor_tof_i2c_write(0x2113, 0x78, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
-						cam_sensor_tof_i2c_write(0x0104, 0x00, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE); //GroupHold Off
-						pr_info("[TOF] QVGA fps : %d\n", value);
-						break;
-
-					case 24:
-						cam_sensor_tof_i2c_write(0x0104, 0x01, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE); //GroupHold On
-						cam_sensor_tof_i2c_write(0x2110, 0x00, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
-						cam_sensor_tof_i2c_write(0x2111, 0x00, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
-						cam_sensor_tof_i2c_write(0x2112, 0x19, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
-						cam_sensor_tof_i2c_write(0x2113, 0xFB, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE);
 						cam_sensor_tof_i2c_write(0x0104, 0x00, CAMERA_SENSOR_I2C_TYPE_WORD, CAMERA_SENSOR_I2C_TYPE_BYTE); //GroupHold Off
 						pr_info("[TOF] QVGA fps : %d\n", value);
 						break;
@@ -4882,8 +5225,10 @@ static ssize_t front_tof_ld_onoff_show(struct device *dev,
 	uint32_t read_data1 = -1;
 	int rc = 0;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return 0;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_6)
 		return 0;
 
@@ -4909,8 +5254,10 @@ static ssize_t front_tof_ld_onoff_store(struct device *dev,
 	if (buf == NULL || kstrtouint(buf, 10, &value))
 		return -1;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return -1;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_6)
 		return -1;
 
@@ -4933,8 +5280,10 @@ static ssize_t front_tof_ae_value_show(struct device *dev,
 	uint32_t reg_data3, reg_data2, reg_data1, reg_data0 = 0;
 	int rc = 0;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return 0;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_6)
 		return 0;
 
@@ -4964,8 +5313,10 @@ static ssize_t front_tof_ae_value_store(struct device *dev,
 	uint32_t reg_data3, reg_data2, reg_data1, reg_data0 = 0;
 	uint32_t hmax = 0x02FE;
 
-        if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return -1;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_6)
 		return -1;
 
@@ -5002,8 +5353,10 @@ static ssize_t front_tof_check_pd_show(struct device *dev,
 	uint32_t reg_data1, reg_data0 = 0;
 	int rc = 0;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return 0;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_6)
 		return 0;
 
@@ -5052,8 +5405,10 @@ static ssize_t front_tof_check_pd_store(struct device *dev,
 {
 	uint32_t value = 0;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return -1;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_6)
 		return -1;
 
@@ -5320,8 +5675,10 @@ static ssize_t front_tof_fps_show(struct device *dev,
 {
 	int rc = 0;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return 0;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_6)
 		return 0;
 
@@ -5336,8 +5693,10 @@ static ssize_t front_tof_fps_store(struct device *dev,
 {
 	uint32_t value = 0;
 
-	if(g_s_ctrl_tof == NULL)
+	if(g_s_ctrl_tof == NULL) {
+		pr_err("[TOF] g_s_ctrl_tof ptr is NULL\n");
 		return 0;
+	}
 	if(g_s_ctrl_tof->id == CAMERA_6)
 		return 0;
 
@@ -5409,6 +5768,29 @@ static ssize_t front_tof_freq_store(struct device *dev,
 	return size;
 }
 
+#endif
+
+#if defined(CONFIG_CAMERA_DYNAMIC_MIPI)
+static ssize_t adaptive_test_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	int rc = 0;
+
+	pr_err("[dynamic_mipi] band_info : %s\n", band_info);
+	rc = scnprintf(buf, PAGE_SIZE, "%s", band_info);
+	if (rc)
+		return rc;
+	return 0;
+}
+
+static ssize_t adaptive_test_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	pr_err("[dynamic_mipi] buf : %s\n", buf);
+	scnprintf(band_info, sizeof(band_info), "%s", buf);
+
+	return size;
+}
 #endif
 
 #if defined(CONFIG_CAMERA_SSM_I2C_ENV)
@@ -5605,7 +5987,7 @@ static DEVICE_ATTR(rear2_camfw_full, S_IRUGO|S_IWUSR|S_IWGRP,
 	rear2_firmware_full_show, rear2_firmware_full_store);
 static DEVICE_ATTR(SVC_rear_module2, S_IRUGO, rear2_moduleid_show, NULL);
 static DEVICE_ATTR(rear2_camtype, S_IRUGO, rear2_type_show, NULL);
-#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT) && (defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE))
+#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6X_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT) && (defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE))
 static DEVICE_ATTR(rear2_dualcal, S_IRUGO, rear2_dual_cal_show, NULL);
 static DEVICE_ATTR(rear2_dualcal_size, S_IRUGO, rear2_dual_cal_size_show, NULL);
 static DEVICE_ATTR(rear2_tilt, S_IRUGO, rear2_tilt_show, NULL);
@@ -5664,6 +6046,18 @@ static DEVICE_ATTR(ois_supperssion_ratio_rear, S_IRUGO, ois_supperssion_ratio_re
 static DEVICE_ATTR(ois_supperssion_ratio_rear3, S_IRUGO, ois_supperssion_ratio_rear3_show, NULL);
 #endif
 static DEVICE_ATTR(reset_check, S_IRUGO, ois_reset_check, NULL);
+#endif
+
+#if defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
+static DEVICE_ATTR(ois_power, S_IWUSR, NULL, ois_power_store);
+static DEVICE_ATTR(autotest, S_IRUGO|S_IWUSR|S_IWGRP, ois_autotest_show, ois_autotest_store);
+static DEVICE_ATTR(selftest, S_IRUGO, gyro_selftest_show, NULL);
+static DEVICE_ATTR(ois_rawdata, S_IRUGO, gyro_rawdata_test_show, NULL);
+static DEVICE_ATTR(oisfw, S_IRUGO|S_IWUSR|S_IWGRP, ois_fw_full_show, ois_fw_full_store);
+static DEVICE_ATTR(ois_exif, S_IRUGO|S_IWUSR|S_IWGRP, ois_exif_show, ois_exif_store);
+static DEVICE_ATTR(ois_gain_rear, S_IRUGO, ois_gain_rear_show, NULL);
+static DEVICE_ATTR(ois_supperssion_ratio_rear, S_IRUGO, ois_supperssion_ratio_rear_show, NULL);
+static DEVICE_ATTR(calibrationtest, S_IRUGO, gyro_calibration_show, NULL);
 #endif
 
 #if defined(CONFIG_CAMERA_FRS_DRAM_TEST)
@@ -5762,6 +6156,11 @@ static DEVICE_ATTR(front_tof_freq, S_IRUGO|S_IWUSR|S_IWGRP,
 static DEVICE_ATTR(rear_flash, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH, NULL, flash_power_store);
 #endif
 
+#if defined(CONFIG_CAMERA_DYNAMIC_MIPI)
+static DEVICE_ATTR(adaptive_test, S_IRUGO|S_IWUSR|S_IWGRP,
+	adaptive_test_show, adaptive_test_store);
+#endif
+
 int svc_cheating_prevent_device_file_create(struct kobject **obj)
 {
 	struct kernfs_node *SVC_sd;
@@ -5852,16 +6251,18 @@ static int __init cam_sysfs_init(void)
 	struct device		  *cam_dev_af;
 	struct device		  *cam_dev_dual;
 #endif
-#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32) || defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
 	struct device		  *cam_dev_ois;
 #endif
 #if defined(CONFIG_CAMERA_SSM_I2C_ENV)
 	struct device		  *cam_dev_ssm;
 #endif
 #if defined(CONFIG_LEDS_PMIC_QPNP)
-        struct device		  *cam_dev_flash;
+	struct device		  *cam_dev_flash;
 #endif
-
+#if defined(CONFIG_CAMERA_DYNAMIC_MIPI)
+	struct device		  *cam_dev_test;
+#endif
 	struct kobject *SVC = 0;
 	int ret = 0;
 
@@ -6353,7 +6754,7 @@ static int __init cam_sysfs_init(void)
 		ret = -ENODEV;
 	}
 
-#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT) && (defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE))
+#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6X_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT) && (defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE))
 	if (device_create_file(cam_dev_rear, &dev_attr_rear2_dualcal) < 0) {
 		pr_err("Failed to create device file!(%s)!\n",
 			dev_attr_rear2_dualcal.attr.name);
@@ -6566,6 +6967,59 @@ static int __init cam_sysfs_init(void)
         }
 #endif
 
+#if defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
+	cam_dev_ois = device_create(camera_class, NULL,
+		0, NULL, "ois");
+	if (IS_ERR(cam_dev_ois)) {
+		pr_err("Failed to create cam_dev_ois device!\n");
+		ret = -ENOENT;
+	}
+	if (device_create_file(cam_dev_ois, &dev_attr_ois_power) < 0) {
+		pr_err("failed to create device file, %s\n",
+			dev_attr_ois_power.attr.name);
+		ret = -ENOENT;
+	}
+	if (device_create_file(cam_dev_ois, &dev_attr_autotest) < 0) {
+		pr_err("Failed to create device file, %s\n",
+			dev_attr_autotest.attr.name);
+		ret = -ENODEV;
+	}
+	if (device_create_file(cam_dev_ois, &dev_attr_selftest) < 0) {
+		pr_err("failed to create device file, %s\n",
+		dev_attr_selftest.attr.name);
+		ret = -ENOENT;
+	}
+	if (device_create_file(cam_dev_ois, &dev_attr_calibrationtest) < 0) {
+			pr_err("Failed to create device file,%s\n",
+				dev_attr_calibrationtest.attr.name);
+			ret = -ENODEV;
+	}
+	if (device_create_file(cam_dev_ois, &dev_attr_ois_rawdata) < 0) {
+		pr_err("failed to create device file, %s\n",
+		dev_attr_ois_rawdata.attr.name);
+		ret = -ENOENT;
+	}
+	if (device_create_file(cam_dev_ois, &dev_attr_oisfw) < 0) {
+		pr_err("Failed to create device file, %s\n",
+		dev_attr_oisfw.attr.name);
+		ret = -ENODEV;
+	}
+	if (device_create_file(cam_dev_ois, &dev_attr_ois_exif) < 0) {
+		pr_err("Failed to create device file,%s\n",
+			dev_attr_ois_exif.attr.name);
+		ret = -ENODEV;
+	}
+	if (device_create_file(cam_dev_ois, &dev_attr_ois_gain_rear) < 0) {
+		pr_err("Failed to create device file,%s\n",
+			dev_attr_ois_gain_rear.attr.name);
+		ret = -ENODEV;
+	}
+	if (device_create_file(cam_dev_ois, &dev_attr_ois_supperssion_ratio_rear) < 0) {
+		pr_err("Failed to create device file,%s\n",
+			dev_attr_ois_supperssion_ratio_rear.attr.name);
+		ret = -ENODEV;
+	}
+#endif
 
 #if defined(CONFIG_CAMERA_DYNAMIC_MIPI)
 	if (device_create_file(cam_dev_front, &dev_attr_front_mipi_clock) < 0) {
@@ -6827,6 +7281,20 @@ static int __init cam_sysfs_init(void)
 	}
 #endif
 
+#if defined(CONFIG_CAMERA_DYNAMIC_MIPI)
+	cam_dev_test = device_create(camera_class, NULL,
+			0, NULL, "test");
+	if (IS_ERR(cam_dev_test)) {
+			pr_err("Failed to create cam_dev_flash device!\n");
+			ret = -ENOENT;
+	}
+
+	if (device_create_file(cam_dev_test, &dev_attr_adaptive_test) < 0) {
+			pr_err("failed to create device file, %s\n",
+					dev_attr_adaptive_test.attr.name);
+			ret = -ENOENT;
+	}
+#endif
 	return ret;
 }
 

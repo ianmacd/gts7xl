@@ -23,10 +23,6 @@
 #define CHIP_ID "TMD4910"
 #endif
 
-#ifdef CONFIG_SEC_R3Q_PROJECT
-unsigned int sec_hw_rev(void);
-#endif
-
 #define PROX_AVG_COUNT 40
 #define PROX_ALERT_THRESHOLD 200
 #define PROX_TH_READ 0
@@ -248,60 +244,11 @@ void set_prox_threshold(struct adsp_data *data, int type, int val)
 	mutex_unlock(&data->prox_factory_mutex);
 }
 
-#ifdef CONFIG_SEC_R3Q_PROJECT
-#define CAL_DATA_FILE_PATH   "/efs/FactoryApp/prox_cal"
-
-static int prox_read_cal_data(uint16_t *threshold)
-{
-	struct file *cal_data_filp = NULL;
-	int ret = 0;
-	mm_segment_t old_fs;
-
-	old_fs = get_fs();
-	set_fs(KERNEL_DS);
-
-	cal_data_filp = filp_open(CAL_DATA_FILE_PATH, O_RDONLY, 0440);
-	if (IS_ERR(cal_data_filp)) {
-		set_fs(old_fs);
-		ret = PTR_ERR(cal_data_filp);
-		pr_err("[FACTORY] %s: open fail prox_cal:%d\n", __func__, ret);
-		return ret;
-	}
-
-	ret = vfs_read(cal_data_filp, (char *)threshold,
-		2 * sizeof(uint16_t), &cal_data_filp->f_pos);
-	if (ret < 0) {
-		pr_err("[FACTORY] %s: fd read fail:%d\n", __func__, ret);
-		filp_close(cal_data_filp, current->files);
-		set_fs(old_fs);
-		return ret;
-	}
-
-	filp_close(cal_data_filp, current->files);
-	set_fs(old_fs);
-
-	return ret;
-}
-#endif
-
 static ssize_t prox_cancel_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct adsp_data *data = dev_get_drvdata(dev);
 	int hi_thd, low_thd;
-#ifdef CONFIG_SEC_R3Q_PROJECT
-	uint16_t threshold[2] = {0, };
-	int ret = 0;
-
-	if (sec_hw_rev() < 3/*pdata->px_chipset == 3031*/) {
-		ret = prox_read_cal_data(threshold);
-		if (ret < 0)
-			pr_err("[FACTORY] %s: prox_read_cal_data() failed(%d)\n", __func__, ret);
-
-		pr_info("[FACTORY] %s: near %u far %u\n", __func__, threshold[0], threshold[1]);
-		return snprintf(buf, PAGE_SIZE, "%d,%d\n", threshold[0], threshold[1]);
-	}
-#endif
 
 	hi_thd = get_prox_threshold(data, PRX_THRESHOLD_DETECT_H);
 	low_thd = get_prox_threshold(data, PRX_THRESHOLD_RELEASE_L);
@@ -327,89 +274,31 @@ static ssize_t prox_cancel_store(struct device *dev,
 	struct adsp_data *data = dev_get_drvdata(dev);
 	uint16_t prox_idx = get_prox_sidx(data);
 	uint8_t cnt = 0;
-#ifdef CONFIG_SEC_R3Q_PROJECT
-	uint16_t threshold[2] = {0, };
-	int ret = 0;
-#endif
 
-	if (sysfs_streq(buf, "1")) {
-		mutex_lock(&data->prox_factory_mutex);
-		adsp_unicast(NULL, 0,
-			prox_idx, 0, MSG_TYPE_SET_CAL_DATA);
-
-		while (!(data->ready_flag[MSG_TYPE_SET_CAL_DATA] & 1 << prox_idx) &&
-			cnt++ < TIMEOUT_CNT)
-			msleep(20);
-
-		data->ready_flag[MSG_TYPE_SET_CAL_DATA] &= ~(1 << prox_idx);
-
-		if (cnt >= TIMEOUT_CNT)
-			pr_err("[FACTORY] %s: Timeout!!!\n", __func__);
-
-		mutex_unlock(&data->prox_factory_mutex);
-	}
-#ifdef CONFIG_SEC_R3Q_PROJECT
-	else if(sysfs_streq(buf, "2") && (sec_hw_rev() < 3)) {
-		mutex_lock(&data->prox_factory_mutex);
-		adsp_unicast(NULL, 0,
-			prox_idx, 0, MSG_TYPE_GET_CAL_DATA);
-
-		while (!(data->ready_flag[MSG_TYPE_GET_CAL_DATA] & 1 << prox_idx) &&
-			cnt++ < TIMEOUT_CNT)
-			msleep(20);
-
-		data->ready_flag[MSG_TYPE_GET_CAL_DATA] &= ~(1 << prox_idx);
-
-		if (cnt >= TIMEOUT_CNT)
-		{
-			pr_err("[FACTORY] %s: Timeout!!!\n", __func__);
-			mutex_unlock(&data->prox_factory_mutex);
-			return ret;
-		}
-
-		mutex_unlock(&data->prox_factory_mutex);
-
-		threshold[0] = (uint16_t)data->msg_buf[MSG_PROX][0];
-		threshold[1] = (uint16_t)data->msg_buf[MSG_PROX][1];
-
-		if(data->msg_buf[MSG_PROX][2] == 0)
-		{
-			pr_err("[FACTORY] %s: no cal\n", __func__);
-			return ret;
-		}
-
-		pr_info("[FACTORY] %s: near %u, far %u\n", __func__, threshold[0], threshold[1]);
-	}
-#endif
-	else {
+	if (!sysfs_streq(buf, "1")) {
 		pr_err("[FACTORY] %s: wrong value\n", __func__);
 		return size;
 	}
+
+	mutex_lock(&data->prox_factory_mutex);
+	adsp_unicast(NULL, 0,
+		prox_idx, 0, MSG_TYPE_SET_CAL_DATA);
+
+	while (!(data->ready_flag[MSG_TYPE_SET_CAL_DATA] & 1 << prox_idx) &&
+		cnt++ < TIMEOUT_CNT)
+		msleep(20);
+
+	data->ready_flag[MSG_TYPE_SET_CAL_DATA] &= ~(1 << prox_idx);
+
+	if (cnt >= TIMEOUT_CNT)
+		pr_err("[FACTORY] %s: Timeout!!!\n", __func__);
+
+	mutex_unlock(&data->prox_factory_mutex);
 
 	pr_info("[FACTORY] %s: done!\n", __func__);
 
 	return size;
 }
-
-#ifdef CONFIG_SEC_R3Q_PROJECT
-void prox_factory_init_work(void)
-{
-	int32_t msg_buf[1];
-
-#ifdef CONFIG_SEC_FACTORY
-	msg_buf[0] = 1;
-#else
-	msg_buf[0] = 0;
-#endif
-	if (sec_hw_rev() < 3/*pdata->px_chipset == 3031*/) {
-		pr_info("[FACTORY] %s : start %d\n", __func__, msg_buf[0]);
-		adsp_unicast(msg_buf, sizeof(msg_buf),
-			MSG_PROX, 0, MSG_TYPE_OPTION_DEFINE);
-	} else {
-		pr_info("[FACTORY] does not need %s \n", __func__);
-	}
-}
-#endif
 
 static ssize_t prox_thresh_high_show(struct device *dev,
 	struct device_attribute *attr, char *buf)

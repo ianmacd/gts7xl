@@ -36,7 +36,6 @@ struct lpm_stats {
 	struct dentry *directory;
 	int64_t sleep_time;
 	bool is_cpu;
-	uint64_t sleep_qtime;
 };
 
 
@@ -48,8 +47,8 @@ struct lpm_stats *lpm_stats_config_level(const char *name,
 void lpm_stats_cluster_enter(struct lpm_stats *stats, uint32_t index);
 void lpm_stats_cluster_exit(struct lpm_stats *stats, uint32_t index,
 				bool success);
-void lpm_stats_cpu_enter(uint32_t index, uint64_t time, uint64_t qtime);
-void lpm_stats_cpu_exit(uint32_t index, uint64_t time, uint64_t qtime, bool success);
+void lpm_stats_cpu_enter(uint32_t index, uint64_t time);
+void lpm_stats_cpu_exit(uint32_t index, uint64_t time, bool success);
 void lpm_stats_suspend_enter(void);
 void lpm_stats_suspend_exit(void);
 #else

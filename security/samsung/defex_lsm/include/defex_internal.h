@@ -12,13 +12,15 @@
 #include <linux/fs.h>
 #include <linux/hashtable.h>
 #include <linux/kobject.h>
+#include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sysfs.h>
+#include <linux/vmalloc.h>
 #include <linux/defex.h>
 #include "defex_config.h"
 
 #define DEFEX_MAJOR_VERSION			2
-#define DEFEX_MINOR_VERSION			0
+#define DEFEX_MINOR_VERSION			6
 #define DEFEX_REVISION				"rel"
 
 /* DEFEX Features */
@@ -46,21 +48,6 @@
 
 #define DEFEX_STARTED				1
 
-/* DEFEX FLAG ATTRs */
-//#define DEFEX_ATTR_PRIVESC_DIR			(1 << 0)
-//#define DEFEX_ATTR_PRIVESC_EXP			(1 << 1)
-//#define DEFEX_ATTR_JAILHOUSE_DIR		(1 << 2) /* reserved for future use */
-//#define DEFEX_ATTR_JAILHOUSE_EXP		(1 << 3) /* reserved for future use */
-//#define DEFEX_ATTR_RESTRICT_EXP			(1 << 4) /* reserved for future use */
-//#define DEFEX_ATTR_RESTRICT_LV1_EXP		(1 << 5) /* reserved for future use */
-//#define DEFEX_ATTR_SAFEPLACE_DIR		(1 << 6)
-//#define DEFEX_INSIDE_PRIVESC_DIR		(1 << 8)
-//#define DEFEX_OUTSIDE_PRIVESC_DIR		(1 << 9)
-//#define DEFEX_INSIDE_JAILHOUSE_DIR		(1 << 10) /* reserved for future use */
-//#define DEFEX_OUTSIDE_JAILHOUSE_DIR		(1 << 11) /* reserved for future use */
-//#define DEFEX_ATTR_IMMUTABLE			(1 << 12) /* reserved for future use */
-//#define DEFEX_ATTR_IMMUTABLE_WR			(1 << 13) /* reserved for future use */
-//#define DEFEX_ATTR_FIVE_EXP			(1 << 14) /* reserved for future use */
 
 /* -------------------------------------------------------------------------- */
 /* Integrity feature */
@@ -102,6 +89,12 @@ void creds_fast_hash_init(void);
 #define uid_set_value(x, v)	(x = v)
 #endif /* STRICT_UID_TYPE_CHECKS */
 
+#ifdef DEFEX_PED_BASED_ON_TGID_ENABLE
+#	define REF_PID(p) ((p)->tgid)
+#else
+#	define REF_PID(p) ((p)->pid)
+#endif /* DEFEX_PED_BASED_ON_TGID_ENABLE */
+
 struct defex_privesc {
 	struct kobject kobj;
 	unsigned int status;
@@ -121,9 +114,13 @@ extern struct defex_privesc *global_privesc_obj;
 ssize_t task_defex_privesc_store_status(struct defex_privesc *privesc_obj,
 		struct privesc_attribute *attr, const char *buf, size_t count);
 
-void get_task_creds(int pid, unsigned int *uid_ptr, unsigned int *fsuid_ptr, unsigned int *egid_ptr);
-int set_task_creds(int pid, unsigned int uid, unsigned int fsuid, unsigned int egid);
+void get_task_creds(int pid, unsigned int *uid_ptr, unsigned int *fsuid_ptr, unsigned int *egid_ptr, unsigned int *p_root_ptr);
+int set_task_creds(int pid, unsigned int uid, unsigned int fsuid, unsigned int egid, unsigned int p_root);
+#ifdef DEFEX_PED_BASED_ON_TGID_ENABLE
+void set_task_creds_tcnt(int tgid, int addition);
+#else
 void delete_task_creds(int pid);
+#endif /* DEFEX_PED_BASED_ON_TGID_ENABLE */
 int is_task_creds_ready(void);
 
 /* -------------------------------------------------------------------------- */
@@ -173,16 +170,56 @@ ssize_t immutable_status_store(struct defex_immutable *immutable_obj,
 		struct immutable_attribute *attr, const char *buf, size_t count);
 
 /* -------------------------------------------------------------------------- */
+/* Common Helper API */
+/* -------------------------------------------------------------------------- */
+
+struct defex_context {
+	int syscall_no;
+	struct task_struct *task;
+	struct file *process_file;
+	struct file *target_file;
+	const struct path *process_dpath;
+	const struct path *target_dpath;
+	char *process_name;
+	char *target_name;
+	char *target_name_buff;
+	char *process_name_buff;
+};
+
+extern const char unknown_file[];
+
+void init_defex_context(struct defex_context *dc, int syscall, struct task_struct *p, struct file *f);
+void release_defex_context(struct defex_context *dc);
+struct file *get_dc_process_file(struct defex_context *dc);
+const struct path *get_dc_process_dpath(struct defex_context *dc);
+char *get_dc_process_name(struct defex_context *dc);
+const struct path *get_dc_target_dpath(struct defex_context *dc);
+char *get_dc_target_name(struct defex_context *dc);
+struct file *defex_get_source_file(struct task_struct *p);
+char *defex_get_filename(struct task_struct *p);
+char* defex_resolve_filename(const char *name, char **out_buff);
+static inline void safe_str_free(void *ptr)
+{
+	if (ptr && ptr != unknown_file)
+		kfree(ptr);
+}
+
+
+/* -------------------------------------------------------------------------- */
 /* Defex lookup API */
 /* -------------------------------------------------------------------------- */
 
-char *defex_get_filename(struct task_struct *p);
 int rules_lookup(const struct path *dpath, int attribute, struct file *f);
+int rules_lookup2(const char *target_file, int attribute, struct file *f);
 
 /* -------------------------------------------------------------------------- */
 /* Defex init API */
 /* -------------------------------------------------------------------------- */
 
-int defex_init_sysfs(void);
+int __init defex_init_sysfs(void);
+
+#ifdef DEFEX_DEPENDING_ON_OEMUNLOCK
+extern bool boot_state_unlocked __ro_after_init;
+#endif /* DEFEX_DEPENDING_ON_OEMUNLOCK */
 
 #endif /* CONFIG_SECURITY_DEFEX_INTERNAL_H */

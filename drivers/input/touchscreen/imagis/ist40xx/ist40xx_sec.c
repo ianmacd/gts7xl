@@ -170,6 +170,15 @@ static void fw_update(void *dev_data)
 	struct ist40xx_data *data = container_of(sec, struct ist40xx_data, sec);
 
 	sec_cmd_set_default_result(sec);
+#if defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+	if (sec->cmd_param[0] == UMS) {
+		input_err(true, &data->client->dev, "%s: user_ship, skip\n", __func__);
+		snprintf(buf, sizeof(buf), "OK");
+		sec_cmd_set_cmd_result(sec, buf, strnlen(buf, sizeof(buf)));
+		sec->cmd_state = SEC_CMD_STATUS_OK;
+		return;
+	}
+#endif
 
 	if (data->status.sys_mode != STATE_POWER_ON) {
 		input_err(true, &data->client->dev,
@@ -3724,7 +3733,7 @@ void get_cs_array(void *dev_data)
 
 	buf = kmalloc(IST40XX_MAX_NODE_NUM * 5, GFP_KERNEL);
 	if (!buf) {
-		snprintf(buf, sizeof(buff), "NG");
+		snprintf(buff, sizeof(buff), "NG");
 		sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
 		sec->cmd_state = SEC_CMD_STATUS_FAIL;
 		input_err(true, &data->client->dev, "%s: couldn't allocate memory\n",
@@ -3814,7 +3823,7 @@ void check_fail_channel(struct ist40xx_data *data, u32 *tx_result,
 void run_cmcs_full_test(void *dev_data)
 {
 	int ret = 0;
-	bool cm_result, cs_result, micro_cm_result, old_cmd = 0;
+	bool cm_result = 0, cs_result = 0, micro_cm_result = 0, old_cmd = 0;
 	char msg[128] = { 0 };
 	char fail_msg[256] = { 0 };
 	char buf[256] = { 0 };

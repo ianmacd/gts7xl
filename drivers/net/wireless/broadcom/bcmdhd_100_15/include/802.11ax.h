@@ -2,7 +2,7 @@
  * Basic types and constants relating to 802.11ax/HE STA
  * This is a portion of 802.11ax definition. The rest are in 802.11.h.
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,8 +24,6 @@
  *
  *
  * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: 802.11ax.h 822502 2019-05-29 21:02:28Z $
  */
 
 #ifndef _802_11ax_h_
@@ -634,6 +632,62 @@ typedef struct he_op_ie he_op_ie_t;
 #define HE_OP_IE_MAX_LEN (sizeof(he_op_ie_t) - TLV_HDR_LEN + VHT_OP_INFO_LEN +\
 	HE_OP_MAX_BSSID_IND_LEN + HE_OP_6G_OPER_INFO_LEN)
 
+#define HE_6G_OP_BW_20              0u
+#define HE_6G_OP_BW_40              1u
+#define HE_6G_OP_BW_80              2u
+#define HE_6G_OP_BW_160_80P80       3u
+
+#define HE_6G_CTL_CHBW_MASK         0x03u
+#define HE_6G_OP_CTL_CHBW(ctl) (ctl & HE_6G_CTL_CHBW_MASK)
+
+/* HE 6G Operation info */
+BWL_PRE_PACKED_STRUCT struct he_6g_op_info {
+	uint8 pri_chan;
+	uint8 control;
+	uint8 seg0;
+	uint8 seg1;
+	uint8 min_rate;
+} BWL_POST_PACKED_STRUCT;
+
+typedef struct he_6g_op_info he_6g_op_info_t;
+
+/* HE Extended Capabilities element */
+BWL_PRE_PACKED_STRUCT struct he_6g_cap_ie {
+	uint8 id;
+	uint8 len;
+	uint8 id_ext;
+	uint16 cap_info;    /* Capabilities Information */
+} BWL_POST_PACKED_STRUCT;
+
+typedef struct he_6g_cap_ie he_6g_cap_ie_t;
+#define HE_6G_CAP_IE_LEN  sizeof(he_6g_cap_ie_t)
+
+/* HE Capabilities Information bit position and fieldwidth */
+#define HE_6G_CAP_MIN_MPDU_START_MASK          0x0007u
+#define HE_6G_CAP_MAX_AMPDU_LEN_EXP_MASK       0x0038u
+#define HE_6G_CAP_MAX_AMPDU_LEN_EXP_SHIFT           3u
+#define HE_6G_CAP_MAX_MPDU_LEN_MASK            0x01C0u
+#define HE_6G_CAP_MAX_MPDU_LEN_SHIFT                6u
+#define HE_6G_CAP_SM_PW_SAVE_MASK              0x0600u
+#define HE_6G_CAP_SM_PW_SAVE_SHIFT                  9u
+#define HE_6G_CAP_RD_RESPONDER_MASK            0x0800u
+#define HE_6G_CAP_RD_RESPONDER_SHIFT               11u
+#define HE_6G_CAP_RX_ANT_PATN_CONST_MASK       0x1000u
+#define HE_6G_CAP_RX_ANT_PATN_CONST_SHIFT          12u
+#define HE_6G_CAP_TX_ANT_PATN_CONST_MASK       0x2000u
+#define HE_6G_CAP_TX_ANT_PATN_CONST_SHIFT          13u
+
+#define HE_6G_CAP_MIN_MPDU_START(cap)    ((cap) & HE_6G_CAP_MIN_MPDU_START_MASK)
+#define HE_6G_CAP_MAX_AMPDU_LEN_EXP(cap) (((cap) & HE_6G_CAP_MAX_AMPDU_LEN_EXP_MASK) >> \
+	HE_6G_CAP_MAX_AMPDU_LEN_EXP_SHIFT)
+#define HE_6G_CAP_MAX_MPDU_LEN(cap)      (((cap) & HE_6G_CAP_MAX_MPDU_LEN_MASK) >> \
+	HE_6G_CAP_MAX_MPDU_LEN_SHIFT)
+#define HE_6G_CAP_SM_PW_SAVE(cap)        (((cap) & HE_6G_CAP_SM_PW_SAVE_MASK) >> \
+	HE_6G_CAP_SM_PW_SAVE_SHIFT)
+#define HE_6G_CAP_RD_RESPONDER(cap)      (((cap) & HE_6G_CAP_RD_RESPONDER_MASK) != 0)
+#define HE_6G_CAP_RX_ANT_PATN_CONST(cap) (((cap) & HE_6G_CAP_RX_ANT_PATN_CONST_MASK) != 0)
+#define HE_6G_CAP_TX_ANT_PATN_CONST(cap) (((cap) & HE_6G_CAP_TX_ANT_PATN_CONST_MASK) != 0)
+
 /**
  * UORA parameter set element (sec 9.4.2.244)
  */
@@ -839,6 +893,25 @@ typedef struct he_bsscolor_change_ie he_bsscolor_change_ie_t;
 #define HE_SU_RE_SIGA_TXOP_PLCP0_MASK		0xFC000000u
 #define HE_SU_RE_SIGA_TXOP_PLCP0_SHIFT		26u
 
+/* For HE SU SIG EXT : PLCP0 bit fields [32bit] */
+#define HE_SU_SIG_EXT_GI_LTF_MASK         0x00000003u
+#define HE_SU_SIG_EXT_1xLTF_GI8us_VAL     0x00000000u
+#define HE_SU_SIG_EXT_2xLTF_GI8us_VAL     0x00000001u
+#define HE_SU_SIG_EXT_2xLTF_GI16us_VAL    0x00000002u
+#define HE_SU_SIG_EXT_4xLTF_GI32us_VAL    0x00000003u
+#define HE_SU_SIG_EXT_STBC_MASK           0x00000040u
+#define HE_SU_SIG_EXT_STBC_SHIFT          6u
+#define HE_SU_SIG_EXT_LDPC_MASK           0x00000080u
+#define HE_SU_SIG_EXT_LDPC_SHIFT          7u
+#define HE_SU_SIG_EXT_MCS_MASK            0x0000f000u
+#define HE_SU_SIG_EXT_MCS_SHIFT           12u
+#define HE_SU_SIG_EXT_DCM_MASK            0x00010000u
+#define HE_SU_SIG_EXT_DCM_SHIFT           16u
+#define HE_SU_SIG_EXT_NSTS_MASK           0x000e0000u
+#define HE_SU_SIG_EXT_NSTS_SHIFT          17u
+#define HE_SU_SIG_EXT_CODING_MASK         0x00800000u
+#define HE_SU_SIG_EXT_CODING_SHIFT        23u
+
 /* HE mu ppdu - bit position and field width */
 #define HE_MU_PPDU_DL_UL_IDX                    0u
 #define HE_MU_PPDU_DL_UL_FSZ                    1u
@@ -931,6 +1004,8 @@ typedef struct he_bsscolor_change_ie he_bsscolor_change_ie_t;
 #define HE_SU_RE_SIGA_TXOP_PLCP1_SHIFT	0
 #define HE_SU_RE_SIGA_CODING_MASK	0x0002
 #define HE_SU_RE_SIGA_CODING_SHIFT	1
+#define HE_SU_RE_SIGA_LDPC_EXTRA_MASK	0x0004
+#define HE_SU_RE_SIGA_LDPC_EXTRA_SHIFT	2
 #define HE_SU_RE_SIGA_STBC_MASK		0x0008
 #define HE_SU_RE_SIGA_STBC_SHIFT	3
 #define HE_SU_RE_SIGA_BEAMFORM_MASK	0x0010

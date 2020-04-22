@@ -162,4 +162,4 @@ config SCSI_UFS_TEST_MODE
 	depends on SCSI_UFSHCD && SCSI_UFSHCD_PLATFORM
 	---help---
 	  This selects support for test mode for debugging.
-  	  Select this option if this feature is needed on working.
+	  Select this option if this feature is needed on working.

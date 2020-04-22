@@ -48,7 +48,7 @@
 
 #define MOUNTPOINT_LOGFS		"/data/log/quest"
 #define UEFI_QUESTRESULT_FILE	"/data/log/quest/questresult.txt"
-#define UEFI_ENHANCEMENT_RESULT_FAILE	"/data/log/quest/EnhanceLog.txt"
+#define UEFI_ENHANCEMENT_START_FILE	"/data/log/quest/EnhanceStart.txt"
 
 
 #if defined(CONFIG_SEC_QUEST_UEFI)
@@ -120,7 +120,7 @@ TOTALTEST_NO_RESULT_FILE = 4,
 
 #define MAX_DDR_ERR_ADDR_CNT 64
 
-struct param_quest_ddr_test_result_t {
+struct param_quest_ddr_result_t {
 	uint32_t ddr_err_addr_total;
 	uint64_t ddr_err_addr[MAX_DDR_ERR_ADDR_CNT];
 };

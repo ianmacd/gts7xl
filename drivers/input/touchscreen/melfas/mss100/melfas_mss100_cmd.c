@@ -85,12 +85,16 @@ static ssize_t read_support_feature(struct device *dev,
 
 	if (info->dtdata->sync_reportrate_120)
 		feature |= INPUT_FEATURE_ENABLE_SYNC_RR120;
+	
+	if (info->dtdata->support_open_short_test)
+		feature |= INPUT_FEATURE_SUPPORT_OPEN_SHORT_TEST;
 
-	input_info(true, &info->client->dev, "%s: %d%s%s%s\n",
+	input_info(true, &info->client->dev, "%s: %d%s%s%s%s\n",
 			__func__, feature,
 			feature & INPUT_FEATURE_ENABLE_SETTINGS_AOT ? " aot" : "",
 			feature & INPUT_FEATURE_ENABLE_PRESSURE ? " pressure" : "",
-			feature & INPUT_FEATURE_ENABLE_SYNC_RR120 ? " RR120hz" : "");
+			feature & INPUT_FEATURE_ENABLE_SYNC_RR120 ? " RR120hz" : "",
+			feature & INPUT_FEATURE_SUPPORT_OPEN_SHORT_TEST ? " openshort" : "");
 
 	return snprintf(buf, SEC_CMD_BUF_SIZE, "%d", feature);
 }
@@ -197,6 +201,15 @@ static void cmd_fw_update(void *device_data)
 	int fw_location = 0;
 
 	sec_cmd_set_default_result(sec);
+#if defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+	if (sec->cmd_param[0] == 1) {
+		input_err(true, &info->client->dev, "%s: user_ship, skip\n", __func__);
+		snprintf(buff, sizeof(buff), "OK");
+		sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+		sec->cmd_state = SEC_CMD_STATUS_OK;
+		return;
+	}
+#endif
 
 	if (info->ic_status == PWR_OFF) {
 		input_err(true, &info->client->dev, "%s: Touch is stopped!\n", __func__);
@@ -1279,8 +1292,12 @@ static void cmd_mms_gap_data_h_all(void *device_data)
 	sec_cmd_set_default_result(sec);
 
 	buff = kzalloc(info->node_x * info->node_y * CMD_RESULT_WORD_LEN, GFP_KERNEL);
-	if (!buff)
+	if (!buff) {
+		snprintf(temp, sizeof(temp), "%s", "NG");
+		sec->cmd_state = SEC_CMD_STATUS_FAIL;
+		sec_cmd_set_cmd_result(sec, temp, strnlen(temp, sizeof(temp)));
 		return;
+	}
 
 	for (ii = 0; ii < (info->node_x * info->node_y); ii++) {
 		if ((ii + 1) % (info->node_y) != 0) {
@@ -1317,8 +1334,12 @@ static void cmd_mms_gap_data_v_all(void *device_data)
 	sec_cmd_set_default_result(sec);
 
 	buff = kzalloc(info->node_x * info->node_y * CMD_RESULT_WORD_LEN, GFP_KERNEL);
-	if (!buff)
+	if (!buff) {
+		snprintf(temp, sizeof(temp), "%s", "NG");
+		sec->cmd_state = SEC_CMD_STATUS_FAIL;
+		sec_cmd_set_cmd_result(sec, temp, strnlen(temp, sizeof(temp)));
 		return;
+	}
 
 	for (ii = 0; ii < (info->node_x * info->node_y); ii++) {
 		if (ii < (info->node_x - 1) * info->node_y) {
@@ -1676,7 +1697,7 @@ static void fod_enable(void *device_data)
 
 	sec_cmd_set_default_result(sec);
 
-	if (!info->dtdata->support_lpm || !info->use_sponge || !info->dtdata->support_fod) {
+	if (!info->dtdata->support_lpm || !info->dtdata->support_fod) {
 		input_err(true, &info->client->dev, "%s not supported\n", __func__);
 		snprintf(buff, sizeof(buff), "%s", "NA");
 		sec->cmd_state = SEC_CMD_STATUS_NOT_APPLICABLE;
@@ -1731,9 +1752,6 @@ int mms_set_fod_rect(struct mms_ts_info *info)
 	int i, ret;
 	u8 data[8];
 	u32 sum = 0;
-
-	if (!info->use_sponge)
-		return 0;
 
 	for (i = 0; i < 4; i++) {
 		data[i * 2] = info->fod_rect_data[i] & 0xFF;
@@ -1807,7 +1825,7 @@ static void aot_enable(void *device_data)
 
 	sec_cmd_set_default_result(sec);
 
-	if (!info->dtdata->support_lpm | !info->use_sponge) {
+	if (!info->dtdata->support_lpm) {
 		input_err(true, &info->client->dev, "%s not supported\n", __func__);
 		snprintf(buff, sizeof(buff), "%s", "NA");
 		sec->cmd_state = SEC_CMD_STATUS_NOT_APPLICABLE;
@@ -1859,7 +1877,7 @@ static void spay_enable(void *device_data)
 
 	sec_cmd_set_default_result(sec);
 
-	if (!info->dtdata->support_lpm | !info->use_sponge) {
+	if (!info->dtdata->support_lpm) {
 		input_err(true, &info->client->dev, "%s not supported\n", __func__);
 		snprintf(buff, sizeof(buff), "%s", "NA");
 		sec->cmd_state = SEC_CMD_STATUS_NOT_APPLICABLE;
@@ -1911,7 +1929,7 @@ static void singletap_enable(void *device_data)
 
 	sec_cmd_set_default_result(sec);
 
-	if (!info->dtdata->support_lpm | !info->use_sponge) {
+	if (!info->dtdata->support_lpm) {
 		input_err(true, &info->client->dev, "%s not supported\n", __func__);
 		snprintf(buff, sizeof(buff), "%s", "NA");
 		sec->cmd_state = SEC_CMD_STATUS_NOT_APPLICABLE;
@@ -1963,7 +1981,7 @@ static void aod_enable(void *device_data)
 
 	sec_cmd_set_default_result(sec);
 
-	if (!info->dtdata->support_lpm | !info->use_sponge) {
+	if (!info->dtdata->support_lpm) {
 		input_err(true, &info->client->dev, "%s not supported\n", __func__);
 		snprintf(buff, sizeof(buff), "%s", "NA");
 		sec->cmd_state = SEC_CMD_STATUS_NOT_APPLICABLE;

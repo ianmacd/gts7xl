@@ -36,7 +36,9 @@
 #define MFC_FW_SDCARD_BIN_PATH		"/sdcard/mfc_fw_flash.bin"
 
 /* for SPU FW update */
-#define MFC_FW_SPU_BIN_PATH		"/spu/mfc/mfc_fw_flash.bin"
+#define MFC_FW_SPU_BIN_PATH		"/spu/mfc/mfc_fw_flash_p9320.bin"
+
+#define MFC_CHIP_ID_P9320		0x20
 
 /* REGISTER MAPS */
 #define MFC_CHIP_ID_L_REG					0x00
@@ -161,6 +163,7 @@
 #define MFC_MST_LDO_CONFIG_6				0x3010
 #define MFC_MST_LDO_TURN_ON				0x301c
 #define MFC_MST_LDO_CONFIG_8				0x343c
+#define MFC_MST_OVER_TEMP_INT				0x0024
 #endif
 #define MFC_MST_MODE_SEL_REG				0x69
 #define MFC_RX_OV_CLAMP_REG					0x6A
@@ -288,6 +291,7 @@
 #define	WPC_COM_CHG_LEVEL				0x0F /* Battery level */
 #define	WPC_COM_ENTER_PHM				0x18 /* GEAR entered PHM */
 #define	WPC_COM_DISABLE_TX				0x19 /* Turn off UNO of TX, OFF(0xFF) */
+#define	WPC_COM_OP_FREQ_SET				0xD1
 
 /* RX Data Value 2~5 Register (Data Sending), RX_Data_Value2_5_Out : Function and Description */
 #define	RX_DATA_VAL2_5V					0x05
@@ -330,11 +334,18 @@
 #define TX_ID_DREAM_STAND			0x31
 #define TX_ID_DREAM_DOWN			0x14
 #define TX_ID_UNO_TX				0x72
+#define TX_ID_UNO_TX_B0				0x80
+#define TX_ID_UNO_TX_B1				0x81
+#define TX_ID_UNO_TX_B2				0x82
+#define TX_ID_UNO_TX_MAX			0x9F
 
 #define TX_ID_AUTH_PAD				0xA0
-#define TX_ID_DAVINCI_PAD_H		0xA1
-#define TX_ID_DAVINCI_PAD_V			0xA2
+#define TX_ID_DAVINCI_PAD_V			0xA1
+#define TX_ID_DAVINCI_PAD_H			0xA2
+#define TX_ID_AUTH_PAD_ACLASS_END	0xAF
 #define TX_ID_AUTH_PAD_END			0xBF /* reserved 0xA1 ~ 0xBF for auth pad */
+#define TX_ID_NON_AUTH_PAD			0xF0
+#define TX_ID_NON_AUTH_PAD_END		0xFF
 
 /* value of WPC_TX_COM_CHG_ERR(0x05) */
 #define TX_CHG_ERR_OTP			0x12
@@ -541,55 +552,55 @@ enum {
 
 	/* F/W update error */
 	MFC_FWUP_ERR_WIRTE_KEY_ERR,
-	MFC_FWUP_ERR_CLK_TIMING_ERR1,
+	MFC_FWUP_ERR_CLK_TIMING_ERR1,  /* 5 */
 	MFC_FWUP_ERR_CLK_TIMING_ERR2,
-	MFC_FWUP_ERR_CLK_TIMING_ERR3, /* 5 */
+	MFC_FWUP_ERR_CLK_TIMING_ERR3,
 	MFC_FWUP_ERR_CLK_TIMING_ERR4,
 	MFC_FWUP_ERR_INFO_PAGE_EMPTY,
-	MFC_FWUP_ERR_HALT_M0_ERR,
+	MFC_FWUP_ERR_HALT_M0_ERR, /* 10 */
 	MFC_FWUP_ERR_FAIL,
-	MFC_FWUP_ERR_ADDR_READ_FAIL, /* 10 */
+	MFC_FWUP_ERR_ADDR_READ_FAIL,
 	MFC_FWUP_ERR_DATA_NOT_MATCH,
 	MFC_FWUP_ERR_OTP_LOADER_IN_RAM_ERR,
-	MFC_FWUP_ERR_CLR_MTP_STATUS_BYTE,
+	MFC_FWUP_ERR_CLR_MTP_STATUS_BYTE, /* 15 */
 	MFC_FWUP_ERR_MAP_RAM_TO_OTP_ERR,
-	MFC_FWUP_ERR_WRITING_TO_OTP_BUFFER, /* 15 */
+	MFC_FWUP_ERR_WRITING_TO_OTP_BUFFER,
 	MFC_FWUP_ERR_OTF_BUFFER_VALIDATION,
 	MFC_FWUP_ERR_READING_OTP_BUFFER_STATUS,
-	MFC_FWUP_ERR_TIMEOUT_ON_BUFFER_TO_OTP,
-	MFC_FWUP_ERR_MTP_WRITE_ERR, /* */
-	MFC_FWUP_ERR_PKT_CHECKSUM_ERR, /* 20 */
+	MFC_FWUP_ERR_TIMEOUT_ON_BUFFER_TO_OTP, /* 20 */
+	MFC_FWUP_ERR_MTP_WRITE_ERR,
+	MFC_FWUP_ERR_PKT_CHECKSUM_ERR,
 	MFC_FWUP_ERR_UNKNOWN_ERR,
 	MFC_FWUP_ERR_BUFFER_WRITE_IN_SECTOR,
-	MFC_FWUP_ERR_WRITING_FW_VERION,
+	MFC_FWUP_ERR_WRITING_FW_VERION, /* 25 */
 
 	/* F/W verification error */
 	MFC_VERIFY_ERR_WIRTE_KEY_ERR,
-	MFC_VERIFY_ERR_HALT_M0_ERR, /* 25 */
+	MFC_VERIFY_ERR_HALT_M0_ERR,
 	MFC_VERIFY_ERR_KZALLOC_ERR,
 	MFC_VERIFY_ERR_FAIL,
-	MFC_VERIFY_ERR_ADDR_READ_FAIL,
+	MFC_VERIFY_ERR_ADDR_READ_FAIL, /* 30 */
 	MFC_VERIFY_ERR_DATA_NOT_MATCH,
-	MFC_VERIFY_ERR_MTP_VERIFIER_IN_RAM_ERR, /* 30 */
+	MFC_VERIFY_ERR_MTP_VERIFIER_IN_RAM_ERR,
 	MFC_VERIFY_ERR_CLR_MTP_STATUS_BYTE,
 	MFC_VERIFY_ERR_MAP_RAM_TO_OTP_ERR,
-	MFC_VERIFY_ERR_UNLOCK_SYS_REG_ERR,
+	MFC_VERIFY_ERR_UNLOCK_SYS_REG_ERR, /* 35 */
 	MFC_VERIFY_ERR_LDO_CLK_2MHZ_ERR,
-	MFC_VERIFY_ERR_LDO_OUTPUT_5_5V_ERR, /* 35 */
+	MFC_VERIFY_ERR_LDO_OUTPUT_5_5V_ERR,
 	MFC_VERIFY_ERR_ENABLE_LDO_ERR,
 	MFC_VERIFY_ERR_WRITING_TO_MTP_VERIFY_BUFFER,
-	MFC_VERIFY_ERR_START_MTP_VERIFY_ERR,
+	MFC_VERIFY_ERR_START_MTP_VERIFY_ERR, /* 40 */
 	MFC_VERIFY_ERR_READING_MTP_VERIFY_STATUS,
-	MFC_VERIFY_ERR_CRC_BUSY, /* 40 */
+	MFC_VERIFY_ERR_CRC_BUSY,
 	MFC_VERIFY_ERR_READING_MTP_VERIFY_PASS_FAIL,
 	MFC_VERIFY_ERR_CRC_ERROR,
-	MFC_VERIFY_ERR_UNKOWN_ERR,
+	MFC_VERIFY_ERR_UNKOWN_ERR, /* 45 */
 	MFC_VERIFY_ERR_BUFFER_WRITE_IN_SECTOR,
 
 	MFC_REPAIR_ERR_HALT_M0_ERR,
 	MFC_REPAIR_ERR_MTP_REPAIR_IN_RAM,
 	MFC_REPAIR_ERR_CLR_MTP_STATUS_BYTE,
-	MFC_REPAIR_ERR_START_MTP_REPAIR_ERR,
+	MFC_REPAIR_ERR_START_MTP_REPAIR_ERR, /* 50 */
 	MFC_REPAIR_ERR_READING_MTP_REPAIR_STATUS,
 	MFC_REPAIR_ERR_READING_MTP_REPAIR_PASS_FAIL,
 	MFC_REPAIR_ERR_BUFFER_WRITE_IN_SECTOR,
@@ -658,6 +669,7 @@ enum {
 	MFC_DISABLE_TX,					/* 22 */
 	MFC_PHM_ON, 				/* 23 */
 	MFC_LED_CONTROL_DIMMING,			/* 24 */
+	MFC_SET_OP_FREQ,			/* 25 */	
 };
 
 enum {
@@ -665,6 +677,7 @@ enum {
 	MFC_SIZE,
 	MFC_DATA,
 	MFC_PACKET,	
+	MFC_FLICKER_TEST,
 };
 
 static const u8 mfc_idt_vout_val[] = {
@@ -720,7 +733,7 @@ enum mfc_ic_revision {
 };
 
 enum mfc_chip_id {
-	MFC_CHIP_IDT = 0,
+	MFC_CHIP_IDT = 1,
 	MFC_CHIP_LSI,
 };
 
@@ -1037,7 +1050,10 @@ struct mfc_charger_platform_data {
 	int mst_switch_delay;
 	int wc_cover_rpp;
 	int wc_hv_rpp;
+	u32 oc_fod1;
 	u32 phone_fod_threshold;
+	u32 gear_ping_freq;
+	bool wpc_vout_ctrl_lcd_on;
 };
 
 #define mfc_charger_platform_data_t \
@@ -1068,6 +1084,7 @@ struct mfc_charger_data {
 	struct wake_lock wpc_tx_phm_lock;
 	struct wake_lock wpc_vrect_check_lock;
 	struct wake_lock wpc_tx_id_lock;
+	struct wake_lock wpc_cs100_lock;	
 	struct workqueue_struct *wqueue;
 	struct work_struct	wcin_work;
 	struct delayed_work	wpc_det_work;
@@ -1083,11 +1100,13 @@ struct mfc_charger_data {
 	struct delayed_work	wpc_vout_mode_work;
 	struct delayed_work	wpc_cm_fet_work;
 	struct delayed_work wpc_i2c_error_work;
-	struct delayed_work	wpc_rx_det_work;
+	struct delayed_work	wpc_rx_type_det_work;
+	struct delayed_work	wpc_rx_connection_work;
 	struct delayed_work wpc_tx_op_freq_work;
 	struct delayed_work wpc_tx_phm_work;
 	struct delayed_work wpc_vrect_check_work;
 	struct delayed_work wpc_rx_power_work;	
+	struct delayed_work wpc_cs100_work;
 
 	struct alarm phm_alarm;
 
@@ -1097,6 +1116,7 @@ struct mfc_charger_data {
 	int pad_vout;
 	int is_mst_on; /* mst */
 	int chip_id;
+	u8 chip_id_now;
 	int fw_cmd;
 	int vout_mode;
 	u32 vout_by_txid;
@@ -1108,11 +1128,16 @@ struct mfc_charger_data {
 	int led_cover;
 	bool is_probed;
 	bool is_afc_tx;
+	bool pad_ctrl_by_lcd;
 	bool tx_id_done;
 	bool is_suspend;
 	int tx_id;
 	int tx_id_cnt;
 	bool initial_vrect;
+
+	int flicker_delay;
+	int flicker_vout_threshold;
+
 	/* wireless tx */
 	int tx_status;
 	bool initial_wc_check;
@@ -1128,10 +1153,4 @@ struct mfc_charger_data {
 	int i2c_error_count;
 	unsigned long gear_start_time;
 };
-
-#define is_sleep_mode_active(pad_id) ( \
-    pad_id == TX_ID_DAVINCI_PAD_H ||    \
-    pad_id == TX_ID_DAVINCI_PAD_V)
-
-
 #endif /* __WIRELESS_CHARGER_MFC_H */

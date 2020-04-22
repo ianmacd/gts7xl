@@ -121,11 +121,6 @@ enum pmic_arb_channel {
 
 struct pmic_arb_ver_ops;
 
-#if defined(CONFIG_SEC_GTS6L_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
-#define PMIC_LATCH_RETRY_MAX	5
-struct spmi_controller *the_ctrl;
-#endif
-
 struct apid_data {
 	u16		ppid;
 	u8		write_ee;
@@ -495,39 +490,6 @@ static void qpnpint_spmi_read(struct irq_data *d, u8 reg, void *buf, size_t len)
 				    d->irq);
 }
 
-#if defined(CONFIG_SEC_GTS6L_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
-static void print_pmic_reg(u16 addr, int count)
-{
-	struct spmi_controller *ctrl = the_ctrl;
-	char buf[count];
-	char log[128];
-	char *ptr = log;
-	ssize_t len = 0;
-	int i;
-
-	pmic_arb_read_cmd(ctrl, SPMI_CMD_EXT_READL, 0, addr, buf, count);
-	for (i = 0; i < count; i++)
-		len += snprintf(ptr + len, 4, "%02x ", buf[i]);
-	pr_info("[PM_REG] 0x%x : %s\n", addr, log);
-}
-
-static void debug_pmic_dump(void)
-{
-	/* INT */
-	print_pmic_reg(0x508, 2);
-
-	/* SPMI */
-	print_pmic_reg(0x610, 4);
-	print_pmic_reg(0x615, 2);
-	print_pmic_reg(0x618, 4);
-
-	/* PON */
-	print_pmic_reg(0x810, 4);
-	print_pmic_reg(0x815, 2);
-	print_pmic_reg(0x818, 4);
-}
-#endif
-
 static void cleanup_irq(struct spmi_pmic_arb *pmic_arb, u16 apid, int id)
 {
 	u16 ppid = pmic_arb->apid_data[apid].ppid;
@@ -631,38 +593,11 @@ static void qpnpint_irq_ack(struct irq_data *d)
 	u8 irq = hwirq_to_irq(d->hwirq);
 	u16 apid = hwirq_to_apid(d->hwirq);
 	u8 data;
-#if defined(CONFIG_SEC_GTS6L_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
-	u8 old, now;
-	int i;
-
-	if (apid == 249 && irq == 0)
-		qpnpint_spmi_read(d, QPNPINT_REG_LATCHED_STS, &old, 1);
-#endif
 
 	writel_relaxed(BIT(irq), pmic_arb->ver_ops->irq_clear(pmic_arb, apid));
 
 	data = BIT(irq);
 	qpnpint_spmi_write(d, QPNPINT_REG_LATCHED_CLR, &data, 1);
-
-#if defined(CONFIG_SEC_GTS6L_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
-	if (apid == 249 && irq == 0) {
-		for (i = 0; i < PMIC_LATCH_RETRY_MAX; i++) {
-			qpnpint_spmi_read(d, QPNPINT_REG_LATCHED_STS, &now, 1);
-			pr_info("%s: [#%d]old=0x%x, now=0x%x\n", __func__, i, old, now);
-
-			if (now == 1 && old == now) {
-				if (i >= (PMIC_LATCH_RETRY_MAX - 1)) {	
-					debug_pmic_dump();
-					panic("PMIC Latch(0x818) is not cleared: 0x%x->0x%x",old, now);
-				} else {
-					qpnpint_spmi_write(d, QPNPINT_REG_LATCHED_CLR, &data, 1);
-				}
-			} else {
-				break;
-			}
-		}
-	}
-#endif
 }
 
 static void qpnpint_irq_mask(struct irq_data *d)
@@ -1406,10 +1341,6 @@ static int spmi_pmic_arb_probe(struct platform_device *pdev)
 	err = spmi_controller_add(ctrl);
 	if (err)
 		goto err_domain_remove;
-
-#if defined(CONFIG_SEC_GTS6L_PROJECT) || defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
-	the_ctrl = ctrl;
-#endif
 
 	return 0;
 

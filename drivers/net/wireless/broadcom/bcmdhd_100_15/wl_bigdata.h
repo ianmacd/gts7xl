@@ -1,7 +1,7 @@
 /*
  * Bigdata logging and report. None EWP and Hang event.
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wl_bigdata.h 803885 2019-02-11 03:31:43Z $
+ * $Id$
  */
 #ifndef __WL_BIGDATA_H_
 #define __WL_BIGDATA_H_

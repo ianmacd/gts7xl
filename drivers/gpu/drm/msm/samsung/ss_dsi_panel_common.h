@@ -53,6 +53,7 @@ Copyright (C) 2012, Samsung Electronics. All rights reserved.
 #include <linux/debugfs.h>
 #include <linux/wakelock.h>
 #include <linux/miscdevice.h>
+#include <linux/reboot.h>
 #include <video/mipi_display.h>
 #include <linux/dev_ril_bridge.h>
 #include <linux/regulator/consumer.h>
@@ -86,6 +87,10 @@ Copyright (C) 2012, Samsung Electronics. All rights reserved.
 
 #if defined(CONFIG_SEC_DEBUG)
 #include <linux/sec_debug.h>
+#endif
+
+#if defined(CONFIG_SEC_BSP)
+#include <linux/sec_param.h>
 #endif
 
 extern bool enable_pr_debug;
@@ -298,7 +303,6 @@ struct dyn_mipi_clk {
 	struct rf_info rf_info;
 	int is_support;
 	int force_idx;	/* force to set clk idx for test purpose */
-	int force_clk_rate;	/* force to set clk for test purpose */
 };
 
 struct cmd_map {
@@ -306,7 +310,9 @@ struct cmd_map {
 	int *cmd_idx;
 	int size;
 };
-
+/* To support model which is not using one to one (platform level - cd level) match such as BLOOM, 
+  made MULTI_TO_ONE_NORMAL table to make set_normal_br_values use this when calc cd_level & cd index
+ */
 enum CD_MAP_TABLE_LIST {
 	NORMAL,
 	PAC_NORMAL,
@@ -314,6 +320,8 @@ enum CD_MAP_TABLE_LIST {
 	PAC_HBM,
 	AOD,
 	HMT,
+	GAMMA_MODE2_NORMAL,
+	MULTI_TO_ONE_NORMAL,
 	CD_MAP_TABLE_MAX,
 };
 
@@ -335,6 +343,7 @@ struct candela_map_table {
 		This is real measured brightness on panel.
 	*/
 	int *interpolation_cd;
+	int *gamma_mode2_cd;
 
 	int min_lv;
 	int max_lv;
@@ -394,6 +403,7 @@ struct samsung_display_dtsi_data {
 
 	struct cmd_map hmt_reverse_aid_map_table[SUPPORT_PANEL_REVISION];
 
+	bool disp_en_gpio_use;
 	bool panel_lpm_enable;
 	bool hmt_enabled;
 
@@ -476,6 +486,8 @@ struct samsung_display_dtsi_data {
 	/*
 	 *	Flash gamma feature end
 	*/
+	/* Physical data lanes to be enabled */
+	int num_of_data_lanes;
 };
 
 struct display_status {
@@ -737,6 +749,10 @@ struct self_display {
 
 	struct self_display_debug debug;
 
+	u8 *mask_crc_pass_data; // implemented in dtsi
+	u8 *mask_crc_read_data;
+	int mask_crc_size;
+
 	/* Self display Function */
 	int (*init)(struct samsung_display_driver_data *vdd);
 	int (*data_init)(struct samsung_display_driver_data *vdd);
@@ -744,6 +760,7 @@ struct self_display {
 	int (*aod_exit)(struct samsung_display_driver_data *vdd);
 	void (*self_mask_img_write)(struct samsung_display_driver_data *vdd);
 	void (*self_mask_on)(struct samsung_display_driver_data *vdd, int enable);
+	int (*self_mask_check)(struct samsung_display_driver_data *vdd);
 	void (*self_blinking_on)(struct samsung_display_driver_data *vdd, int enable);
 	int (*self_display_debug)(struct samsung_display_driver_data *vdd);
 	void (*self_move_set)(struct samsung_display_driver_data *vdd, int ctrl);
@@ -949,6 +966,9 @@ struct brightness_info {
 
 	int cd_level;
 	int interpolation_cd;
+	int gamma_mode2_cd;
+	int gamma_mode2_support;
+	int multi_to_one_support;
 
 	/* SAMSUNG_FINGERPRINT */
 	int finger_mask_bl_level;
@@ -1041,6 +1061,8 @@ struct samsung_display_driver_data {
 	int finger_mask;
 	int panel_hbm_entry_delay; //hbm entry delay/ unit = vsync
 	struct lcd_device *lcd_dev;
+
+	bool remove_self_move; //self move
 
 	struct display_status display_status_dsi;
 
@@ -1236,6 +1258,10 @@ struct samsung_display_driver_data {
 	 */
 	struct dyn_mipi_clk dyn_mipi_clk;
 
+	/* ffc_tx_cmds's level keys are different for each panel, so cmds line position is different.
+	    ex) FA9 used  F0 and FC level key, others used only F0 Level key. */
+	int ffc_cmds_line_position; /* Default Vaule : 1 */
+
 	/*
 	 *  GCT
 	 */
@@ -1275,6 +1301,7 @@ struct samsung_display_driver_data {
 	struct ss_interpolation flash_itp;
 	struct ss_interpolation table_itp;
 	int table_interpolation_loaded;
+	bool spi_no_dev;
 
 	/*
 	 * Brightness
@@ -1320,6 +1347,11 @@ struct samsung_display_driver_data {
 	int partial_disp_val;
 
 	bool samsung_enable_splash_pba;
+
+	char window_color[2];
+
+	/* force white flush to support the model can not execute gallery. */
+	int force_white_flush;
 };
 
 extern struct list_head vdds_list;
@@ -1854,7 +1886,7 @@ static inline bool ss_is_panel_lpm(
 static inline int ss_is_read_cmd(enum dsi_cmd_set_type type)
 {
 	if ((type > RX_CMD_START && type < RX_CMD_END) ||
-			type == RX_SELF_DISP_DEBUG) {
+			(type == RX_SELF_DISP_DEBUG || type == RX_SELF_MASK_CHECK)) {
 		return 1;
 	}
 

@@ -11,9 +11,9 @@
  */
 
 &mdss_mdp {
-	ss_dsi_panel_S6E3HA9_AMB611WE01_WQHD: ss_dsi_panel_S6E3HA9_AMB611WE01_WQHD {
-		qcom,mdss-dsi-panel-name = "ss_dsi_panel_S6E3HA9_AMB611WE01_WQHD";
-		label = "ss_dsi_panel_S6E3HA9_AMB611WE01_WQHD";
+	ss_dsi_panel_S6E3HA9_AMB611WE01_FHD: ss_dsi_panel_S6E3HA9_AMB611WE01_FHD {
+		qcom,mdss-dsi-panel-name = "ss_dsi_panel_S6E3HA9_AMB611WE01_FHD";
+		label = "ss_dsi_panel_S6E3HA9_AMB611WE01_FHD";
 
 		qcom,mdss-dsi-bpp = <24>;
 		/*qcom,cont-splash-enabled;*/
@@ -36,13 +36,13 @@
 		/*qcom,mdss-dsi-fbc-rgb-threshold=*/
 		/*qcom,mdss-dsi-fbc-lossy-mode-idx=*/
 
-		qcom,mdss-dsi-h-pulse-width = <44>;
-		qcom,mdss-dsi-h-back-porch = <240>;
-		qcom,mdss-dsi-h-front-porch = <116>;
+		qcom,mdss-dsi-h-pulse-width = <14>;
+		qcom,mdss-dsi-h-back-porch = <48>;
+		qcom,mdss-dsi-h-front-porch = <56>;
 		qcom,mdss-dsi-h-sync-skew = <0>;
-		qcom,mdss-dsi-v-pulse-width = <80>;
-		qcom,mdss-dsi-v-back-porch = <124>;
-		qcom,mdss-dsi-v-front-porch = <796>;
+		qcom,mdss-dsi-v-pulse-width = <40>;
+		qcom,mdss-dsi-v-back-porch = <40>;
+		qcom,mdss-dsi-v-front-porch = <40>;
 
 		qcom,mdss-dsi-h-left-border = <0>;
 		qcom,mdss-dsi-h-right-border = <0>;
@@ -94,9 +94,9 @@
 		qcom,mdss-dsi-color-order = "rgb_swap_rgb";
 		qcom,mdss-dsi-lane-0-state;
 		qcom,mdss-dsi-lane-1-state;
-		qcom,mdss-dsi-lane-2-state;
-		qcom,mdss-dsi-lane-3-state;
 		qcom,mdss-dsi-lane-map = "lane_map_0123";
+		samsung,num_of_data_lanes = <2>;
+
 
 		/* 60 FPS - DSC (width 480) */
 		qcom,mdss-dsi-t-clk-post = <0x18>;
@@ -2340,10 +2340,211 @@
 		*/
 
 		qcom,mdss-dsi-display-timings {
-			fhd {
+			wqhd {
 				qcom,display-topology = <1 1 1>, <2 2 1>;
 				qcom,default-topology-index = <1>;
 				qcom,mdss-dsi-timing-default;
+				qcom,mdss-dsi-panel-width = <1440>;
+				qcom,mdss-dsi-panel-height = <3040>;
+
+#if 0
+				qcom,mdss-dsi-h-pulse-width = <44>;
+				qcom,mdss-dsi-h-back-porch = <104>;
+				qcom,mdss-dsi-h-front-porch = <112>;
+				qcom,mdss-dsi-h-sync-skew = <0>;
+				qcom,mdss-dsi-v-pulse-width = <82>;
+				qcom,mdss-dsi-v-back-porch = <124>;
+				qcom,mdss-dsi-v-front-porch = <124>;
+#else // 2 lane 1.360Gbps
+				qcom,mdss-dsi-h-pulse-width = <14>;
+				qcom,mdss-dsi-h-back-porch = <48>;
+				qcom,mdss-dsi-h-front-porch = <56>;
+				qcom,mdss-dsi-h-sync-skew = <0>;
+				qcom,mdss-dsi-v-pulse-width = <40>;
+				qcom,mdss-dsi-v-back-porch = <40>;
+				qcom,mdss-dsi-v-front-porch = <40>;
+#endif
+
+				qcom,mdss-dsi-panel-framerate = <60>;
+
+				//qcom,mdss-dsi-panel-phy-timings = [00 21 09 09 24 23 08 08 08 03 04 00];
+#if 0
+				qcom,mdss-dsi-panel-phy-timings = [00 1E 08 08 24 22 08 08 05 03 04 00 19 18];
+#else	// 2 lane 1.360Gbps
+				qcom,mdss-dsi-panel-phy-timings = [00 2B 0C 0C 28 26 0C 0C 08 03 04 00 23 1B];
+#endif
+				qcom,mdss-dsi-timing-switch-command = [
+					29 00 00 00 00 00 03 9F A5 A5		/* LV1 (9F) unlock */
+					29 00 00 00 05 00 03 F0 5A 5A		/* level2_key Enable */
+
+					07 01 00 00 00 00 01 01			/* DSC enable :  Compression Mode*/
+
+					29 00 00 00 00 00 05 2A 00 00 05 9F	/* CASET*/
+					29 00 00 00 00 00 05 2B 00 00 0B DF  /* PASET */
+					29 00 00 00 00 00 02 BA 01		/* scaler setup : scaler off */
+
+					29 00 00 00 00 00 03 F0 A5 A5		/* level2_key Disable */
+					29 01 00 00 00 00 03 9F 5A 5A		/* LV1 (9F) lock */
+				];
+				/*qcom,mdss-dsi-timing-switch-command-state;*/
+				qcom,mdss-dsi-lane-0-state;
+				qcom,mdss-dsi-lane-1-state;
+
+#if 0
+				qcom,mdss-dsi-t-clk-post = <0x18>;
+				qcom,mdss-dsi-t-clk-pre = <0x19>;
+#else	// 2 lane 1.360Gbps
+				qcom,mdss-dsi-t-clk-post = <0x11>;
+				qcom,mdss-dsi-t-clk-pre = <0x24>;
+#endif
+
+				qcom,mdss-dsi-on-command = [
+					29 01 00 00 00 00 03 9F A5 A5		/* LV1(9F) key enable  */
+					/* DSC setting1 */
+					29 00 00 00 00 00 03 F0 5A 5A		/* level2_key Enable - 5ms */
+					07 01 00 00 00 00 01 01				/* DSC enable :  Compression Mode*/
+
+					29 00 00 00 00 00 03 F0 A5 A5		/* level2_key Disable*/
+
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 01 00 00 00 00 02 F2 13		/* enable cmd log buf */
+#if 1	// 2 lane 1.360Gbps
+					29 01 00 00 00 00 02 C4 02	  // LANE_SEL : 2lane
+					29 01 00 00 00 00 03 B0 02 E7
+					29 01 00 00 00 00 02 E7 13	  // RX_SETTLE_CNT
+#endif
+					29 00 00 00 00 00 03 F0 A5 A5
+
+					/* Sleep out */
+					05 01 00 00 0A 00 01 11			/* Sleep out (Wait 10ms) */
+
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 01 00 00 00 00 02 F2 13		/* enable cmd log buf */
+					29 00 00 00 00 00 03 F0 A5 A5
+
+					/* OMOK setting - Seamless setting guide : WQHD */
+					29 00 00 00 00 00 03 F0 5A 5A	/* Test Key Enable */
+					29 00 00 00 00 00 05 2A 00 00 05 9F			/* CASET */
+					29 00 00 00 00 00 05 2B 00 00 0B DF			/* PASET */
+					29 00 00 00 00 00 02 BA 01		/* scaler setup : scaler off */
+					29 00 00 00 00 00 03 F0 A5 A5	/* Test Key Disable */
+
+					/* Common Setting */
+					29 00 00 00 00 00 02 35 00		/* TE Vsync ON */
+
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 03 ED 04 4C		/* ERR_FG */
+					29 00 00 00 00 00 03 F0 A5 A5
+
+					/* FFC Setting (897.6 Mbps) */
+					29 00 00 00 00 00 03 FC 5A 5A		/* TEST KEY3 Enable*/
+					29 00 00 00 00 00 06 C5 0D 10 B4 3E 01
+					29 00 00 00 00 00 03 FC A5 A5		/* TEST KEY3 Disable*/
+
+					/* TSP HSYNC */
+					29 01 00 00 00 00 03 F0 5A 5A
+					29 01 00 00 00 00 0A B9 00 B0 91 09 00 00 00 11 03	/* TSP HSYNC Setting */
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* ISC */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 03 B0 04 F6
+					29 00 00 00 00 00 02 F6 43
+					29 00 00 00 00 00 03 F0 A5 A5
+
+					/* STM */
+					29 01 00 00 00 00 03 F0 5A 5A
+					29 01 00 00 00 00 10 86
+						01 08 10 21 11 42 01 00
+						00 00 00 00 00 00 00
+					29 01 00 00 00 00 03 F0 A5 5A
+
+					/* COPR */
+					29 01 00 00 00 00 03 F0 5A 5A
+					29 01 00 00 00 00 3D E1
+						05 3F 3F 00 00 00 00 00 00 00
+						03 3F 00 00 00 00 05 9F 00 5F
+						00 00 00 60 05 9F 00 C4 00 00
+						00 C5 05 9F 0A CF 00 00 0A D0
+						05 9F 0B 8F 04 24 00 A9 04 4B
+						00 CB 04 24 00 A9 04 4B 00 CB
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* GAMMA MODE 1 */
+					29 01 00 00 00 00 03 F0 5A 5A
+					29 01 00 00 00 00 03 B0 95 B1
+					29 01 00 00 00 00 07 B1 00 01 00 01 00 00
+					29 01 00 00 00 00 03 F0 A5 5A
+
+					/* POC COMP */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 03 B0 06 B1
+					29 00 00 00 00 00 0C B1 01 AF 00 54 68 CC 78 30 CC 64 FF /* Dimming Set */
+					29 00 00 00 00 00 03 B0 02 96
+					29 00 00 00 00 00 03 96 53 FF	/* 420nit, Dimming Step */
+					//29 00 00 00 00 00 02 F7 01
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* Brightness Setting */
+					29 00 00 00 00 00 03 F0 5A 5A		/* TEST KEY1 Enable*/
+					29 00 00 00 00 00 23				/* Brightness condition set */
+						CA
+						2A 00 00 00
+						80 80 80
+						80 80 80
+						80 80 80
+						80 80 80
+						80 80 80
+						80 80 80
+						80 80 80
+						80 80 80
+						80 80 80
+						44 40 00
+					29 00 00 00 00 00 03 B1 00 14   /* AID Set : 0% */
+
+					29 00 00 00 00 00 04	/* MPS/ELVSS Setting */
+						B5 19 DC 16 /* temp=25, MPS=high, ELVSS=420nit */
+					29 00 00 00 00 00 03 B0 38 B5
+					29 00 00 00 00 00 02 B5 14
+
+					29 00 00 00 00 00 03 F4 EB 23   /* VINT */
+					29 01 00 00 00 00 02 F7 03      /* Gamma, AID update  */
+
+					29 01 00 00 00 00 03 F0 A5 A5   /* TEST KEY1 Disable */
+					29 01 00 00 00 00 03 9F 5A 5A	/* LV1(9F) key disable  */
+				];
+
+				qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-off-command=[
+					29 01 00 00 00 00 03 9F A5 A5		/* LV1 (9F) unlock */
+					05 01 00 00 00 00 01 28
+					29 01 00 00 00 00 03 9F 5A 5A		/* LV1 (9F) lock */
+
+					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable*/
+					29 00 00 00 00 00 03 E2 00 00	/* AFC Off */
+					29 01 00 00 14 00 03 F0 A5 A5   /* TEST KEY2 Disable, 20ms delay */
+
+					29 01 00 00 00 00 03 9F A5 A5		/* LV1 (9F) unlock */
+					05 01 00 00 00 00 01 10 		/* sleep in */
+					29 01 00 00 A0 00 03 9F 5A 5A		/* LV1 (9F) lock, 160ms delay to match 100ms */
+				];
+				qcom,mdss-dsi-off-command-state = "dsi_hs_mode";
+				qcom,partial-update-enabled = "single_roi";
+				qcom,panel-roi-alignment=<720 40 720 40 720 40>;
+				qcom,compression-mode = "dsc";
+				qcom,lm-split = <720 720>;
+				qcom,mdss-dsc-encoders = <2>;
+				qcom,mdss-dsc-slice-height = <40>;
+				qcom,mdss-dsc-slice-width = <720>;
+				qcom,mdss-dsc-slice-per-pkt = <1>;
+				qcom,mdss-dsc-bit-per-component = <8>;
+				qcom,mdss-dsc-bit-per-pixel = <8>;
+				qcom,mdss-dsc-block-prediction-enable;
+			};
+#if 0
+			fhd {
+				qcom,display-topology = <1 1 1>, <2 2 1>;
+				qcom,default-topology-index = <1>;
 				qcom,mdss-dsi-panel-width = <1080>;
 				qcom,mdss-dsi-panel-height = <2280>;
 				qcom,mdss-dsi-h-pulse-width = <44>;
@@ -2484,7 +2685,7 @@
 				qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
 				qcom,mdss-dsi-off-command=[
 					29 01 00 00 00 00 03 9F A5 A5		/* LV1 (9F) unlock */
-					05 01 00 00 00 00 01 28 
+					05 01 00 00 00 00 01 28
 					29 01 00 00 00 00 03 9F 5A 5A		/* LV1 (9F) lock */
 
 					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable*/
@@ -2508,6 +2709,177 @@
 				qcom,mdss-dsc-bit-per-pixel = <8>;
 				qcom,mdss-dsc-block-prediction-enable;
 			};
+
+			hd {
+				qcom,display-topology = <1 1 1>, <2 2 1>;
+				qcom,default-topology-index = <1>;
+				qcom,mdss-dsi-panel-width = <720>;
+				qcom,mdss-dsi-panel-height = <1520>;
+				qcom,mdss-dsi-h-pulse-width = <44>;
+				qcom,mdss-dsi-h-back-porch = <360>;
+				qcom,mdss-dsi-h-front-porch = <116>;
+				qcom,mdss-dsi-h-sync-skew = <0>;
+				qcom,mdss-dsi-v-pulse-width = <80>;
+				qcom,mdss-dsi-v-back-porch = <124>;
+				qcom,mdss-dsi-v-front-porch = <1556>;
+				qcom,mdss-dsi-panel-framerate = <60>;
+//				qcom,mdss-dsi-panel-phy-timings = [00 21 09 09 24 23 08 08 08 03 04 00];
+				qcom,mdss-dsi-panel-phy-timings = [00 1E 08 08 24 22 08 08 05 03 04 00 19 18];
+
+				qcom,mdss-dsi-timing-switch-command = [
+					29 00 00 00 00 00 03 9F A5 A5		/* LV1 (9F) unlock */
+					29 00 00 00 05 00 03 F0 5A 5A		/* level2_key Enable */
+
+					07 01 00 00 00 00 01 01					/* DSC enable :  Compression Mode*/
+
+					29 00 00 00 00 00 05 2A 00 00 02 CF			/* CASET*/
+					29 00 00 00 00 00 05 2B 00 00 05 EF			/*PASET */
+					29 00 00 00 00 00 06 BA 00 26 08 08 F3		/* scaler setup : 4x */
+
+					29 00 00 00 00 00 03 F0 A5 A5		/* level2_key Disable */
+					29 01 00 00 00 00 03 9F 5A 5A		/* LV1 (9F) lock */
+				];
+				/*qcom,mdss-dsi-timing-switch-command-state;*/
+				qcom,mdss-dsi-t-clk-post = <0x18>;
+				qcom,mdss-dsi-t-clk-pre = <0x19>;
+				qcom,mdss-dsi-on-command = [
+					29 01 00 00 00 00 03 9F A5 A5		/* LV1(9F) key enable */
+					/* DSC setting1 */
+					29 00 00 00 00 00 03 F0 5A 5A		/* level2_key Enable - 5ms */
+					07 01 00 00 00 00 01 01			/* DSC enable :  Compression Mode*/
+
+					29 00 00 00 00 00 03 F0 A5 A5		/* level2_key Disable*/
+
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 01 00 00 00 00 02 F2 13		/* enable cmd log buf */
+					29 00 00 00 00 00 03 F0 A5 A5
+
+					/* Sleep out */
+					05 01 00 00 0A 00 01 11			/* Sleep out (Wait 10ms) */
+
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 01 00 00 00 00 02 F2 13		/* enable cmd log buf */
+					29 00 00 00 00 00 03 F0 A5 A5
+
+					/* OMOK setting - Seamless setting guide : HD */
+					29 00 00 00 00 00 03 F0 5A 5A	/* Test Key Enable */
+					29 00 00 00 00 00 05 2A 00 00 02 CF			/* CASET */
+					29 00 00 00 00 00 05 2B 00 00 05 EF			/* PASET */
+					29 00 00 00 00 00 02 BA 00		/* scaler setup : 4x */
+					29 00 00 00 00 00 03 F0 A5 A5	/* Test Key Disable */
+
+					/* Common Setting */
+					29 00 00 00 00 00 02 35 00		/* TE Vsync ON */
+
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 03 ED 04 4C		/* ERR_FG */
+					29 00 00 00 00 00 03 F0 A5 A5
+
+					/* FFC Setting (898.5 Mbps) */
+					29 00 00 00 00 00 03 FC 5A 5A		/* TEST KEY3 Enable*/
+					29 00 00 00 00 00 06 C5 0D 10 B4 3E 01
+					29 00 00 00 00 00 03 FC A5 A5		/* TEST KEY3 Disable*/
+
+					/* TSP HSYNC */
+					29 01 00 00 00 00 03 F0 5A 5A
+					29 01 00 00 00 00 0A B9 00 B0 91 09 00 00 00 11 03	/* TSP HSYNC Setting */
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* ISC */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 03 B0 04 F6
+					29 00 00 00 00 00 02 F6 43
+					29 00 00 00 00 00 03 F0 A5 A5
+
+					/* STM */
+					29 01 00 00 00 00 03 F0 5A 5A
+					29 01 00 00 00 00 10 86
+						01 08 10 21 11 42 01 00
+						00 00 00 00 00 00 00
+					29 01 00 00 00 00 03 F0 A5 5A
+
+					/* COPR */
+					29 01 00 00 00 00 03 F0 5A 5A
+					29 01 00 00 00 00 3D E1
+						05 3F 3F 00 00 00 00 00 00 00
+						03 3F 00 00 00 00 05 9F 00 5F
+						00 00 00 60 05 9F 00 C4 00 00
+						00 C5 05 9F 0A CF 00 00 0A D0
+						05 9F 0B 8F 04 24 00 A9 04 4B
+						00 CB 04 24 00 A9 04 4B 00 CB
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* GAMMA MODE 1 */
+					29 01 00 00 00 00 03 F0 5A 5A
+					29 01 00 00 00 00 03 B0 95 B1
+					29 01 00 00 00 00 07 B1 00 01 00 01 00 00
+					29 01 00 00 00 00 03 F0 A5 5A
+
+					/* POC COMP */
+					29 00 00 00 00 00 03 F0 5A 5A
+					29 00 00 00 00 00 03 B0 06 B1
+					29 00 00 00 00 00 0C B1 01 AF 00 54 68 CC 78 30 CC 64 FF /* Dimming Set */
+					29 00 00 00 00 00 03 B0 02 96
+					29 00 00 00 00 00 03 96 53 FF	/* 420nit, Dimming Step */
+					//29 00 00 00 00 00 02 F7 01
+					29 01 00 00 00 00 03 F0 A5 A5
+
+					/* Brightness Setting */
+					29 00 00 00 00 00 03 F0 5A 5A		/* TEST KEY1 Enable*/
+					29 00 00 00 00 00 23				/* Brightness condition set */
+						CA
+						2A 00 00 00
+						80 80 80
+						80 80 80
+						80 80 80
+						80 80 80
+						80 80 80
+						80 80 80
+						80 80 80
+						80 80 80
+						80 80 80
+						44 40 00
+					29 00 00 00 00 00 03 B1 00 14   /* AID Set : 0% */
+
+					29 00 00 00 00 00 04	/* MPS/ELVSS Setting */
+						B5 19 DC 16 /* temp=25, MPS=high, ELVSS=420nit */
+					29 00 00 00 00 00 03 B0 38 B5
+					29 00 00 00 00 00 02 B5 14
+
+					29 00 00 00 00 00 03 F4 EB 23   /* VINT */
+					29 01 00 00 00 00 02 F7 03      /* Gamma, AID update  */
+
+					29 01 00 00 00 00 03 F0 A5 A5   /* TEST KEY1 Disable */
+					29 01 00 00 00 00 03 9F 5A 5A	/* LV1(9F) key disable */
+				];
+				qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
+				qcom,mdss-dsi-off-command=[
+					29 01 00 00 00 00 03 9F A5 A5		/* LV1 (9F) unlock */
+					05 01 00 00 00 00 01 28
+					29 01 00 00 00 00 03 9F 5A 5A		/* LV1 (9F) lock */
+
+					29 00 00 00 00 00 03 F0 5A 5A	/* TEST KEY2 Enable*/
+					29 00 00 00 00 00 03 E2 00 00	/* AFC Off */
+					29 01 00 00 14 00 03 F0 A5 A5   /* TEST KEY2 Disable, 20ms delay */
+
+					29 01 00 00 00 00 03 9F A5 A5		/* LV1 (9F) unlock */
+					05 01 00 00 00 00 01 10 		/* sleep in */
+					29 01 00 00 A0 00 03 9F 5A 5A		/* LV1 (9F) lock, 160ms delay to match 100ms */
+				];
+				qcom,mdss-dsi-off-command-state = "dsi_hs_mode";
+				qcom,partial-update-enabled = "single_roi";
+				qcom,panel-roi-alignment=<360 76 360 76 360 76>;
+				qcom,compression-mode = "dsc";
+				qcom,lm-split = <360 360>;
+				qcom,mdss-dsc-encoders = <2>;
+				qcom,mdss-dsc-slice-height = <76>;
+				qcom,mdss-dsc-slice-width = <360>;
+				qcom,mdss-dsc-slice-per-pkt = <1>;
+				qcom,mdss-dsc-bit-per-component = <8>;
+				qcom,mdss-dsc-bit-per-pixel = <8>;
+				qcom,mdss-dsc-block-prediction-enable;
+			};
+#endif	
 		};
 	};
 };

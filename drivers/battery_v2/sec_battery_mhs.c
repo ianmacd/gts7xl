@@ -14,7 +14,7 @@
 #include "include/sec_battery_dt.h"
 
 #include <linux/sec_param.h>
-#include <linux/sec_hw_param.h>
+#include <linux/sec_debug.h>
 
 #ifdef CONFIG_SAMSUNG_BATTERY_DISALLOW_DEEP_SLEEP
 #include <linux/clk.h>
@@ -167,8 +167,10 @@ EXPORT_SYMBOL(factory_mode);
 #endif
 bool mfc_fw_update;
 EXPORT_SYMBOL(mfc_fw_update);
-
+bool boot_complete;
+EXPORT_SYMBOL(boot_complete);
 int charging_night_mode;
+int temp_control_test;
 
 static int sec_bat_is_lpm_check(char *str)
 {
@@ -290,6 +292,32 @@ void sec_bat_set_current_event(struct sec_battery_info *battery,
 		__func__, temp, battery->current_event);
 
 	mutex_unlock(&battery->current_eventlock);
+}
+
+void sec_bat_set_temp_control_test(struct sec_battery_info *battery,
+			      bool temp_enable)
+{
+	if (temp_enable) {
+		pr_info("%s : BATT_TEMP_CONTROL_TEST ENABLE\n", __func__);
+		sec_bat_set_current_event(battery, SEC_BAT_CURRENT_EVENT_TEMP_CTRL_TEST,
+			SEC_BAT_CURRENT_EVENT_TEMP_CTRL_TEST);
+		battery ->pdata->usb_temp_check_type_backup = battery->pdata->usb_temp_check_type;
+		battery->pdata->usb_temp_check_type = 0;
+
+		battery->pdata->temp_highlimit_threshold_normal_backup =
+			battery->pdata->temp_highlimit_threshold_normal;
+		battery->pdata->temp_highlimit_threshold_normal = 990;
+	} else {
+		pr_info("%s : BATT_TEMP_CONTROL_TEST END\n", __func__);
+		sec_bat_set_current_event(battery, 0,
+			SEC_BAT_CURRENT_EVENT_TEMP_CTRL_TEST);
+		if (!battery ->pdata->usb_temp_check_type)
+			battery ->pdata->usb_temp_check_type = battery->pdata->usb_temp_check_type_backup;
+
+		if (battery->pdata->temp_highlimit_threshold_normal == 990)
+			battery->pdata->temp_highlimit_threshold_normal =
+				battery->pdata->temp_highlimit_threshold_normal_backup;			
+	}
 }
 
 static void sec_bat_change_default_current(struct sec_battery_info *battery,
@@ -6228,6 +6256,38 @@ static const struct power_supply_desc ps_power_supply_desc = {
 	.get_property = sec_ps_get_property,
 	.set_property = sec_ps_set_property,
 };
+
+#if !defined(CONFIG_SEC_FACTORY)
+static char* salescode_from_cmdline;
+
+bool sales_code_is(char* str)
+{
+	bool status = 0;
+	char* salescode;
+
+	salescode = kmalloc(4, GFP_KERNEL);
+	if (!salescode) {
+		goto out;
+	}
+	memset(salescode, 0x00,4);
+
+	salescode = salescode_from_cmdline;
+
+	pr_info("%s: %s\n", __func__,salescode);
+
+	if(!strncmp((char *)salescode, str, 3))
+		status = 1;
+
+out:	return status;
+}
+
+static int __init sales_code_setup(char *str)
+{
+	salescode_from_cmdline = str;
+	return 1;
+}
+__setup("androidboot.sales_code=", sales_code_setup);
+#endif
 
 static int sec_battery_probe(struct platform_device *pdev)
 {

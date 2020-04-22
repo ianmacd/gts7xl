@@ -228,8 +228,8 @@ struct sec_cmd ft_commands[] = {
 	{SEC_CMD_H("aod_enable", aod_enable),},
 	{SEC_CMD("set_aod_rect", set_aod_rect),},
 	{SEC_CMD("get_aod_rect", get_aod_rect),},
-	{SEC_CMD_H("fod_enable", fod_enable),},
-	{SEC_CMD_H("set_fod_rect", set_fod_rect),},
+	{SEC_CMD("fod_enable", fod_enable),},
+	{SEC_CMD("set_fod_rect", set_fod_rect),},
 	{SEC_CMD_H("singletap_enable", singletap_enable),},
 	{SEC_CMD_H("external_noise_mode", external_noise_mode),},
 	{SEC_CMD_H("brush_enable", brush_enable),},
@@ -1042,6 +1042,15 @@ static void fw_update(void *device_data)
 	int retval = 0;
 
 	sec_cmd_set_default_result(sec);
+#if defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+	if (sec->cmd_param[0] == 1) {
+		input_err(true, &info->client->dev, "%s: user_ship, skip\n", __func__);
+		snprintf(buff, sizeof(buff), "OK");
+		sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+		sec->cmd_state = SEC_CMD_STATUS_OK;
+		return;
+	}
+#endif
 	if (info->fts_power_state == FTS_POWER_STATE_POWERDOWN) {
 		input_err(true, &info->client->dev, "%s: [ERROR] Touch is stopped\n",
 				__func__);

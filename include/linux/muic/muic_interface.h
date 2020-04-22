@@ -227,6 +227,8 @@ struct muic_interface_t {
 	bool			is_dcp_charger;
 	bool			is_afc_reset;
 #endif
+	bool			is_bypass;
+	bool			is_ccic_attached;
 
 	struct hv_data		*phv;
 
@@ -286,6 +288,9 @@ struct muic_interface_t {
 #endif
 #if IS_ENABLED(CONFIG_HV_MUIC_VOLTAGE_CTRL)
 	int (*set_afc_voltage)(void *, int vol);
+	void (*change_afc_voltage)(void *, int);
+	int (*afc_get_voltage)(void *);
+	int (*afc_set_voltage)(void *, int);
 #endif
 	void (*hv_reset)(void *);
 	void (*hv_dcp_charger)(void *);
@@ -321,7 +326,9 @@ struct muic_interface_t {
 #endif
 #if defined(CONFIG_MUIC_SUPPORT_PRSWAP)
 	void (*set_chg_det)(void *, bool en);
+	void (*prswap_work)(void *, int mode);
 #endif
+	void (*set_bypass)(void *);
 };
 
 extern struct device *switch_device;

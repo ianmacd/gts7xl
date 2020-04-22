@@ -32,6 +32,7 @@ extern struct class *sec_class;
 
 #include "wacom.h"
 
+static void get_chip_name(void *device_data);
 int calibration_trx_data(struct wacom_i2c *wac_i2c);
 void calculate_ratio(struct wacom_i2c *wac_i2c);
 void make_decision(struct wacom_i2c *wac_i2c, u16* arrResult);
@@ -47,6 +48,7 @@ static void fw_update(void *device_data);
 static void not_support_cmd(void *device_data);
 
 static struct sec_cmd sec_cmds[] = {
+	{SEC_CMD("get_chip_name", get_chip_name),},
 	{SEC_CMD("run_elec_test", run_elec_test),},
 	{SEC_CMD("ready_elec_test", ready_elec_test),},
 	{SEC_CMD("fw_update", fw_update),},
@@ -165,7 +167,11 @@ static ssize_t epen_firmware_update_store(struct device *dev,
 	switch (*buf) {
 	case 'i':
 	case 'I':
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 		fw_update_way = FW_IN_SDCARD;
+#else
+		fw_update_way = FW_IN_SDCARD_SIGNED;
+#endif
 		break;
 	case 'k':
 	case 'K':
@@ -351,6 +357,8 @@ int wacom_open_test(struct wacom_i2c *wac_i2c)
 	if (wac_i2c->pdata->use_garage) {
 		mutex_lock(&wac_i2c->mode_lock);
 		wacom_i2c_set_survey_mode(wac_i2c, EPEN_SURVEY_MODE_NONE);
+		// prevent I2C fail
+		msleep(300);
 		mutex_unlock(&wac_i2c->mode_lock);
 	}
 
@@ -901,7 +909,7 @@ int wacom_ble_charge_mode(struct wacom_i2c *wac_i2c, int mode)
 		return -EPERM;
 	}
 
-	if (wac_i2c->ble_block_flag) {
+	if (wac_i2c->ble_block_flag && (mode != EPEN_BLE_C_DIABLE)) {
 		input_err(true, &client->dev, "%s: operation not permitted\n",
 			  __func__);
 		return -EPERM;
@@ -1459,13 +1467,15 @@ static ssize_t epen_fac_garage_rawdata_show(struct device *dev,
 	struct wacom_i2c *wac_i2c = container_of(sec, struct wacom_i2c, sec);
 	struct i2c_client *client = wac_i2c->client;
 	char data[17] = { 0, };
-	int ret;
+	int ret, retry = 1;
 	u8 cmd;
 
 	if (!wac_i2c->fac_garage_mode) {
 		input_err(true, &client->dev, "not in factory garage mode\n");
 		return snprintf(buf, PAGE_SIZE, "NG");
 	}
+
+get_garage_retry:
 
 	wacom_enable_irq(wac_i2c, false);
 	wacom_enable_pdct_irq(wac_i2c, false);
@@ -1506,6 +1516,11 @@ static ssize_t epen_fac_garage_rawdata_show(struct device *dev,
 
 	wac_i2c->garage_gain1 = data[9];
 	wac_i2c->garage_freq1 = ((u16)data[10] << 8) + data[11];
+
+	if (wac_i2c->garage_freq0 == 0 && retry > 0) {
+		retry--;
+		goto get_garage_retry;
+	}
 
 	input_info(true, &client->dev, "%s: %d, %d, %d, %d\n", __func__,
 		   wac_i2c->garage_gain0, wac_i2c->garage_freq0,
@@ -1937,6 +1952,30 @@ static void run_elec_test(void *device_data)
 	wacom_i2c_set_survey_mode(wac_i2c, EPEN_SURVEY_MODE_NONE);
 	mutex_unlock(&wac_i2c->mode_lock);
 
+	/* wait for status event for normal mode of wacom */
+	msleep(250);
+	do {
+		ret = wacom_i2c_recv(wac_i2c, data, COM_COORD_NUM, WACOM_I2C_MODE_NORMAL);
+		if (ret != COM_COORD_NUM) {
+			input_err(true, &client->dev, "%s: failed to recv status data\n",
+				  __func__);
+			msleep(50);
+			continue;
+		}
+
+		/* check packet ID */
+		if ((data[0] & 0x0F) != NOTI_PACKET && (data[1] != CMD_PACKET)) {
+			input_info(true, &client->dev,
+				   "%s: invalid status data %d\n",
+				   __func__, (RETRY_COUNT - retry + 1));
+		} else {
+			break;
+		}
+
+		msleep(50);
+	} while(retry--);
+
+	retry = RETRY_COUNT;
 	cmd = COM_ELEC_XSCAN;
 	ret = wacom_i2c_send(wac_i2c, &cmd, 1, WACOM_I2C_MODE_NORMAL);
 	if (ret != 1) {
@@ -1992,10 +2031,17 @@ static void run_elec_test(void *device_data)
 #endif
 			/* check packet ID & sub packet ID */
 			if (((data[0] & 0x0F) != 0x0E) && (data[1] != 0x65)) {
-				input_err(true, &client->dev,
-					  "%s: invalid elec data %d %d\n",
-					  __func__, (data[0] & 0x0F), data[1]);
-				goto out;
+				input_info(true, &client->dev,
+					   "%s: %d data of wacom elec\n",
+					   __func__, (RETRY_COUNT - retry + 1));
+				if (--retry) {
+					continue;
+				} else {
+					input_err(true, &client->dev,
+						  "%s: invalid elec data %d %d\n",
+						  __func__, (data[0] & 0x0F), data[1]);
+					goto out;
+				}
 			}
 
 			if (data[11] != 3) {
@@ -2091,10 +2137,17 @@ static void run_elec_test(void *device_data)
 #endif
 			/* check packet ID & sub packet ID */
 			if (((data[0] & 0x0F) != 0x0E) && (data[1] != 0x65)) {
-				input_err(true, &client->dev,
-					  "%s: invalid elec data %d %d\n",
-					  __func__, (data[0] & 0x0F), data[1]);
-				goto out;
+				input_info(true, &client->dev,
+					   "%s: %d data of wacom elec\n",
+					   __func__, (RETRY_COUNT - retry + 1));
+				if (--retry) {
+					continue;
+				} else {
+					input_err(true, &client->dev,
+						  "%s: invalid elec data %d %d\n",
+						  __func__, (data[0] & 0x0F), data[1]);
+					goto out;
+				}
 			}
 
 			if (data[11] != 3) {
@@ -2393,11 +2446,31 @@ out:
 	return;
 }
 
+static void get_chip_name(void *device_data)
+{
+	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+	struct wacom_i2c *wac_i2c = container_of(sec, struct wacom_i2c, sec);
+	char buff[SEC_CMD_STR_LEN] = { 0 };
+
+	sec_cmd_set_default_result(sec);
+
+	if (wac_i2c->pdata->ic_type == 9020)
+		snprintf(buff, sizeof(buff), "W9020");
+	else if (wac_i2c->pdata->ic_type == 9021)
+		snprintf(buff, sizeof(buff), "W9021");
+	else
+		snprintf(buff, sizeof(buff), "N/A");
+
+	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	sec->cmd_state = SEC_CMD_STATUS_OK;
+}
+
 enum {
 	WACOM_BUILT_IN = 0,
 	WACOM_UMS,
 	WACOM_NONE,
-	WACOM_FFU,
+	WACOM_SPU,
+	WACOM_TEST,
 };
 
 /* Factory cmd for firmware update
@@ -2423,7 +2496,7 @@ static void fw_update(void *device_data)
 		goto err_out;
 	}
 
-	if (sec->cmd_param[0] < 0 || sec->cmd_param[0] > WACOM_FFU) {
+	if (sec->cmd_param[0] < 0 || sec->cmd_param[0] > WACOM_TEST) {
 		input_err(true, &wac_i2c->client->dev, "%s: [ERROR] parm error![%d]\n",
 						__func__, sec->cmd_param[0]);
 		goto err_out;
@@ -2434,10 +2507,17 @@ static void fw_update(void *device_data)
 		ret = wacom_fw_update(wac_i2c, FW_BUILT_IN, true);
 		break;
 	case WACOM_UMS:
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 		ret = wacom_fw_update(wac_i2c, FW_IN_SDCARD, true);
+#else
+		ret = wacom_fw_update(wac_i2c, FW_IN_SDCARD_SIGNED, true);
+#endif
 		break;
-	case WACOM_FFU:
-		ret = wacom_fw_update(wac_i2c, FW_FFU, true);
+	case WACOM_SPU:
+		ret = wacom_fw_update(wac_i2c, FW_SPU, true);
+		break;
+	case WACOM_TEST:
+		ret = wacom_fw_update(wac_i2c, FW_IN_SDCARD_SIGNED, true);
 		break;
 	default:
 		input_err(true, &wac_i2c->client->dev, "%s: Not support command[%d]\n",
@@ -2561,12 +2641,13 @@ int set_wacom_ble_charge_mode(bool mode)
 	input_info(true, &wac_i2c->client->dev, "%s start(%d)\n", __func__, mode);
 
 	if (!mode) {
-		ret = wacom_ble_charge_mode(wac_i2c, mode);
-		wac_i2c->ble_block_flag = true;
+		ret = wacom_ble_charge_mode(wac_i2c, EPEN_BLE_C_KEEP_OFF);
+		if (!ret)
+			wac_i2c->ble_block_flag = true;
 	} else {
 		wac_i2c->ble_block_flag = false;
 #ifdef CONFIG_SEC_FACTORY
-		ret = wacom_ble_charge_mode(wac_i2c, mode);
+		ret = wacom_ble_charge_mode(wac_i2c, EPEN_BLE_C_ENABLE);
 #endif
 	}
 

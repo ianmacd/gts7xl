@@ -66,7 +66,7 @@
 #define SW_INFO_MAX_SIZE                        (5)
 #define VENDOR_INFO_MAX_SIZE                    (2)
 #define PROCESS_INFO_MAX_SIZE                   (2)
-#define PROJECT_CAL_TYPE_MAX_SIZE                   (20)
+#define PROJECT_CAL_TYPE_MAX_SIZE               (20)
 
 #define MAKE_STRINGIZE(arg) #arg
 
@@ -321,7 +321,7 @@ typedef struct _cam_eeprom_af_idx_t {
 #endif
 
 /*************************************************************************************************/
-#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32)
+#if defined(CONFIG_SAMSUNG_OIS_MCU_STM32) || defined(CONFIG_SAMSUNG_OIS_RUMBA_S4)
 #define OIS_XYGG_SIZE                               8
 #define OIS_CENTER_SHIFT_SIZE                       4
 #define OIS_XYSR_SIZE                               4
@@ -340,7 +340,7 @@ extern uint8_t rear3_dual_cal[FROM_REAR_DUAL_CAL_SIZE + 1];
 //extern int rear3_af_cal[FROM_REAR_AF_CAL_SIZE + 1];
 extern char rear3_af_cal_str[MAX_AF_CAL_STR_SIZE];
 #endif
-#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT) && (defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE))
+#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6X_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT) && (defined(CONFIG_SAMSUNG_REAR_DUAL) || defined(CONFIG_SAMSUNG_REAR_TRIPLE))
 extern uint8_t rear2_dual_cal[FROM_REAR_DUAL_CAL_SIZE + 1];
 #endif
 //extern int rear_af_cal[FROM_REAR_AF_CAL_SIZE + 1];

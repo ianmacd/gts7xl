@@ -591,8 +591,17 @@ static struct dsi_panel_cmd_set *ss_acl_on(struct samsung_display_driver_data *v
 		return NULL;
 	}
 
-	/* ACL percentage */
-	pcmds->cmds[0].msg.tx_buf[5] = 0x4D;	/* 15% */
+	if (vdd->br.bl_level > 25500) {
+		pcmds->cmds[0].msg.tx_buf[2] = 0x80;	/* use hbm acl statr step 60% */
+		pcmds->cmds[0].msg.tx_buf[3] = 0x64;	/* use hbm acl statr step 60% */
+		
+		pcmds->cmds[0].msg.tx_buf[5] = 0x29;	/* use hbm acl percentage 8% */
+	} else {
+		pcmds->cmds[0].msg.tx_buf[2] = 0x40;	/* use normal acl statr step 50% */
+		pcmds->cmds[0].msg.tx_buf[3] = 0xFC;	/* use normal acl statr step 50% */
+		
+		pcmds->cmds[0].msg.tx_buf[5] = 0x4D;	/* use normal acl percentage 15% */
+	}
 
 	LCD_DEBUG("gradual_acl: %d, acl per: 0x%x",
 			vdd->gradual_acl_val, pcmds->cmds[0].msg.tx_buf[5]);
@@ -1234,7 +1243,7 @@ static int dsi_update_mdnie_data(struct samsung_display_driver_data *vdd)
 	mdnie_data->DSI_NEGATIVE_MDNIE = DSI0_NEGATIVE_MDNIE;
 	mdnie_data->DSI_COLOR_BLIND_MDNIE = DSI0_COLOR_BLIND_MDNIE;
 	mdnie_data->DSI_HBM_CE_MDNIE = DSI0_HBM_CE_MDNIE;
-	//mdnie_data->DSI_HBM_CE_D65_MDNIE = DSI0_HBM_CE_D65_MDNIE;
+	mdnie_data->DSI_HBM_CE_D65_MDNIE = DSI0_HBM_CE_D65_MDNIE;
 	mdnie_data->DSI_RGB_SENSOR_MDNIE = DSI0_RGB_SENSOR_MDNIE;
 	mdnie_data->DSI_UI_DYNAMIC_MDNIE = DSI0_UI_DYNAMIC_MDNIE;
 	mdnie_data->DSI_UI_STANDARD_MDNIE = DSI0_UI_STANDARD_MDNIE;
@@ -1767,10 +1776,6 @@ static int poc_spi_erase(struct samsung_display_driver_data *vdd, u32 erase_pos,
 	ret = spi_write_enable_wait(vdd);
 	if (ret)
 		goto err;
-	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG2);
-	ret = spi_write_enable_wait(vdd);
-	if (ret)
-		goto err;
 	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG1);	
 
 	/* 0x00 : check QE is disabled (use single spi mode) */
@@ -1801,14 +1806,10 @@ static int poc_spi_erase(struct samsung_display_driver_data *vdd, u32 erase_pos,
 	ret = spi_write_enable_wait(vdd);
 	if (ret)
 		goto err;
-	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG2_END);
-	ret = spi_write_enable_wait(vdd);
-	if (ret)
-		goto err;
 	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG1_END);
 
-	/* 0x5C : check QE is enabled (use quad spi mode) and block protection */
-	ret = spi_wait_status_reg1(vdd, 0x5C);
+	/* 0xFC : check QE is enabled (use quad spi mode) and block protection */
+	ret = spi_wait_status_reg1(vdd, 0xFC);
 	if (ret)
 		goto err;
 err:
@@ -1848,11 +1849,7 @@ static int poc_spi_write(struct samsung_display_driver_data *vdd, u8 *data, u32 
 	LCD_INFO("[WRITE] write_pos : %6d, write_size : %6d, last_pos %6d, poc_w_size : %d\n",
 		write_pos, write_size, last_pos, poc_w_size);
 
-	/* start */	
-	ret = spi_write_enable_wait(vdd);
-	if (ret)
-		goto err;
-	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG2);
+	/* start */
 	ret = spi_write_enable_wait(vdd);
 	if (ret)
 		goto err;
@@ -1895,14 +1892,10 @@ cancel_poc:
 	ret = spi_write_enable_wait(vdd);
 	if (ret)
 		goto err;
-	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG2_END);
-	ret = spi_write_enable_wait(vdd);
-	if (ret)
-		goto err;
 	ss_spi_sync(spi_dev, NULL, TX_WRITE_STATUS_REG1_END);	
 
-	/* 0x5C : check QE is enabled (use quad spi mode) and block protection */
-	ret = spi_wait_status_reg1(vdd, 0x5C);
+	/* 0xFC : check QE is enabled (use quad spi mode) and block protection */
+	ret = spi_wait_status_reg1(vdd, 0xFC);
 	if (ret)
 		goto err;
 err:

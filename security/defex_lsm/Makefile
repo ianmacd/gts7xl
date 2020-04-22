@@ -57,6 +57,11 @@ else
 $(warning [DEFEX] VTS false $(SEC_BUILD_OPTION_VTS))
 endif
 
+ifeq ($(CONFIG_SEC_FACTORY), y)
+EXTRA_CFLAGS += -DDEFEX_PERMISSIVE_SP
+EXTRA_CFLAGS += -DDEFEX_PERMISSIVE_PED
+endif
+
 ifneq ($(wildcard  $(srctree)/$(src)/pack_rules.c),)
     EXTRA_CFLAGS += -DDEFEX_USE_PACKED_RULES
     hostprogs-y := pack_rules

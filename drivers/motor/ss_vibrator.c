@@ -508,10 +508,10 @@ static int vibrator_parse_dt(struct ss_vib *vib)
 		pr_err("%s:%d, power gpio not specified\n", __func__, __LINE__);
 
 	rc = of_property_read_u32(np, "samsung,chip_model", &vib->chip_model);
-	if (rc == 2) {
+	if (vib->chip_model == 2) {
 		pr_info("chip_model is SM5720\n");
 		vib->chip_model = CHIP_SM5720;
-	} else if (rc == 4) {
+	} else if (vib->chip_model == 4) {
 		pr_info("chip_model is MAX77705\n");
 		vib->chip_model = CHIP_MAX77705;
 	} else

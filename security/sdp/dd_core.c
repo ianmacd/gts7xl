@@ -124,27 +124,6 @@ static int dd_dump_debug_req_list(int mask) {
 }
 #endif
 
-void assert_list_head_valid(const char *func, const char *msg, struct list_head *head) {
-	struct list_head *prev = head;
-	struct list_head *next = head->next;
-
-	if(next->prev != prev) {
-		panic("func:%s %s list_add corruption. next->prev should be prev (%p), but was %p. (next=%p).\n",
-				func, msg, prev, next->prev, next);
-	}
-	if(prev->next != next) {
-		panic("func:%s %s list_add corruption. prev->next should be next (%p), but was %p. (prev=%p).\n",
-				func, msg, next, prev->next, prev);
-	}
-}
-
-// caller required to hold proc->lock
-void assert_proc_locked(const char *func, const char *msg, struct dd_proc *proc) {
-	BUG_ON(!proc);
-	assert_list_head_valid(func, msg, &proc->processing);
-	assert_list_head_valid(func, msg, &proc->submitted);
-}
-
 static void dd_info_get(struct dd_info *info);
 static struct dd_req *get_req(const char *msg, struct dd_info *info,
 		dd_request_code_t code, int dir)
@@ -283,12 +262,8 @@ static void dd_free_req_work(struct work_struct *work) {
 			 * dequeued immediately
 			 */
 			spin_lock(&proc->lock);
-			assert_proc_locked(__func__, "req->list deleting", proc);
-
 			if (!list_empty(&req->list))
 				list_del_init(&req->list);
-
-			assert_proc_locked(__func__, "req->list deleted", proc);
 			spin_unlock(&proc->lock);
 
 			if(atomic_dec_and_test(&proc->reqcount)) {
@@ -369,11 +344,9 @@ static inline void abort_req(const char *msg, struct dd_req *req, int err)
 	req->abort = 1;
 	if (proc) {
 		spin_lock(&proc->lock);
-		assert_proc_locked(__func__, "req->list aborting", proc);
 		// skip in case req is not assigned to any process
 		if (!list_empty(&req->list))
 			list_del_init(&req->list);
-		assert_proc_locked(__func__, "req->list aborted", proc);
 		spin_unlock(&proc->lock);
 	}
 
@@ -502,7 +475,6 @@ __releases(proc->lock)
 // caller required to hold proc->lock
 static void queue_pending_req_locked(struct dd_proc *proc, struct dd_req *req)
 {
-	assert_proc_locked(__func__, "req->list pending", proc);
 	list_move_tail(&req->list, &proc->pending);
 	dd_req_state(req, DD_REQ_PENDING);
 	req->pid = proc->pid;
@@ -1338,7 +1310,6 @@ __acquires(proc->lock)
 		__get_md_page(proc, req->info->mdpage, req->ino, t);
 		spin_lock(&proc->lock);
 
-		assert_proc_locked(__func__, "req->list processing", proc);
 		list_move(&req->list, &proc->processing);
 		dd_req_state(req, DD_REQ_PROCESSING);
 	}
@@ -1417,7 +1388,6 @@ long dd_ioctl_submit_crypto_result(struct dd_proc *proc,
 	spin_lock(&proc->lock);
 	list_for_each_entry_safe(req, temp, &proc->processing, list) {
 		int err = get_user_resp_err(errs, num_err, req->ino);
-		assert_proc_locked(__func__, "req->list submitting", proc);
 		list_move(&req->list, &proc->submitted);
 		dd_req_state(req, DD_REQ_SUBMITTED);
 		spin_unlock(&proc->lock);
@@ -1765,7 +1735,7 @@ static long dd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 		BUG_ON(!proc); // caller is not a crypto task
 		rc = dd_ioctl_wait_crypto_request(proc, &ioc);
-		if (rc < 0 && rc != -EPIPE) {
+		if (rc < 0) {
 			dd_error("DD_IOCTL_WAIT_CRYPTO_REQUEST failed :%d\n", rc);
 			return rc;
 		}

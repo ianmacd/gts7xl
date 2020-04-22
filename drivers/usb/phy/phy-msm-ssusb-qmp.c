@@ -577,6 +577,10 @@ static int msm_ssphy_qmp_dp_combo_reset(struct usb_phy *uphy)
 					phy);
 	int ret = 0;
 
+#ifdef CONFIG_SEC_DISPLAYPORT
+	secdp_wait_for_disconnect_complete();
+#endif
+
 	if (phy->phy.flags & PHY_USB_DP_CONCURRENT_MODE) {
 		dev_dbg(uphy->dev, "Resetting USB part of QMP phy\n");
 

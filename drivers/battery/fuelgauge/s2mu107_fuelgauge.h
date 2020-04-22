@@ -58,6 +58,8 @@
 
 #define S2MU107_REG_RSOC_R		0x80
 #define S2MU107_REG_RDESIGN_CAP		0x86
+#define S2MU107_REG_RSOC_R_I2C		0x8E
+
 #define S2MU107_REG_RBATCAP_OCV_NEW		0x88
 #define S2MU107_REG_RBATCAP_OCV_NEW_IN	0x90
 
@@ -187,6 +189,12 @@ struct s2mu107_fuelgauge_platform_data {
 	int c1_curr;
 };
 
+struct cv_slope {
+	int fg_current;
+	int soc;
+	int time;
+};
+
 struct s2mu107_fuelgauge_data {
 	struct device           *dev;
 	struct i2c_client       *i2c;
@@ -239,9 +247,16 @@ struct s2mu107_fuelgauge_data {
 
 	unsigned int capacity_old;      /* only for atomic calculation */
 	unsigned int capacity_max;      /* only for dynamic calculation */
+	unsigned int g_capacity_max;      /* only for dynamic calculation */
 	unsigned int standard_capacity;
 	int raw_capacity;
 
+	int current_avg;
+	unsigned int ttf_capacity;
+	struct cv_slope *cv_data;
+	int cv_data_length;
+
+	bool capacity_max_conv;
 	bool initial_update_of_soc;
 	bool init_battery_temp;
 	bool sleep_initial_update_of_soc;
@@ -252,11 +267,14 @@ struct s2mu107_fuelgauge_data {
 	u8 reg_OTP_52;
 
 	int low_vbat_threshold;
+	int low_vbat_threshold_lowtemp;
 	int low_temp_limit;
 	int temperature;
 
 	int fg_irq;
 	bool probe_done;
+
+	int init_start;
 };
 
 #endif /* __S2MU107_FUELGAUGE_H */

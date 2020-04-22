@@ -35,7 +35,7 @@ struct s2mpb02_data {
 };
 
 #if defined(CONFIG_SEC_FACTORY) && \
-	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT))
+	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT))
 struct s2mpb02_data *local_rdata[TYPE_S2MPB02_REG_MAX];
 int recovery_id[TYPE_S2MPB02_REG_MAX];
 #endif /* CONFIG_SEC_FACTORY && CONFIG_SEC_WINNERLTE_PROJECT */
@@ -304,7 +304,7 @@ static struct regulator_desc regulators[S2MPB02_REGULATOR_MAX] = {
 };
 
 #if defined(CONFIG_SEC_FACTORY) && \
-	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT))
+	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT))
 /*
  * Recovery logic for S2MPB02 detach test. (Winner display pretest)
  */
@@ -554,7 +554,7 @@ static int s2mpb02_pmic_probe(struct platform_device *pdev)
 	struct i2c_client *i2c;
 	int i, ret;
 #if defined(CONFIG_SEC_FACTORY) && \
-	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT))
+	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT))
 	const struct platform_device_id *pdev_id;
 	int id_num;
 #endif /* CONFIG_SEC_FACTORY && CONFIG_SEC_WINNERLTE_PROJECT */
@@ -584,7 +584,7 @@ static int s2mpb02_pmic_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, s2mpb02);
 	i2c = s2mpb02->iodev->i2c;
 #if defined(CONFIG_SEC_FACTORY) && \
-	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT))
+	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT))
 	pdev_id = platform_get_device_id(pdev);
 	id_num = pdev_id->driver_data;
 	local_rdata[id_num] = s2mpb02;
@@ -601,7 +601,7 @@ static int s2mpb02_pmic_probe(struct platform_device *pdev)
 		s2mpb02->opmode[id] = regulators[id].enable_mask;
 		s2mpb02->rdev[i] = regulator_register(&regulators[id], &config);
 #if defined(CONFIG_SEC_FACTORY) && \
-	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT))
+	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT))
 		if(!strcmp(rdev_get_name(s2mpb02->rdev[i]), sub_fd_name)) {
 			s2m_enable(s2mpb02->rdev[i]);
 			/* Hook always_on flag to avoid disabling by regulator_late_cleanup */
@@ -617,7 +617,7 @@ static int s2mpb02_pmic_probe(struct platform_device *pdev)
 			goto err;
 		}
 #if defined(CONFIG_SEC_FACTORY) && \
-	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT))
+	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT))
 		if ((recovery_id[id_num] < 0) && s2mpb02->rdev[i]->constraints->always_on)
 			recovery_id[id_num] = id;
 #endif /* CONFIG_SEC_FACTORY && CONFIG_SEC_WINNERLTE_PROJECT */
@@ -660,7 +660,7 @@ static struct platform_driver s2mpb02_pmic_driver = {
 		   .name = "s2mpb02-regulator",
 		   .owner = THIS_MODULE,
 #if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_PM) && \
-	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT))
+	(defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT))
 		   .pm = &s2mpb02_regulator_pm,
 #endif /* CONFIG_SEC_FACTORY && CONFIG_PM && CONFIG_SEC_WINNERLTE_PROJECT */
 		   .suppress_bind_attrs = true,

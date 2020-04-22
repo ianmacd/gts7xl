@@ -131,11 +131,3 @@ int tick_init_highres(void)
 	return tick_switch_to_oneshot(hrtimer_interrupt);
 }
 #endif
-
-uint64_t tick_next_programmed_event(int cpu)
-{
-	struct tick_device *td = per_cpu_ptr(&tick_cpu_device, cpu);
-	struct clock_event_device *evt = td->evtdev;
-
-	return ktime_to_ns(evt->next_event);
-}

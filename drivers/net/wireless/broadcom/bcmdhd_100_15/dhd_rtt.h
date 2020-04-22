@@ -1,7 +1,7 @@
 /*
  * Broadcom Dongle Host Driver (DHD), RTT
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -294,7 +294,10 @@ enum rtt_schedule_reason {
 	RTT_SHCED_HOST_DIRECTED_TERM		= 8, /* On host terminating directed RTT sessions */
 	RTT_SCHED_RNG_RPT_GEOFENCE		= 9, /* On Ranging report for geofence RTT */
 	RTT_SCHED_RTT_RETRY_GEOFENCE		= 10, /* On Geofence Retry */
-	RTT_SCHED_RNG_TERM_PEND_ROLE_CHANGE	= 11 /* On Rng Term, while pending role change */
+	RTT_SCHED_RNG_TERM_PEND_ROLE_CHANGE	= 11, /* On Rng Term, while pending role change */
+	RTT_SCHED_RNG_TERM_SUB_SVC_CANCEL	= 12, /* Due rng canc attempt, on sub cancel */
+	RTT_SCHED_RNG_TERM_SUB_SVC_UPD		= 13, /* Due rng canc attempt, on sub update */
+	RTT_SCHED_RNG_TERM_PUB_RNG_CLEAR	= 14  /* Due rng canc attempt, on pub upd/timeout */
 };
 
 /*

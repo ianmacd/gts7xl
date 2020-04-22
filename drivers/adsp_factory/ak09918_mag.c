@@ -103,7 +103,7 @@ static ssize_t mag_raw_data_store(struct device *dev,
 	return size;
 }
 
-static ssize_t mag_selttest_show(struct device *dev,
+static ssize_t mag_selftest_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct adsp_data *data = dev_get_drvdata(dev);
@@ -112,6 +112,7 @@ static ssize_t mag_selttest_show(struct device *dev,
 #if defined(CONFIG_SEC_WINNERLTE_PROJECT) || defined(CONFIG_SEC_WINNERX_PROJECT) || defined(CONFIG_SEC_ZODIAC_PROJECT)
 	int abs_adc_sum = 0, abs_adc_x = 0, abs_adc_y = 0, abs_adc_z = 0;
 #endif
+	int st_status = 0;
 
 RETRY_MAG_SELFTEST:
 	pr_info("[FACTORY] %s - start", __func__);
@@ -147,8 +148,12 @@ RETRY_MAG_SELFTEST:
 		return snprintf(buf, PAGE_SIZE, "-1,0,0,0,0,0,0,0,0,0\n");
 	}
 
-	pr_info("[FACTORY] status=%d, sf_status=%d, sf_x=%d, sf_y=%d, sf_z=%d\n dac=%d, adc=%d, adc_x=%d, adc_y=%d, adc_z=%d\n",
-		data->msg_buf[MSG_MAG][0], data->msg_buf[MSG_MAG][1],
+	if (data->msg_buf[MSG_MAG][1] != 0) {
+		pr_info("[FACTORY] %s - msg_buf[1] 0x%x", __func__, data->msg_buf[MSG_MAG][1]);
+		st_status = -1;
+	}
+	pr_info("[FACTORY] status=%d, st_status=%d, st_x=%d, st_y=%d, st_z=%d\n dac=%d, adc=%d, adc_x=%d, adc_y=%d, adc_z=%d\n",
+		data->msg_buf[MSG_MAG][0], st_status,
 		data->msg_buf[MSG_MAG][2], data->msg_buf[MSG_MAG][3],
 		data->msg_buf[MSG_MAG][4], data->msg_buf[MSG_MAG][5],
 		data->msg_buf[MSG_MAG][6], data->msg_buf[MSG_MAG][7],
@@ -175,7 +180,7 @@ RETRY_MAG_SELFTEST:
 	msleep(20);
 	adsp_unicast(NULL, 0, MSG_MAG_CAL, 0, MSG_TYPE_FACTORY_DISABLE);
 	return snprintf(buf, PAGE_SIZE,	"%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
-		data->msg_buf[MSG_MAG][0], data->msg_buf[MSG_MAG][1],
+		data->msg_buf[MSG_MAG][0], st_status,
 		data->msg_buf[MSG_MAG][2], data->msg_buf[MSG_MAG][3],
 		data->msg_buf[MSG_MAG][4], data->msg_buf[MSG_MAG][5],
 		data->msg_buf[MSG_MAG][6], data->msg_buf[MSG_MAG][7],
@@ -219,7 +224,7 @@ static DEVICE_ATTR(raw_data, 0664, mag_raw_data_show, mag_raw_data_store);
 static DEVICE_ATTR(adc, 0444, mag_raw_data_show, NULL);
 static DEVICE_ATTR(dac, 0444, mag_check_cntl, NULL);
 static DEVICE_ATTR(chk_registers, 0444, mag_check_registers, NULL);
-static DEVICE_ATTR(selftest, 0440, mag_selttest_show, NULL);
+static DEVICE_ATTR(selftest, 0440, mag_selftest_show, NULL);
 static DEVICE_ATTR(asa, 0444, mag_get_asa, NULL);
 static DEVICE_ATTR(status, 0444, mag_get_status, NULL);
 #ifdef CONFIG_SEC_FACTORY

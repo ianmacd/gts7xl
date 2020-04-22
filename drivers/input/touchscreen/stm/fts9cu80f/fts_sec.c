@@ -826,7 +826,7 @@ static ssize_t get_lp_dump(struct device *dev, struct device_attribute *attr, ch
 	int i, ret;
 	u16 addr;
 
-	if (info->use_sponge)
+	if (!info->use_sponge)
 		return -ENODEV;
 
 	if (info->fts_power_state == FTS_POWER_STATE_POWERDOWN) {
@@ -1457,22 +1457,6 @@ static ssize_t fts_scrub_position(struct device *dev,
 	return snprintf(buf, SEC_CMD_BUF_SIZE, "%s\n", buff);
 }
 
-#if 0 //def CONFIG_TRUSTONIC_TRUSTED_UI
-static void tui_mode_cmd(struct fts_ts_info *info)
-{
-	struct sec_cmd_data *sec = &info->sec;
-	char buff[16] = "TUImode:FAIL";
-
-	sec_cmd_set_default_result(sec);
-	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
-
-	sec->cmd_state = SEC_CMD_STATUS_NOT_APPLICABLE;
-	sec_cmd_set_cmd_exit(sec);
-
-	input_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
-}
-#endif
-
 static void not_support_cmd(void *device_data)
 {
 	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
@@ -1496,6 +1480,15 @@ static void fw_update(void *device_data)
 	int retval = 0;
 
 	sec_cmd_set_default_result(sec);
+#if defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+	if (sec->cmd_param[0] == 1) {
+		input_err(true, &info->client->dev, "%s: user_ship, skip\n", __func__);
+		snprintf(buff, sizeof(buff), "OK");
+		sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+		sec->cmd_state = SEC_CMD_STATUS_OK;
+		return;
+	}
+#endif
 	if (info->fts_power_state == FTS_POWER_STATE_POWERDOWN) {
 		input_err(true, &info->client->dev, "%s: [ERROR] Touch is stopped\n",
 				__func__);
@@ -3702,7 +3695,9 @@ static void run_rawdata_read_all(void *device_data)
 	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
 	char buff[SEC_CMD_STR_LEN] = { 0 };
 
+#ifdef CONFIG_TOUCHSCREEN_DUAL_FOLDABLE
 	input_raw_data_clear(MAIN_TOUCH);
+#endif
 	info->rawdata_read_lock = true;
 
 	input_raw_info_d(true, &info->client->dev,
@@ -6002,24 +5997,8 @@ static void clear_cover_mode(void *device_data)
 		if (sec->cmd_param[0] > 1) {
 			info->flip_enable = true;
 			info->cover_type = sec->cmd_param[1];
-#ifdef CONFIG_TRUSTONIC_TRUSTED_UI
-			if (TRUSTEDUI_MODE_TUI_SESSION & trustedui_get_current_mode()) {
-				fts_delay(500);
-				tui_force_close(1);
-				fts_delay(200);
-				if (TRUSTEDUI_MODE_TUI_SESSION & trustedui_get_current_mode()) {
-					trustedui_clear_mask(TRUSTEDUI_MODE_VIDEO_SECURED|TRUSTEDUI_MODE_INPUT_SECURED);
-					trustedui_set_mode(TRUSTEDUI_MODE_OFF);
-				}
-			}
-
-			tui_cover_mode_set(true);
-#endif
 		} else {
 			info->flip_enable = false;
-#ifdef CONFIG_TRUSTONIC_TRUSTED_UI
-			tui_cover_mode_set(false);
-#endif
 		}
 
 		if (info->fts_power_state != FTS_POWER_STATE_POWERDOWN && info->reinit_done) {

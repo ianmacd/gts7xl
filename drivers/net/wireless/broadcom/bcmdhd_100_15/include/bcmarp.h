@@ -1,7 +1,7 @@
 /*
  * Fundamental constants relating to ARP Protocol
  *
- * Copyright (C) 1999-2019, Broadcom.
+ * Copyright (C) 1999-2020, Broadcom.
  *
  *      Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -23,8 +23,6 @@
  *
  *
  * <<Broadcom-WL-IPTag/Open:>>
- *
- * $Id: bcmarp.h 701633 2017-05-25 23:07:17Z $
  */
 
 #ifndef _bcmarp_h_

@@ -28,7 +28,7 @@
 
 #define INVALID_VREG 100
 
-#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS5LWIFI_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
+#if !defined(CONFIG_SEC_GTS5L_PROJECT) && !defined(CONFIG_SEC_GTS5LWIFI_PROJECT) && !defined(CONFIG_SEC_GTS6L_PROJECT) && !defined(CONFIG_SEC_GTS6X_PROJECT) && !defined(CONFIG_SEC_GTS6LWIFI_PROJECT)
 #define CONFIG_SENSOR_RETENTION 1
 #define CONFIG_CAMERA_DYNAMIC_MIPI 1
 #endif
@@ -91,10 +91,10 @@ int cam_sensor_util_init_gpio_pin_tbl(
 int cam_sensor_core_power_up(struct cam_sensor_power_ctrl_t *ctrl,
 		struct cam_hw_soc_info *soc_info);
 
-#if defined(CONFIG_SENSOR_RETENTION)
+#if defined(CONFIG_SAMSUNG_FORCE_DISABLE_REGULATOR)
 int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
 	struct cam_hw_soc_info *soc_info,
-	int retention);
+	int force);
 #else
 int cam_sensor_util_power_down(struct cam_sensor_power_ctrl_t *ctrl,
 		struct cam_hw_soc_info *soc_info);

@@ -23,10 +23,6 @@
 #include "sde_dbg.h"
 #include "sde_trace.h"
 
-#if defined(CONFIG_DISPLAY_SAMSUNG)
-#include <linux/sched/clock.h>
-#endif
-
 #define SDE_EVTLOG_FILTER_STRSIZE	64
 
 struct sde_evtlog_filter {
@@ -85,13 +81,7 @@ void sde_evtlog_log(struct sde_dbg_evtlog *evtlog, const char *name, int line,
 		goto exit;
 
 	log = &evtlog->logs[evtlog->curr];
-#if defined(CONFIG_DISPLAY_SAMSUNG)
-	/* call local_clock(), instead of ktime_get(), for sde event log time to match kernel log time. */
-	log->time = local_clock();
-#else
 	log->time = ktime_to_us(ktime_get());
-#endif
-
 	log->name = name;
 	log->line = line;
 	log->data_cnt = 0;

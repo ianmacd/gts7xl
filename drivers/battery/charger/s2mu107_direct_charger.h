@@ -44,11 +44,16 @@
 #define S2MU107_DC_INT2_MASK		0x0D
 #define S2MU107_DC_INT3_MASK		0x0E
 
+#define S2MU107_SC_STATUS1_DC		0x11
 #define S2MU107_DC_STATUS0		0x17
 #define S2MU107_SC_CTRL0		0x18
+#define S2MU107_SC_CTRL4_DC		0x1C
 #define S2MU107_SC_CTRL8_DC		0x20
 
 #define S2MU107_SC_CTRL12_DC		0x24
+#define S2MU107_SC_CTRL17_DC		0x29
+#define S2MU107_SC_TEST2_DC		0x33
+#define S2MU107_SC_TEST9_DC		0x3A
 
 #define S2MU107_DC_CTRL0		0x41
 #define S2MU107_DC_CTRL1		0x42
@@ -88,10 +93,24 @@
 #define S2MU107_DC_TEST6		0x61
 #define S2MU107_DC_TEST7		0x62
 
+#define S2MU107_SC_OTP_96		0xCC
+
 #define S2MU107_SC_OTP103		0xD3
 #define S2MU107_DC_CD_OTP_01		0xD8
 #define S2MU107_DC_CD_OTP_02		0xD9
 #define S2MU107_DC_INPUT_OTP_04		0xDF
+
+/* S2MU107_DC_INT1_MASK */
+#define DC_WCIN_RCP_INT_MASK_SHIFT	5
+#define DC_WCIN_RCP_INT_MASK_MASK	BIT(DC_WCIN_RCP_INT_MASK_SHIFT)
+
+/* S2MU107_SC_STATUS1_DC */
+#define SC_FAULT_STATUS_SHIFT		4
+#define SC_FAULT_STATUS_WIDTH		4
+#define SC_FAULT_STATUS_MASK		MASK(SC_FAULT_STATUS_WIDTH,\
+					 SC_FAULT_STATUS_SHIFT)
+#define SC_STATUS_WD_SUSPEND		1
+#define SC_STATUS_WD_RST		2
 
 /* S2MU107_DC_STATUS0 */
 #define CV_REGULATION_STATUS		0x10
@@ -105,6 +124,32 @@
 #define SC_REG_MODE_WIDTH		4
 #define SC_REG_MODE_MASK		MASK(SC_REG_MODE_WIDTH, SC_REG_MODE_SHIFT)
 #define SC_REG_MODE_DUAL_BUCK		(0x0d)
+
+/* S2MU107_SC_CTRL4_DC */
+#define SET_IVR_CHGIN_SHIFT		3
+#define SET_IVR_CHGIN_WIDTH		3
+#define SET_IVR_CHGIN_MASK		MASK(SET_IVR_CHGIN_WIDTH, SET_IVR_CHGIN_SHIFT)
+#define SET_IVR_WCIN_SHIFT		0
+#define SET_IVR_WCIN_WIDTH		3
+#define SET_IVR_WCIN_MASK		MASK(SET_IVR_WCIN_WIDTH, SET_IVR_WCIN_SHIFT)
+
+/* S2MU107_SC_CTRL8_DC */
+#define SET_VF_VSYS_SHIFT		0
+#define SET_VF_VSYS_WIDTH		4
+#define SET_VF_VSYS_MASK		MASK(SET_VF_VSYS_WIDTH, SET_VF_VSYS_SHIFT)
+
+/* S2MU107_SC_TEST2_DC */
+#define SEL_VSYS_RS_DC_MASK		(0x1)
+
+/* S2MU107_SC_TEST9_DC */
+#define T_GD_ASYNC_SHIFT		0
+#define T_GD_ASYNC_WIDTH		2
+#define T_GD_ASYNC_MASK			MASK(T_GD_ASYNC_WIDTH, T_GD_ASYNC_SHIFT)
+#define SET_ASYNC_MODE			0x3
+/* S2MU107_SC_CTRL17_DC */
+#define T_EN_VSYS_DISCHARGE_SHIFT	6
+#define T_EN_VSYS_DISCHARGE_WIDTH	2
+#define T_EN_VSYS_DISCHARGE_MASK	MASK(T_EN_VSYS_DISCHARGE_WIDTH, T_EN_VSYS_DISCHARGE_SHIFT)
 
 /* S2MU107_DC_CTRL0 */
 #define FREQ_SEL_SHIFT			5
@@ -120,6 +165,8 @@
 #define SET_CV_WIDTH			7
 #define SET_CV_MASK			MASK(SET_CV_WIDTH, SET_CV_SHIFT)
 #define SET_CV_STEP_UV			(10000)
+#define SET_CV_MIN_UV			(3600000)
+#define SET_CV_MAX_UV			(4870000)
 #define SET_CV_4400_MV			(0x50)
 #define SET_CV_4550_MV			(0x5F)
 
@@ -187,6 +234,8 @@
 #define	DC_EN_LONG_CC_MASK		BIT(DC_EN_LONG_CC_SHIFT)
 #define	CV_OFF_SHIFT			6
 #define	CV_OFF_MASK			BIT(CV_OFF_SHIFT)
+#define LONGCC_SEL_CELL_PACKB_SHIFT	5
+#define LONGCC_SEL_CELL_PACKB_MASK	BIT(LONGCC_SEL_CELL_PACKB_SHIFT)
 
 #define	DC_LONG_CC_STEP_SHIFT		0
 #define DC_LONG_CC_STEP_WIDTH		5
@@ -235,13 +284,27 @@
 #define T_DC_EN_WCIN_PWRTR_MODE_SHIFT	5
 #define T_DC_EN_WCIN_PWRTR_MODE_MASK	BIT(T_DC_EN_WCIN_PWRTR_MODE_SHIFT)
 
+/* S2MU107_DC_TEST6 */
+#define T_DC_EN_DC_CV_SHIFT		0
+#define T_DC_EN_DC_CV_WIDTH		2
+#define T_DC_EN_DC_CV_MASK		MASK(T_DC_EN_DC_CV_WIDTH, T_DC_EN_DC_CV_SHIFT)
+
 /* S2MU107_DC_CD_OTP_01 */
 #define SET_IIN_OFF_SHIFT		4
 #define SET_IIN_OFF_WIDTH		4
 #define SET_IIN_OFF_MASK		MASK(SET_IIN_OFF_WIDTH, SET_IIN_OFF_SHIFT)
 #define SET_IIN_OFF_MIN_MA		(100)
+#define SET_IIN_OFF_MAX_MA		(850)
 #define SET_IIN_OFF_STEP_MA		(50)
-#define SET_IIN_OFF_TARGET		(200)
+#define SET_IIN_OFF_TARGET_MA		(250)
+
+/* S2MU107_SC_OTP_96 */
+#define SET_VSYS_OVP_RISING_SHIFT	0
+#define SET_VSYS_OVP_RISING_WIDTH	2
+#define SET_VSYS_OVP_RISING_MASK	MASK(SET_VSYS_OVP_RISING_WIDTH, SET_VSYS_OVP_RISING_SHIFT)
+#define SET_VSYS_OVP_FALLING_SHIFT	2
+#define SET_VSYS_OVP_FALLING_WIDTH	2
+#define SET_VSYS_OVP_FALLING_MASK	MASK(SET_VSYS_OVP_FALLING_SHIFT, SET_VSYS_OVP_FALLING_SHIFT)
 
 #define DIG_CV_SHIFT		0
 #define DIG_CV_WIDTH		4
@@ -256,6 +319,18 @@
 #define WDT_CLR_SHIFT 0
 #define WDT_CLR_MASK BIT(WDT_CLR_SHIFT)
 
+/* S2MU107_DC_CD_OTP_02 */
+#define RCP_ACTION_SHIFT	4
+#define CD_OCP_ACTION_SHIFT	1
+#define RCP_ACTION_MASK		BIT(RCP_ACTION_SHIFT)
+#define CD_OCP_ACTION_MASK	BIT(CD_OCP_ACTION_SHIFT)
+
+/* S2MU107_DC_INPUT_OTP_04 */
+#define RAMP_OFF_ACTION_SHIFT	0
+#define PLUG_OUT_ACTION_SHIFT	4
+#define RAMP_OFF_ACTION_MASK	BIT(RAMP_OFF_ACTION_SHIFT)
+#define PLUG_OUT_ACTION_MASK	BIT(PLUG_OUT_ACTION_SHIFT)
+
 #define FAKE_BAT_LEVEL          50
 
 typedef enum {
@@ -265,6 +340,8 @@ typedef enum {
 	DC_STATE_START_CC,
 	DC_STATE_CC,
 	DC_STATE_SLEEP_CC,
+	DC_STATE_ADJUSTED_CC,
+	DC_STATE_CV,
 	DC_STATE_WAKEUP_CC,
 	DC_STATE_DONE,
 	DC_STATE_MAX_NUM,
@@ -288,6 +365,12 @@ typedef enum {
 	DC_TRANS_CC_WAKEUP,
 	DC_TRANS_DETACH,
 	DC_TRANS_FAIL_INT,
+	DC_TRANS_FLOAT_VBATT,
+	DC_TRANS_RAMPUP_OVER_VBATT,
+	DC_TRANS_RAMPUP_OVER_CURRENT,
+	DC_TRANS_SET_CURRENT_MAX,
+	DC_TRANS_TOP_OFF_CURRENT,
+	DC_TRANS_DC_OFF_INT,
 	DC_TRANS_MAX_NUM,
 } s2mu107_dc_trans_t;
 
@@ -316,14 +399,29 @@ enum {
 	TA_PWR_TYPE_45W,
 };
 
+typedef enum {
+	S2MU107_DC_MODE_TA_CC = 0,
+	S2MU107_DC_MODE_DC_CC
+} s2mu107_dc_cc_mode;
+
+typedef enum {
+	S2MU107_DC_SC_STATUS_OFF,
+	S2MU107_DC_SC_STATUS_CHARGE,
+	S2MU107_DC_SC_STATUS_DUAL_BUCK
+} s2mu107_dc_sc_status_t;
+
 #define SC_CHARGING_ENABLE_CHECK_VBAT	5
-//#define DC_TA_MIN_CURRENT	1000
-#define DC_TA_MIN_CURRENT	2000
-#define DC_MIN_VBAT		3400
+#define DC_TA_MIN_PPS_CURRENT		1000
+#define DC_TA_START_PPS_CURR_45W	2000
+#define DC_TA_START_PPS_CURR_25W	1000
+#define DC_MIN_VBAT		3700
 #define DC_TA_CURR_STEP_MA	50
 #define DC_TA_VOL_STEP_MV	20
 #define DC_MAX_SOC		95
 #define DC_MAX_SHIFTING_CNT	60
+#define DC_TOPOFF_CURRENT_MA	1000
+#define DC_TA_VOL_END_MV	9000
+#define DC_MAX_INPUT_CURRENT_MA		12000
 
 #define CONV_STR(x, r) { case x: r = #x; break; }
 
@@ -353,12 +451,6 @@ typedef struct s2mu107_dc_platform_data {
 	int recharge_vcell;
 	int chg_switching_freq;
 	int temperature_source; /* 0 : chip junction, 1 : external ntc for FG */
-	unsigned int step_charge_level;
-	unsigned int *dc_step_voltage_45w;
-	unsigned int *dc_step_current_45w;
-	unsigned int *dc_step_voltage_25w;
-	unsigned int *dc_step_current_25w;
-	unsigned int *dc_c_rate;
 } s2mu107_dc_platform_data_t;
 
 typedef struct s2mu107_dc_pd_data {
@@ -378,18 +470,24 @@ struct s2mu107_dc_data {
 	struct i2c_client       *i2c_common;
 	struct device *dev;
 	struct s2mu107_platform_data *s2mu107_pdata;
+	struct power_supply *psy_fg;
+	struct power_supply *psy_sc;
+	struct power_supply *psy_sec_dc;
 
 	struct delayed_work timer_wqueue;
 	struct delayed_work check_vbat_wqueue;
 	struct delayed_work start_cc_wqueue;
 	struct delayed_work state_manager_wqueue;
 	struct delayed_work set_prop_wqueue;
+	struct delayed_work dc_monitor_work;
+	struct delayed_work chk_valid_wqueue;
+	struct delayed_work update_wqueue;
 
 	/* step check monitor */
 	struct delayed_work step_monitor_work;
 	struct workqueue_struct *step_monitor_wqueue;
-	struct wake_lock step_monitor_wake_lock;
-	struct alarm step_monitor_alarm;
+	struct wake_lock dc_mon_wake_lock;
+	struct alarm dc_monitor_alarm;
 	unsigned int alarm_interval;
 	int step_now;
 
@@ -400,19 +498,20 @@ struct s2mu107_dc_data {
 	s2mu107_dc_prop_t prop_data;
 
 	int rev_id;
-	int input_current;
-	int charging_current;
-	int topoff_current;
 	int cable_type;
 	bool is_charging;
-	bool is_longCC;
+	bool is_plugout_mask;
 	int ta_pwr_type;
 	struct mutex dc_mutex;
 	struct mutex timer_mutex;
 	struct mutex dc_state_mutex;
 	struct mutex pps_isr_mutex;
+	struct mutex trans_mutex;
+	struct mutex dc_mon_mutex;
+	struct mutex auto_pps_mutex;
+	struct mutex mode_mutex;
 	struct wake_lock wake_lock;
-	struct wake_lock step_mon;
+	struct wake_lock state_manager_wake;
 	struct wake_lock mode_irq;
 	struct wake_lock fail_irq;
 	struct wake_lock thermal_irq;
@@ -421,6 +520,7 @@ struct s2mu107_dc_data {
 	s2mu107_dc_trans_t dc_trans;
 	void (*dc_state_fp[DC_STATE_MAX_NUM])(void *);
 	s2mu107_dc_pd_data_t *pd_data;
+	s2mu107_dc_sc_status_t dc_sc_status;
 	struct power_supply *psy_pmeter;
 	int pmeter[PMETER_ID_MAX_NUM];
 	unsigned int targetIIN;
@@ -428,63 +528,75 @@ struct s2mu107_dc_data {
 	unsigned int minIIN;
 	unsigned int chgIIN;
 	unsigned int ppsVol;
-	unsigned int prev_ppsVol;
-	unsigned int prev_ppsCurr;
 	unsigned int floatVol;
-	unsigned int cnt_vsys_warn;
+	unsigned int step_vbatt_mv;
+	unsigned int step_iin_ma;
 	int vchgin_okb_retry;
 	unsigned int cc_count;
-	unsigned int step_mon_cnt;
+	unsigned int step_cv_cnt;
+	unsigned int chk_vbat_margin;
+	unsigned int chk_vbat_charged;
+	unsigned int chk_vbat_prev;
+	unsigned int chk_iin_prev;
 
-	bool is_shifting;
-	unsigned int shifting_cnt;
-	unsigned int prev_chg_curr;
-	unsigned int next_chg_curr;
 	wait_queue_head_t wait;
 	bool is_pps_ready;
+	bool is_rampup_adjusted;
+	bool is_autopps_disabled;
 	int rise_speed_dly_ms;
 
-	bool ovp;
-
-	int unhealth_cnt;
 	int dc_chg_status;
-	int health;
+	int ps_health;
 
 	int irq_base;
 
-	/* mode irq */
-	int irq_cc;
-	int irq_done;
-
-	/* error irq */
-	int irq_cv;
-	int irq_pps_fail;
-
+	/* DC_INT_0 */
+	int irq_ramp_fail;
+	int irq_normal_charging;
+	int irq_wcin_okb;
 	int irq_vchgin_okb;
-	int irq_vbat_okb;
 
 	int irq_byp2out_ovp;
 	int irq_byp_ovp;
+	int irq_vbat_okb;
 	int irq_out_ovp;
 
+	/* DC_INT_1 */
+	/* [7] rsvd */
 	int irq_ocp;
-	int irq_rcp;
-
-	int irq_plug_out;
-	int irq_diod_prot;
-
-	int irq_thermal;
-	int irq_tsd;
-	int irq_tfd;
-
+	int irq_wcin_rcp;
+	int irq_chgin_rcp;
 	int irq_off;
+	int irq_plug_out;
+	int irq_wcin_diod_prot;
+	int irq_chgin_diod_prot;
 
-	int charge_mode;
+	/* DC_INT_2 */
+	int irq_done;
+	int irq_pps_fail;
+	int irq_long_cc;
+	int irq_thermal;
+	int irq_scp;
+	int irq_cv;
+	int irq_wcin_icl;
+	int irq_chgin_icl;
+
+	/* DC_INT_3 */
+	/* [7] rsvd */
+	int irq_sc_off;
+	int irq_pm_off;
+	int irq_wcin_up;
+	int irq_wcin_down;	
+	int irq_tsd;
+
+	/* [1] rsvd */
+	int irq_tfb;
+
+	long mon_chk_time;
 };
 
 extern int sec_pd_get_apdo_max_power(unsigned int *pdo_pos, unsigned int *taMaxVol, unsigned int *taMaxCur, unsigned int *taMaxPwr);
 extern int sec_pd_select_pps(int num, int ppsVol, int ppsCur);
 extern int sec_pps_enable(int num, int ppsVol, int ppsCur, int enable);
 extern int sec_get_pps_voltage(void);
-
 #endif /*S2MU107_CHARGER_H*/

@@ -29,7 +29,9 @@
 
 #include "../common/include/sec_charging_common.h"
 
+#define EVT0	0
 #define EVT1	1
+#define EVT2	2
 
 /* define function if need */
 #define ENABLE_MIVR 0
@@ -44,6 +46,10 @@
 
 #define ENABLE 1
 #define DISABLE 0
+
+/* FLASH */
+#define S2MU107_FLED_STATUS	0x10
+#define S2MU107_FLED_TORCH_ON	0x40
 
 #define S2MU107_SC_INT1		0x00
 #define S2MU107_SC_INT2		0x01
@@ -81,10 +87,15 @@
 #define S2MU107_SC_CTRL18		0x2A
 #define S2MU107_SC_CTRL19		0x2B
 #define S2MU107_SC_CTRL20		0x2C
-#define S2MU107_SC_CTRL21		0x2D
+#define S2MU107_SC_TEST3		0x34
+#define S2MU107_SC_TEST5		0x36
+#define S2MU107_SC_TEST6		0x37
 #define S2MU107_SC_TEST7		0x38
 #define S2MU107_SC_TEST8		0x39
+#define S2MU107_SC_TEST9		0x3A
+#define S2MU107_DC_CTRL0		0x41
 #define S2MU107_DC_TEST4		0x5F
+#define S2MU107_SC_OTP_02		0x6E
 
 /* S2MU107_SC_CTRL0 */
 #define REG_MODE_SHIFT		0
@@ -93,8 +104,12 @@
 
 #define CHARGER_OFF_MODE	0
 #define BUCK_MODE			1
+#define BST_MODE			2
 #define CHG_MODE			3
 #define OTG_BST_MODE		6
+#define TX_BST_MODE			10
+#define DUAL_BUCK_MODE		13
+#define OTG_TX_BST_MODE		14
 
 /* S2MU107_SC_STATUS0 */
 #define WCIN_STATUS_SHIFT	0
@@ -111,13 +126,12 @@
 #define CHG_FAULT_STATUS_MASK		MASK(CHG_FAULT_STATUS_WIDTH,\
 					 CHG_FAULT_STATUS_SHIFT)
 
-#define CHG_STATUS_NORMAL	0
-#define CHG_STATUS_TO_PRE_CHARGE	1
-#define CHG_STATUS_TO_FAST_CHARGE	2
-#define CHG_STATUS_WD_SUSPEND	1
-#define CHG_STATUS_WD_RST	2
-#define CHG_STATUS_TSD		5
-#define CHG_STATUS_TFB		6
+#define CHG_STATUS_NORMAL				0
+#define CHG_STATUS_WD_SUSPEND			1
+#define CHG_STATUS_WD_RST				2
+#define CHG_STATUS_PRECHG_TMR_FAULT		6
+#define CHG_STATUS_FASTCHG_TMR_FAULT	7
+#define CHG_STATUS_TOPOFF_TMR_FAULT		8
 
 #define CHG_CV_STATUS_SHIFT	3
 #define CHG_CV_STATUS_MASK		BIT(CHG_Restart_STATUS_SHIFT)
@@ -245,12 +259,15 @@
 #define SECOND_TOPOFF_CURRENT_WIDTH	5
 #define SECOND_TOPOFF_CURRENT_MASK	MASK(SECOND_TOPOFF_CURRENT_WIDTH,\
 					SECOND_TOPOFF_CURRENT_SHIFT)
+#define IVR_M_SHIFT	1
+#define IVR_M_MASK	BIT(IVR_M_SHIFT)
+#define IVR_STATUS	0x02
+
+#define REDUCE_CURRENT_STEP         25
+#define MINIMUM_INPUT_CURRENT           300
+#define SLOW_CHARGING_CURRENT_STANDARD      400
 
 #define FAKE_BAT_LEVEL          50
-
-enum {
-	CHIP_ID = 0,
-};
 
 ssize_t s2mu107_chg_show_attrs(struct device *dev,
 		struct device_attribute *attr, char *buf);
@@ -318,6 +335,7 @@ typedef struct s2mu107_sc_platform_data {
 	int recharge_vcell;
 	uint32_t is_1MHz_switching:1;
 	int chg_switching_freq;
+	int slow_charging_current;
 } s2mu107_sc_platform_data_t;
 
 
@@ -328,6 +346,9 @@ struct s2mu107_sc_data {
 	struct device *dev;
 	struct s2mu107_platform_data *s2mu107_pdata;
 	struct delayed_work otg_vbus_work;
+	struct delayed_work ivr_work;
+	struct delayed_work rev_bst_work;
+	struct wake_lock ivr_wake_lock;
 
 	struct workqueue_struct *charger_wqueue;
 	struct power_supply *psy_sc;
@@ -337,12 +358,18 @@ struct s2mu107_sc_data {
 
 	s2mu107_sc_platform_data_t *pdata;
 	int rev_id;
+	int es_id;
 	int input_current;
 	int charging_current;
 	int topoff_current;
 	int cable_type;
 	bool is_charging;
+	bool is_vbus;
 	struct mutex charger_mutex;
+	struct mutex ivr_mutex;
+	struct mutex ivr_work_mutex;
+	struct mutex chgin_mutex;
+	struct mutex wa_chk_mutex;
 
 	bool ovp;
 	bool otg_on;
@@ -351,7 +378,6 @@ struct s2mu107_sc_data {
 	int status;
 	int health;
 
-	/* TODO */
 	int irq_det_bat;
 	int irq_chg;
 	int irq_chgin;
@@ -362,11 +388,20 @@ struct s2mu107_sc_data {
 	int irq_done;
 	int irq_sys;
 	int irq_event;
+	int irq_ivr;
 
 	int charge_mode;
+	bool bypass_mode;
+
+	int irq_ivr_enabled;
+	int ivr_on;
+	bool slow_charging;
+
+	bool boost_wa;
 
 	/* efficiency 9V charging */
 	unsigned char reg_0x9E;
+	unsigned char reg_0x7B;
 
 #if defined(CONFIG_MUIC_NOTIFIER)
 	struct notifier_block cable_check;

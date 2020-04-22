@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
  * Copyright (C) 2006-2007 Adam Belay <abelay@novell.com>
  * Copyright (C) 2009 Intel Corporation
  *
@@ -58,9 +58,8 @@
 #endif
 #endif
 
-#ifdef CONFIG_SEC_DEBUG_POWER_LOG
+#ifdef CONFIG_SEC_DEBUG
 #include <linux/sec_debug.h>
-#include <linux/sec_debug_summary.h>
 #endif
 
 #ifdef CONFIG_SEC_PM
@@ -162,6 +161,7 @@ static DEFINE_PER_CPU(struct lpm_cpu*, cpu_lpm);
 static bool suspend_in_progress;
 static struct hrtimer lpm_hrtimer;
 static DEFINE_PER_CPU(struct hrtimer, histtimer);
+static DEFINE_PER_CPU(struct hrtimer, biastimer);
 static struct lpm_debug *lpm_debug;
 static phys_addr_t lpm_debug_phys;
 static const int num_dbg_elements = 0x100;
@@ -495,6 +495,34 @@ static void msm_pm_set_timer(uint32_t modified_time_us)
 	hrtimer_start(&lpm_hrtimer, modified_ktime, HRTIMER_MODE_REL_PINNED);
 }
 
+static void biastimer_cancel(void)
+{
+	unsigned int cpu = raw_smp_processor_id();
+	struct hrtimer *cpu_biastimer = &per_cpu(biastimer, cpu);
+	ktime_t time_rem;
+
+	time_rem = hrtimer_get_remaining(cpu_biastimer);
+	if (ktime_to_us(time_rem) <= 0)
+		return;
+
+	hrtimer_try_to_cancel(cpu_biastimer);
+}
+
+static enum hrtimer_restart biastimer_fn(struct hrtimer *h)
+{
+	return HRTIMER_NORESTART;
+}
+
+static void biastimer_start(uint32_t time_ns)
+{
+	ktime_t bias_ktime = ns_to_ktime(time_ns);
+	unsigned int cpu = raw_smp_processor_id();
+	struct hrtimer *cpu_biastimer = &per_cpu(biastimer, cpu);
+
+	cpu_biastimer->function = biastimer_fn;
+	hrtimer_start(cpu_biastimer, bias_ktime, HRTIMER_MODE_REL_PINNED);
+}
+
 static uint64_t lpm_cpuidle_predict(struct cpuidle_device *dev,
 		struct lpm_cpu *cpu, int *idx_restrict,
 		uint32_t *idx_restrict_time)
@@ -655,16 +683,22 @@ static void clear_predict_history(void)
 
 static void update_history(struct cpuidle_device *dev, int idx);
 
-static inline bool is_cpu_biased(int cpu)
+static inline bool is_cpu_biased(int cpu, uint64_t *bias_time)
 {
 	u64 now = sched_clock();
 	u64 last = sched_get_cpu_last_busy_time(cpu);
-	int hyst_bias = pm_qos_request(PM_QOS_HIST_BIAS);
+	u64 diff = 0;
 
 	if (!last)
 		return false;
 
-	return (now - last) < max(BIAS_HYST, hyst_bias*NSEC_PER_MSEC);
+	diff = now - last;
+	if (diff < BIAS_HYST) {
+		*bias_time = BIAS_HYST - diff;
+		return true;
+	}
+
+	return false;
 }
 
 static int cpu_power_select(struct cpuidle_device *dev,
@@ -684,6 +718,7 @@ static int cpu_power_select(struct cpuidle_device *dev,
 	uint32_t next_wakeup_us = (uint32_t)sleep_us;
 	uint32_t min_residency, max_residency;
 	struct power_params *pwr_params;
+	uint64_t bias_time = 0;
 
 	if ((sleep_disabled && !cpu_isolated(dev->cpu)) || sleep_us < 0)
 		return best_level;
@@ -692,8 +727,10 @@ static int cpu_power_select(struct cpuidle_device *dev,
 
 	next_event_us = (uint32_t)(ktime_to_us(get_next_event_time(dev->cpu)));
 
-	if (is_cpu_biased(dev->cpu) && (!cpu_isolated(dev->cpu)))
+	if (is_cpu_biased(dev->cpu, &bias_time) && (!cpu_isolated(dev->cpu))) {
+		cpu->bias = bias_time;
 		goto done_select;
+	}
 
 	for (i = 0; i < cpu->nlevels; i++) {
 		bool allow;
@@ -1384,6 +1421,8 @@ static bool psci_enter_sleep(struct lpm_cpu *cpu, int idx, bool from_idle)
 	 */
 
 	if (!idx) {
+		if (cpu->bias)
+			biastimer_start(cpu->bias);
 		stop_critical_timings();
 		wfi();
 		start_critical_timings();
@@ -1461,9 +1500,6 @@ static void update_history(struct cpuidle_device *dev, int idx)
 		history->hptr = 0;
 }
 
-#include <soc/qcom/watchdog.h>
-uint64_t tick_next_programmed_event(int cpu);
-
 static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 		struct cpuidle_driver *drv, int idx)
 {
@@ -1472,16 +1508,12 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 	const struct cpumask *cpumask = get_cpu_mask(dev->cpu);
 	ktime_t start = ktime_get();
 	uint64_t start_time = ktime_to_ns(start), end_time;
-	uint64_t programmed_time = tick_next_programmed_event(dev->cpu);
-	uint64_t start_qtime = arch_counter_get_cntvct();
-	uint64_t end_qtime;
-	int64_t delta;
 
 	cpu_prepare(cpu, idx, true);
 	cluster_prepare(cpu->parent, cpumask, idx, true, start_time);
 
 	trace_cpu_idle_enter(idx);
-	lpm_stats_cpu_enter(idx, start_time, start_qtime);
+	lpm_stats_cpu_enter(idx, start_time);
 
 	if (need_resched())
 		goto exit;
@@ -1489,24 +1521,16 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 /* FIXME : remove secdbg logging for reducing cpu hang issues */
 #if 0 //#ifdef CONFIG_SEC_DEBUG_POWER_LOG 
 	sec_debug_cpu_lpm_log(dev->cpu, idx, 0, 1);
-	secdbg_sched_msg("+Idle(%s)", cpu->levels[idx].name);
+	sec_debug_sched_msg("+Idle(%s)", cpu->levels[idx].name);
 	success = psci_enter_sleep(cpu, idx, true);
-	secdbg_sched_msg("-Idle(%s)", cpu->levels[idx].name);
+	sec_debug_sched_msg("-Idle(%s)", cpu->levels[idx].name);
 #else
 	success = psci_enter_sleep(cpu, idx, true);
 #endif
 
 exit:
 	end_time = ktime_to_ns(ktime_get());
-	end_qtime = arch_counter_get_cntvct();
-
-	delta = end_time - programmed_time;
-	if ((idx>0) && (programmed_time != KTIME_MAX) && (delta > 1000000000 /* 1secs */)) {
-		pr_err("[%s] programmed : %lld, end : %lld, delta : %lld\n", __func__, programmed_time, end_time, delta);
-		msm_trigger_wdog_bite();
-	}
-
-	lpm_stats_cpu_exit(idx, end_time, end_qtime, success);
+	lpm_stats_cpu_exit(idx, end_time, success);
 
 	cluster_unprepare(cpu->parent, cpumask, idx, true, end_time, success);
 	cpu_unprepare(cpu, idx, true);
@@ -1522,6 +1546,10 @@ exit:
 	if (lpm_prediction && cpu->lpm_prediction) {
 		histtimer_cancel();
 		clusttimer_cancel();
+	}
+	if (cpu->bias) {
+		biastimer_cancel();
+		cpu->bias = 0;
 	}
 	local_irq_enable();
 	return idx;
@@ -1815,14 +1843,14 @@ static int lpm_suspend_enter(suspend_state_t state)
 
 #ifdef CONFIG_SEC_DEBUG_SCHED_LOG
 	if (idx > 0)
-		secdbg_sched_msg("+Suspend(s:%d)", state);
+		sec_debug_sched_msg("+Suspend(s:%d)", state);
 #endif
 
 	success = psci_enter_sleep(lpm_cpu, idx, false);
 
 #ifdef CONFIG_SEC_DEBUG_SCHED_LOG
 	if (idx > 0)
-		secdbg_sched_msg("-Suspend(s:%d)", state);
+		sec_debug_sched_msg("-Suspend(s:%d)", state);
 #endif
 
 	cluster_unprepare(cluster, cpumask, idx, false, 0, success);
@@ -1874,6 +1902,8 @@ static int lpm_probe(struct platform_device *pdev)
 	hrtimer_init(&lpm_hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	for_each_possible_cpu(cpu) {
 		cpu_histtimer = &per_cpu(histtimer, cpu);
+		hrtimer_init(cpu_histtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+		cpu_histtimer = &per_cpu(biastimer, cpu);
 		hrtimer_init(cpu_histtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	}
 

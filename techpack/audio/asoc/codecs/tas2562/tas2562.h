@@ -109,6 +109,14 @@
 
     /* TDM Configuration Reg2 */
 #define TAS2562_TDMCONFIGURATIONREG2  TAS2562_REG(0x0, 0x0, 0x08)
+#define TAS2562_TDMCONFIGURATIONREG2_IVLEN76_MASK (0X3 << 6)
+#define TAS2562_TDMCONFIGURATIONREG2_IVLENCFG76_16BITS (0x0 << 6)
+#define TAS2562_TDMCONFIGURATIONREG2_IVLENCFG76_12BITS (0x1 << 6)
+#define TAS2562_TDMCONFIGURATIONREG2_IVLENCFG76_8BITS (0x2 << 6)
+#define TAS2562_TDMCONFIGURATIONREG2_IVMONLEN76_MASK  (0x3 << 6)
+#define TAS2562_TDMCONFIGURATIONREG2_IVMONLEN76_8BITS  (0x2 << 6)
+#define TAS2562_TDMCONFIGURATIONREG2_IVMONLEN76_12BITS  (0x1 << 6)
+#define TAS2562_TDMCONFIGURATIONREG2_IVMONLEN76_16BITS  (0x0 << 6)
 #define TAS2562_TDMCONFIGURATIONREG2_RXSCFG54_MASK  (0x3 << 4)
 #define TAS2562_TDMCONFIGURATIONREG2_RXSCFG54_MONO_I2C  (0x0 << 4)
 #define TAS2562_TDMCONFIGURATIONREG2_RXSCFG54_MONO_LEFT  (0x1 << 4)
@@ -520,8 +528,13 @@ TAS2562_INTERRUPTCONFIGURATION_PININTCONFIG10_ASSERT2MSONLATCHEDINTERRUPTS \
 #define TAS2562_VBATFILTER TAS2562_REG(0x0, 0x0, 0x3b)
 #define TAS2562_CLASSHRELEASETIMER TAS2562_REG(0x0, 0x0, 0x3c)
 
-#define TAS2562_ICN_REG TAS2562_REG(0x0, 0x2, 0x64)
+#define TAS2562_ICN_THRESHOLD_REG TAS2562_REG(0x0, 0x2, 0x64)
+#define TAS2562_ICN_HYSTERESIS_REG TAS2562_REG(0x0, 0x2, 0x6c)
 
+#define TAS2562_ICN_SW_REG TAS2562_REG(0x0, 0x0, 0x3e)
+#define TAS2562_ICN_SW_MASK (0x01 << 4)
+#define TAS2562_ICN_SW_ENABLE  (0x10)
+#define TAS2562_ICN_SW_DISABLE  (0x00)
 #define TAS2562_TESTPAGECONFIGURATION TAS2562_REG(0x0, 0xfd, 0xd)
 #define TAS2562_CLASSDCONFIGURATION1	TAS2562_REG(0x0, 0xfd, 0x19)
 #define TAS2562_CLASSDCONFIGURATION2	TAS2562_REG(0x0, 0xfd, 0x32)
@@ -566,6 +579,10 @@ TAS2562_INTERRUPTCONFIGURATION_PININTCONFIG10_ASSERT2MSONLATCHEDINTERRUPTS \
 
 #define CHECK_PERIOD	5000	/* 5 second */
 
+#define TAS2562_I2C_RETRY_COUNT      3
+#define ERROR_I2C_SUSPEND           -1
+#define ERROR_I2C_FAILED            -2
+
 struct tas2562_register {
 int book;
 int page;
@@ -589,6 +606,7 @@ struct i2c_client *client;
 struct regmap *regmap;
 struct mutex dev_lock;
 struct delayed_work irq_work;
+struct delayed_work init_work;
 struct hrtimer mtimer;
 bool mb_power_up;
 int mn_power_state;
@@ -612,13 +630,15 @@ int mn_ppg;
 int mn_ch_size;
 int mn_slot_width;
 int mn_pcm_format;
+int mn_iv_width;
+int mn_vbat;
 bool mb_mute;
+bool dac_mute;
+bool i2c_suspend;
 int mn_channels;
 int spk_l_control;
 int spk_r_control;
-#ifdef CONFIG_TAS25XX_ALGO
-int port_id;
-#endif
+int icn_sw;
 int (*read)(struct tas2562_priv *p_tas2562, enum channel chn,
 	unsigned int reg, unsigned int *pValue);
 int (*write)(struct tas2562_priv *p_tas2562, enum channel chn,
