@@ -140,6 +140,7 @@ static void aot_enable(void *device_data);
 static void aod_enable(void *device_data);
 static void set_aod_rect(void *device_data);
 static void get_aod_rect(void *device_data);
+static void fod_lp_mode(void *device_data);
 static void fod_enable(void *device_data);
 static void set_fod_rect(void *device_data);
 static void singletap_enable(void *device_data);
@@ -228,6 +229,7 @@ struct sec_cmd ft_commands[] = {
 	{SEC_CMD_H("aod_enable", aod_enable),},
 	{SEC_CMD("set_aod_rect", set_aod_rect),},
 	{SEC_CMD("get_aod_rect", get_aod_rect),},
+	{SEC_CMD_H("fod_lp_mode", fod_lp_mode),},
 	{SEC_CMD("fod_enable", fod_enable),},
 	{SEC_CMD("set_fod_rect", set_fod_rect),},
 	{SEC_CMD_H("singletap_enable", singletap_enable),},
@@ -1839,7 +1841,7 @@ static void module_on_master(void *device_data)
 	ret = fts_start_device(info);
 
 	if (info->input_dev->disabled)
-		fts_stop_device(info, info->lowpower_flag);
+		fts_stop_device(info, info->lowpower_flag || info->fod_lp_mode);
 
 	if (ret == 0)
 		snprintf(buff, sizeof(buff), "OK");
@@ -4484,6 +4486,32 @@ static void get_aod_rect(void *device_data)
 NG:
 	snprintf(buff, sizeof(buff), "NG");
 	sec->cmd_state = SEC_CMD_STATUS_FAIL;
+	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	sec_cmd_set_cmd_exit(sec);
+}
+
+static void fod_lp_mode(void *device_data)
+{
+	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
+	char buff[SEC_CMD_STR_LEN] = { 0 };
+
+	sec_cmd_set_default_result(sec);
+
+	if (!info->board->support_fod) {
+		input_err(true, &info->client->dev, "%s: fod is not supported\n", __func__);
+		snprintf(buff, sizeof(buff), "%s", "NA");
+		sec->cmd_state = SEC_CMD_STATUS_FAIL;
+		sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+		sec_cmd_set_cmd_exit(sec);
+	}
+
+	info->fod_lp_mode = sec->cmd_param[0] & 0xFF;
+	input_info(true, &info->client->dev, "%s: %d, lp:0x%02X\n",
+			__func__, info->fod_lp_mode, info->lowpower_flag);
+
+	snprintf(buff, sizeof(buff), "OK");
+	sec->cmd_state = SEC_CMD_STATUS_OK;
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
 	sec_cmd_set_cmd_exit(sec);
 }

@@ -3126,7 +3126,7 @@ static void fts_input_close(struct input_dev *dev)
 	if (info->prox_power_off)
 		fts_stop_device(info, 0);
 	else
-		fts_stop_device(info, info->lowpower_flag);
+		fts_stop_device(info, info->lowpower_flag || info->fod_lp_mode);
 	info->prox_power_off = 0;
 	info->fw_corruption = false;
 }
@@ -3363,7 +3363,7 @@ static void fts_reset_work(struct work_struct *work)
 	if (info->input_dev_touch->disabled) {
 		input_err(true, &info->client->dev, "%s: call input_close\n", __func__);
 
-		fts_stop_device(info, info->lowpower_flag);
+		fts_stop_device(info, info->lowpower_flag || info->fod_lp_mode);
 
 		if (info->lowpower_flag & FTS_MODE_AOD)
 			fts_set_aod_rect(info);
@@ -3608,7 +3608,7 @@ static int fts_suspend(struct i2c_client *client, pm_message_t mesg)
 
 	input_dbg(true, &info->client->dev, "%s\n", __func__);
 
-	fts_stop_device(info, info->lowpower_flag);
+	fts_stop_device(info, info->lowpower_flag || info->fod_lp_mode);
 
 	return 0;
 }

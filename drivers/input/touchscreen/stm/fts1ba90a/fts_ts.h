@@ -666,6 +666,7 @@ struct fts_ts_info {
 	u8 scan_mode;
 
 	u8 lowpower_flag;
+	u8 fod_lp_mode;
 	bool deepsleep_mode;
 	bool wet_mode;
 	volatile int fts_power_state;

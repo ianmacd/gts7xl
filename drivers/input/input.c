@@ -520,6 +520,9 @@ int get_device_type(struct input_dev *dev){
 	if (dev == NULL)
 		return ret_val;
 
+	/* Initializing device type before finding the proper device type. */
+	dev->device_type = NONE_TYPE_DEVICE;
+
 	for (i = 0; i < dev->prev_num_vals && i < MAX_EVENTS; i++) {
 
 		pr_booster("[Input Data] Touch Type : %d, Code : %d, Value : %d \n", dev->vals[i].type, dev->vals[i].code, dev->vals[i].value);
@@ -865,16 +868,15 @@ void input_event(struct input_dev *dev,
 
 		spin_lock_irqsave(&dev->event_lock, flags);
 		input_handle_event(dev, type, code, value);
-		spin_unlock_irqrestore(&dev->event_lock, flags);
 
 		if (device_tree_infor != NULL) {
 			if(dev->num_vals == 0 && dev->prev_num_vals > 0 ){
 				pr_booster("[Input Booster1] ==============================================\n");
-				dev->device_type = NONE_TYPE_DEVICE;
 				input_booster(dev);
 				dev->prev_num_vals = 0;
 			}
 		}
+		spin_unlock_irqrestore(&dev->event_lock, flags);
 	}
 }
 EXPORT_SYMBOL(input_event);
@@ -906,16 +908,14 @@ void input_inject_event(struct input_handle *handle,
 			input_handle_event(dev, type, code, value);
 		rcu_read_unlock();
 
-		spin_unlock_irqrestore(&dev->event_lock, flags);		
-		
 		if (device_tree_infor != NULL) {
 			if(enable_event_booster && dev->num_vals == 0 && dev->prev_num_vals > 0 ){
 				pr_booster("[Input Booster1] ==============================================\n");
-				dev->device_type = NONE_TYPE_DEVICE;				
 				input_booster(dev);
 				dev->prev_num_vals = 0;
 			}
 		}
+		spin_unlock_irqrestore(&dev->event_lock, flags);
 	}
 }
 EXPORT_SYMBOL(input_inject_event);

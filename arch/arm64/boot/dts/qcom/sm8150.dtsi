@@ -3661,6 +3661,7 @@
 
 	ipa_smmu_wlan: ipa_smmu_wlan {
 		compatible = "qcom,ipa-smmu-wlan-cb";
+		qcom,smmu-s1-bypass;
 		iommus = <&apps_smmu 0x521 0x0>;
 		qcom,additional-mapping =
 		/* ipa-uc ram */
@@ -3821,6 +3822,7 @@
 		vdd-3.3-ch0-supply = <&pm8150l_l11>;
 		qcom,vdd-cx-mx-config = <752000 752000>;
 		qcom,vdd-3.3-ch0-config = <3104000 3312000>;
+		qcom,smmu-s1-bypass;
 		qcom,smp2p_map_wlan_1_in {
 			interrupts-extended = <&smp2p_wlan_1_in 0 0>,
 					      <&smp2p_wlan_1_in 1 0>;

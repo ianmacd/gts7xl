@@ -558,15 +558,15 @@ void muic_detect_dev(muic_data_t *pmuic)
 #if defined(CONFIG_MUIC_SUPPORT_KEYBOARDDOCK)
 	update_keyboard_state(pmuic);
 #endif
-	
+
 	if (pmuic->is_powerrole_state) {
 		pr_info("%s Power Role state, skip muic and check vbus!\n", __func__);
+		muic_notifier_attach_attached_dev(pmuic->attached_dev);
 		goto check_vb;
 	}
 
 	pr_info("%s:%s after resolve: new_dev:0x%x, intr:0x%x\n",
 		MUIC_DEV_NAME, __func__, new_dev, intr);
-
 
 #if defined(CONFIG_HICCUP_CHARGER)
 	if (pmuic->afc_water_disable) {

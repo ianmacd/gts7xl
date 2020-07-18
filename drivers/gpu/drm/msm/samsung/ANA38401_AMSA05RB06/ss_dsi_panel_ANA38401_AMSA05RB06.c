@@ -810,6 +810,7 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 
 	/* ACL default ON */
 	vdd->acl_status = 1;
+	vdd->gradual_acl_val = 0x12; /* default 15%*/
 
 	/* SAMSUNG_FINGERPRINT */
 	vdd->panel_hbm_entry_delay = 0; //hbm need some TE to be updated.

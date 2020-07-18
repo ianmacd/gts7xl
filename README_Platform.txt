@@ -45,18 +45,17 @@ PRODUCT_PACKAGES += \
    ./build_64bit.sh
 
 5. Note : 
-   To download the source code of S/W listed below, please visit http://opensource.samsung.com and find ¡°Mobile -> Mobile Application¡± menu, 
+   To download the source code of S/W listed below, please visit http://opensource.samsung.com and find "Mobile -> Mobile Application" menu, 
    and then, you will be able to download what you want. 
    You might save time in finding the right one by making use of the search keyword below. 
-
-   - Notes33.apk : "Samsung Notes"
-   - MdecService : "MdecService"
-   - SBrowser_11.0_Removable.apk : "SBrowser" (version : SBrowser v11)
-   - SamsungConnect.apk : "SamsungConnect"
-   - KidsHome.apk : "KidsHome"
-   - HoneyBoard.apk : "HoneyBoard" 
-   - SamsungCamera.apk : "Camera8"
-   - AREmoji.apk : "AREmoji"
-   - Fmm.apk : "FMM"   
-   - BixbyVisionFramework3.apk: "BixbyVisionFramework"
-   - SamsungMessages_11.apk : "Messaging"
+	- BixbyVisionFramework3.5.apk : "BixbyVisionFramework"
+	- MdecService.apk : "MdecService"
+	- AREmoji.apk : "AREmoji"
+	- HoneyBoard.apk : "HoneyBoard"
+	- SamsungCamera.apk : "Camera"
+	- Fmm.apk : "FMM"
+	- Notes33.apk : "Samsung Notes"
+	- KidsHome.apk : "KidsHome"
+	- SamsungMessages_11.apk : "Messaging"
+	- SBrowser_11.0_Removable.apk : "SBrowser"
+	- SamsungConnect.apk : "SamsungConnect"

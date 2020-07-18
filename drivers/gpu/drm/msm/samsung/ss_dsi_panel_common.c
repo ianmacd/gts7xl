@@ -2364,6 +2364,9 @@ int ss_panel_off_post(struct samsung_display_driver_data *vdd)
 	vdd->self_disp.time_set = false;
 	vdd->self_disp.on = false;
 
+	if (vdd->finger_mask)
+		vdd->finger_mask = false;
+
 	LCD_INFO("- vdd->ndx = %d\n", vdd->ndx);
 	SS_XLOG(SS_XLOG_FINISH);
 

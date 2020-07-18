@@ -6792,6 +6792,7 @@ void wlan_hdd_save_gtk_offload_params(struct hdd_adapter *adapter,
 			QDF_ASSERT(0);
 		}
 		qdf_mem_copy(gtk_req->kck, kck_ptr, kck_len);
+		gtk_req->kck_len = kck_len;
 	}
 
 	if (kek_ptr) {
@@ -20803,8 +20804,13 @@ static int wlan_hdd_reassoc_bssid_hint(struct hdd_adapter *adapter,
 		qdf_mem_copy(sta_ctx->requested_bssid.bytes, bssid,
 			     QDF_MAC_ADDR_SIZE);
 
+		hdd_set_roaming_in_progress(true);
+
 		status = hdd_reassoc(adapter, bssid, channel,
 				      CONNECT_CMD_USERSPACE);
+		if (QDF_IS_STATUS_ERROR(status))
+			hdd_set_roaming_in_progress(false);
+
 		hdd_debug("hdd_reassoc: status: %d", status);
 	}
 	return status;
@@ -20962,10 +20968,8 @@ static int __wlan_hdd_cfg80211_connect(struct wiphy *wiphy,
 	 * Check if this is reassoc to same bssid, if reassoc is success, return
 	 */
 	status = wlan_hdd_reassoc_bssid_hint(adapter, req);
-	if (!status) {
-		hdd_set_roaming_in_progress(true);
+	if (!status)
 		return status;
-	}
 
 	/* Try disconnecting if already in connected state */
 	status = wlan_hdd_try_disconnect(adapter);
@@ -22918,6 +22922,8 @@ int __wlan_hdd_cfg80211_set_rekey_data(struct wiphy *wiphy,
 
 	wlan_hdd_copy_gtk_kek(gtk_req, data);
 	qdf_mem_copy(gtk_req->kck, data->kck, NL80211_KCK_LEN);
+	gtk_req->kck_len = NL80211_KCK_LEN;
+
 	gtk_req->is_fils_connection = hdd_is_fils_connection(adapter);
 	status = pmo_ucfg_cache_gtk_offload_req(adapter->vdev, gtk_req);
 	if (status != QDF_STATUS_SUCCESS) {
