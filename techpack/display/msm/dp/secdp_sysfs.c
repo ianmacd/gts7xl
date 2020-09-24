@@ -111,14 +111,14 @@ static ssize_t dex_show(struct class *class,
 	if (!secdp_get_cable_status() || !secdp_get_hpd_status() ||
 			secdp_get_poor_connection_status() || !secdp_get_link_train_status()) {
 		DP_INFO("cable is out\n");
-		dex->prev = dex->curr = DEX_DISABLED;
+		dex->prev = dex->curr = dex->dex_node_status = DEX_DISABLED;
 	}
 
-	DP_INFO("prev: %d, curr: %d\n", dex->prev, dex->curr);
-	rc = scnprintf(buf, PAGE_SIZE, "%d\n", dex->curr);
+	DP_INFO("prev: %d, curr: %d, dex_node_status: %d\n", dex->prev, dex->curr, dex->dex_node_status);
+	rc = scnprintf(buf, PAGE_SIZE, "%d\n", dex->dex_node_status);
 
-	if (dex->curr == DEX_DURING_MODE_CHANGE)
-		dex->curr = DEX_ENABLED;
+	if (dex->dex_node_status == DEX_DURING_MODE_CHANGE)
+		dex->dex_node_status = dex->curr;
 
 	return rc;
 }
@@ -203,7 +203,7 @@ static ssize_t dex_store(struct class *class,
 		setting_ui, run, sec->cable_connected);
 
 	dex->setting_ui = setting_ui;
-	dex->curr = run;
+	dex->dex_node_status = dex->curr = run;
 
 	mutex_lock(&sec->notifier_lock);
 	if (!sec->ccic_noti_registered) {
@@ -229,7 +229,7 @@ static ssize_t dex_store(struct class *class,
 	if (!secdp_get_cable_status() || !secdp_get_hpd_status() ||
 			secdp_get_poor_connection_status() || !secdp_get_link_train_status()) {
 		DP_INFO("cable is out\n");
-		dex->prev = dex->curr = DEX_DISABLED;
+		dex->prev = dex->curr = dex->dex_node_status = DEX_DISABLED;
 		goto exit;
 	}
 

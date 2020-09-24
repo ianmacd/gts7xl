@@ -64,6 +64,9 @@
 #define INT_ENABLE		1
 #define INT_DISABLE		0
 
+#define NVT_TS_DEBUG_PRINT_I2C_READ_CMD  0x04
+#define NVT_TS_DEBUG_PRINT_I2C_WRITE_CMD 0x08
+
 /* sponge mode */
 #define NVT_SPONGE_MODE_SPAY			(1 << 1)
 #define NVT_SPONGE_MODE_AOD			(1 << 2)
@@ -190,6 +193,8 @@ struct nvt_ts_data {
 	unsigned int all_finger_count;
 
 	bool noise_mode;
+
+	int debug_flag;
 };
 
 typedef enum {

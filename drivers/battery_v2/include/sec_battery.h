@@ -205,6 +205,8 @@ struct sec_bat_pdic_info {
 	unsigned int max_voltage;
 	unsigned int min_voltage;
 	unsigned int max_current;
+	unsigned int comm_capable;
+	unsigned int suspend;
 #else
 	unsigned int input_voltage;
 	unsigned int input_current;

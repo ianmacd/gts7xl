@@ -1933,6 +1933,7 @@ void secdp_dex_do_reconnecting(void)
 	mutex_lock(&dp->attention_lock);
 	DP_INFO("dex_reconnect hpd low++\n");
 	dp->sec.dex.reconnecting = 1;
+	dp->sec.dex.dex_node_status = DEX_DURING_MODE_CHANGE;
 
 	if (dp->sec.dex.curr == DEX_ENABLED)
 		dp->sec.dex.curr = DEX_DURING_MODE_CHANGE;
@@ -2376,7 +2377,7 @@ mst_attention:
 #ifdef CONFIG_SEC_DISPLAYPORT
 	if (dp->link->status_update_cnt > 9 && !dp->link->poor_connection) {
 		dp->link->poor_connection = true;
-		dp->sec.dex.prev = dp->sec.dex.curr = DEX_DISABLED;
+		dp->sec.dex.dex_node_status = dp->sec.dex.prev = dp->sec.dex.curr = DEX_DISABLED;
 		schedule_delayed_work(&dp->sec.link_status_work,
 							msecs_to_jiffies(10));
 	}
@@ -2626,7 +2627,7 @@ attention:
 			goto end;
 		}
 
-		dp->sec.dex.prev = dp->sec.dex.curr = DEX_DISABLED;
+		dp->sec.dex.dex_node_status = dp->sec.dex.prev = dp->sec.dex.curr = DEX_DISABLED;
 		secdp_clear_link_status_update_cnt(dp->link);
 		dp_display_disconnect_sync(dp);
 		goto end;
@@ -2731,7 +2732,7 @@ static void secdp_ccic_connect_init(struct dp_display_private *dp,
 	 */
 	dp->sec.dex.res = connect ?
 		secdp_check_adapter_type(noti) : DEX_RES_NOT_SUPPORT;
-	dp->sec.dex.prev = dp->sec.dex.curr = DEX_DISABLED;
+	dp->sec.dex.prev = dp->sec.dex.curr = dp->sec.dex.dex_node_status = DEX_DISABLED;
 	dp->sec.dex.reconnecting = 0;
 
 	secdp_clear_branch_info(dp);

@@ -1839,6 +1839,12 @@ struct samsung_display_driver_data {
 
 	/* sustain LP11 signal before LP00 on entering sleep status */
 	int lp11_sleep_ms_time;
+
+	/* Some panel has unstable TE period, and causes wr_ptr timeout panic
+	 * in inter-frame RSC idle policy.
+	 * W/A: select four frame RSC idle policy.
+	 */
+	bool rsc_4_frame_idle;
 };
 
 extern struct list_head vdds_list;

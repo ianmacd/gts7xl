@@ -1769,7 +1769,7 @@ static void mlme_init_lfr_cfg(struct wlan_objmgr_psoc *psoc,
 
 		lfr->roam_scan_offload_enabled = 0;
 		printk("[WIFI] CFG_LFR_ROAM_SCAN_OFFLOAD_ENABLED : sec_control_psm = %d", lfr->roam_scan_offload_enabled);
-		
+
 		lfr->roam_bmiss_first_bcnt = 100;
 		printk("[WIFI] CFG_LFR_ROAM_BMISS_FIRST_BCNT : sec_control_psm = %d", lfr->roam_bmiss_first_bcnt);
 

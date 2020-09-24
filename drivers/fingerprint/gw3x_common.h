@@ -71,7 +71,7 @@ struct sec_spi_info {
 #define GF_GW32N_CHIP_ID	0x002215
 #define GF_GW36H_CHIP_ID	0x002504
 #define GF_GW36C_CHIP_ID	0x002502
-#define GF_GW36T_CHIP_ID	0x004a0f
+#define GF_GW36T_CHIP_ID	0x002507
 
 #define gw3x_SPI_BAUD_RATE 9600000
 #define TANSFER_MAX_LEN (512*1024)

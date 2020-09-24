@@ -2129,6 +2129,7 @@ char *cmd_set_prop_map[SS_DSI_CMD_SET_MAX] = {
 	"samsung,dia_on_tx_cmds_revA",
 	"samsung,dia_off_tx_cmds_revA",
 	"samsung,manual_dbv_tx_cmds_revA",
+
 	"samsung,self_idle_aod_enter",
 	"samsung,self_idle_aod_exit",
 	"samsung,self_idle_timer_on",
@@ -2266,6 +2267,9 @@ char *cmd_set_prop_map[SS_DSI_CMD_SET_MAX] = {
 
 	"samsung,vrr_tx_cmds_revA",
 	"samsung,vrr_gm2_gamma_comp_tx_cmds_revA",
+
+	"samsung,green_weight_normal_tx_cmds_revA",
+	"samsung,green_weight_80percent_tx_cmds_revA",
 
 	/* for vidoe panel dfps */
 	"samsung,dfps_tx_cmds_revA",

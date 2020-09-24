@@ -187,6 +187,7 @@
 #include "cfg_nan_api.h"
 #include <wlan_hdd_hang_event.h>
 #include <cdp_txrx_ctrl.h>
+#include "wlan_global_lmac_if_api.h"
 
 #ifdef MODULE
 #define WLAN_MODULE_NAME  module_name(THIS_MODULE)
@@ -3940,6 +3941,7 @@ close:
 
 psoc_close:
 	hdd_component_psoc_close(hdd_ctx->psoc);
+	wlan_global_lmac_if_close(hdd_ctx->psoc);
 	cds_deinit_ini_config();
 
 cds_free:
@@ -6342,6 +6344,7 @@ struct hdd_adapter *hdd_open_adapter(struct hdd_context *hdd_ctx, uint8_t sessio
 		return NULL;
 	}
 
+	adapter->upgrade_udp_qos_threshold = QCA_WLAN_AC_BE;
 	qdf_spinlock_create(&adapter->vdev_lock);
 	qdf_atomic_init(&hdd_ctx->num_latency_critical_clients);
 
@@ -13270,6 +13273,7 @@ int hdd_wlan_stop_modules(struct hdd_context *hdd_ctx, bool ftm_mode)
 			hdd_err("Failed to destroy pdev; errno:%d", ret);
 			QDF_ASSERT(0);
 		}
+		wlan_global_lmac_if_close(hdd_ctx->psoc);
 	}
 
 	/*
