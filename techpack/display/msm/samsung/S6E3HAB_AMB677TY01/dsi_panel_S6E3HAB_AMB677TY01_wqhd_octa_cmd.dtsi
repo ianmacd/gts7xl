@@ -2653,6 +2653,8 @@
 			29 01 00 00 00 00 02 F7 0F	/* 17. Gamma, LTPS(AID) update */
 		];
 
+		samsung,rsc_4_frame_idle;
+
 		/* GFX HAL set max mdp performance mode before VRR change,
 		 * then set back to normal mode, even VRR work is done.
 		 * Delay to set back to normal MDP performance mode.

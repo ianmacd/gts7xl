@@ -704,6 +704,8 @@ void max77705_current_pdo(struct max77705_usbc_platform_data *usbc_data, unsigne
 			pPower_list->max_voltage = pdo_obj.BITS_pdo_fixed.voltage * UNIT_FOR_VOLTAGE;
 			pPower_list->min_voltage = 0;
 			pPower_list->max_current = pdo_obj.BITS_pdo_fixed.max_current * UNIT_FOR_CURRENT;
+			pPower_list->comm_capable = pdo_obj.BITS_pdo_fixed.usb_communications_capable;
+			pPower_list->suspend = pdo_obj.BITS_pdo_fixed.usb_suspend_supported;			
 			if (pPower_list->max_voltage > AVAILABLE_VOLTAGE)
 				pPower_list->accept = false;
 			else
@@ -736,8 +738,9 @@ void max77705_current_pdo(struct max77705_usbc_platform_data *usbc_data, unsigne
 		do_power_nego = true;
 
 	pd_noti.sink_status.available_pdo_num = available_pdo_num;
-	pr_info("%s : current_pdo_num(%d), available_pdo_num(%d/%d)\n", __func__,
-		pd_noti.sink_status.current_pdo_num, pd_noti.sink_status.available_pdo_num, num_of_pdo);
+	pr_info("%s : current_pdo_num(%d), available_pdo_num(%d/%d) comm(%d) suspend(%d)\n", __func__,
+		pd_noti.sink_status.current_pdo_num, pd_noti.sink_status.available_pdo_num, num_of_pdo,
+		pd_noti.sink_status.power_list[sel_pdo_pos].comm_capable, pd_noti.sink_status.power_list[sel_pdo_pos].suspend);
 
 	pd_noti.event = PDIC_NOTIFY_EVENT_PD_SINK;
 

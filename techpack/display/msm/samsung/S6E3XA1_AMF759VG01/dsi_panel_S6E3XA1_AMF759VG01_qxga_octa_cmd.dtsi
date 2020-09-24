@@ -1322,6 +1322,8 @@
 			29 01 00 00 00 00 03 F0 A5 A5	/* TEST KEY Disable */
 		];
 
+		samsung,rsc_4_frame_idle;
+
 		samsung,support_vrr_based_bl; /* VRR Variable Refresh Rate */
 		samsung,support_lfd; /* Low Frequency Driving mode for HOP display */
 		/* Use HW TE modulation using B9h TECTRL.

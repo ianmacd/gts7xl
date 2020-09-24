@@ -1162,6 +1162,9 @@ struct sec_battery_platform_data {
 	unsigned int charging_limit_current_by_tx;
 	unsigned int wpc_input_limit_by_tx_check; /* check limited wpc input current with tx device */
 	unsigned int wpc_input_limit_current_by_tx;
+	unsigned int non_wc20_wpc_charging_limit;
+	int non_wc20_wpc_high_temp;
+	int non_wc20_wpc_high_temp_recovery;
 
 	/* If these is NOT full check type or NONE full check type,
 	 * it is skipped

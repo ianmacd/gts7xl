@@ -640,6 +640,8 @@ fw_load_ee_pthru:
 
 	if (!ret || MHI_PM_IN_ERROR_STATE(mhi_cntrl->pm_state)) {
 		MHI_ERR("MHI did not enter BHIE\n");
+		mhi_cntrl->status_cb(mhi_cntrl, mhi_cntrl->priv_data,
+							 MHI_CB_BOOTUP_TIMEOUT);
 		goto error_read;
 	}
 
@@ -648,7 +650,11 @@ fw_load_ee_pthru:
 	ret = mhi_fw_load_amss(mhi_cntrl,
 			       /* last entry is vec table */
 			       &image_info->mhi_buf[image_info->entries - 1]);
-
+	if (ret) {
+		mhi_cntrl->status_cb(mhi_cntrl, mhi_cntrl->priv_data,
+							 MHI_CB_BOOTUP_TIMEOUT);
+	}
+		
 	MHI_LOG("amss fw_load, ret:%d\n", ret);
 
 	release_firmware(firmware);

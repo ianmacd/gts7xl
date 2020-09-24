@@ -393,6 +393,7 @@ endif
 endif #CONFIG_HELIUMPLUS
 
 ifeq ($(CONFIG_LITHIUM), y)
+CONFIG_RX_DEFRAG_DO_NOT_REINJECT := y
 #
 # Enable Shadow V2 for all lithium platform
 #
@@ -1034,6 +1035,8 @@ CONFIG_MORE_TX_DESC := y
 
 endif
 
+CONFIG_HANDLE_BC_EAP_TX_FRM := y
+
 ifeq ($(CONFIG_BAND_6GHZ), y)
 
 CONFIG_6G_SCAN_CHAN_SORT_ALGO := y
@@ -1050,3 +1053,6 @@ CONFIG_FEATURE_WLAN_TIME_SYNC_FTM := y
 endif
 
 CONFIG_WLAN_HANG_EVENT := y
+
+#Enable VDEV Response wakelock feature
+CONFIG_FEATURE_VDEV_RSP_WAKELOCK := y

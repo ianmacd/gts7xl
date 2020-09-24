@@ -315,11 +315,13 @@ struct rx_desc_pool {
  * @next: next extension descriptor pointer
  * @vaddr: hlos virtual address pointer
  * @paddr: physical address pointer for descriptor
+ * @flags: mark features for extension descriptor
  */
 struct dp_tx_ext_desc_elem_s {
 	struct dp_tx_ext_desc_elem_s *next;
 	void *vaddr;
 	qdf_dma_addr_t paddr;
+	uint16_t flags;
 };
 
 /**
@@ -577,6 +579,9 @@ struct dp_rx_tid {
 	uint32_t curr_seq_num;
 	uint32_t curr_frag_num;
 
+	/* head PN number */
+	uint64_t pn128[2];
+
 	uint32_t defrag_timeout_ms;
 	uint16_t dialogtoken;
 	uint16_t statuscode;
@@ -661,6 +666,7 @@ struct reo_desc_list_node {
 	unsigned long free_ts;
 	struct dp_rx_tid rx_tid;
 	bool resend_update_reo_cmd;
+	uint32_t pending_ext_desc_size;
 };
 
 #ifdef WLAN_FEATURE_DP_EVENT_HISTORY
@@ -729,6 +735,8 @@ struct dp_soc_stats {
 		uint32_t rx_frag_wait;
 		/* Fragments dropped due to errors */
 		uint32_t rx_frag_err;
+		/* Fragments received OOR causing sequence num mismatch */
+		uint32_t rx_frag_oor;
 		/* Fragments dropped due to len errors in skb */
 		uint32_t rx_frag_err_len_error;
 		/* Fragments dropped due to no peer found */
@@ -812,6 +820,8 @@ struct dp_soc_stats {
 			uint32_t raw_frm_drop;
 			/* Nbuf sanity failure */
 			uint32_t nbuf_sanity_fail;
+            /* Stale link desc cookie count*/
+            uint32_t invalid_link_cookie;
 		} err;
 
 		/* packet count per core - per ring */
@@ -2080,6 +2090,14 @@ struct dp_vdev {
 
 	/* vap bss peer mac addr */
 	uint8_t vap_bss_peer_mac_addr[QDF_MAC_ADDR_SIZE];
+
+#ifdef WLAN_SUPPORT_RX_FISA
+	/**
+	 * Params used for controlling the fisa aggregation dynamically
+	 */
+	uint8_t fisa_disallowed[MAX_REO_DEST_RINGS];
+	uint8_t fisa_force_flushed[MAX_REO_DEST_RINGS];
+#endif
 };
 
 

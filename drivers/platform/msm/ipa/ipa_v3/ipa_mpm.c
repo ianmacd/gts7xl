@@ -2755,6 +2755,7 @@ static void ipa_mpm_mhi_status_cb(struct mhi_device *mhi_dev,
 	case MHI_CB_PENDING_DATA:
 	case MHI_CB_SYS_ERROR:
 	case MHI_CB_FATAL_ERROR:
+	case MHI_CB_BOOTUP_TIMEOUT:
 	case MHI_CB_EE_MISSION_MODE:
 	case MHI_CB_DTR_SIGNAL:
 		IPA_MPM_ERR("unexpected event %d\n", mhi_cb);

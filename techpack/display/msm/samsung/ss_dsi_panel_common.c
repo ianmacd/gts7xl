@@ -4795,6 +4795,9 @@ static void ss_panel_parse_dt(struct samsung_display_driver_data *vdd)
 	vdd->ccd_fail_val = (!rc ? tmp[0] : 0);
 	LCD_INFO("CCD fail value [%02x] \n", vdd->ccd_fail_val);
 
+	vdd->rsc_4_frame_idle = of_property_read_bool(np, "samsung,rsc_4_frame_idle");
+	LCD_INFO("rsc_4_frame_idle : %d\n", vdd->rsc_4_frame_idle);
+
 	/* VRR: Variable Refresh Rate */
 	vdd->vrr.support_vrr_based_bl = of_property_read_bool(np, "samsung,support_vrr_based_bl");
 
@@ -5826,6 +5829,16 @@ static int ss_hbm_brightness_packet_set(
 	if (!IS_ERR_OR_NULL(vdd->panel_func.samsung_hbm_gamma)) {
 		level_key = false;
 		tx_cmd = vdd->panel_func.samsung_hbm_gamma(vdd, &level_key);
+
+		update_packet_level_key_enable(vdd, packet, &cmd_cnt, level_key);
+		ss_update_brightness_packet(packet, &cmd_cnt, tx_cmd);
+		update_packet_level_key_disable(vdd, packet, &cmd_cnt, level_key);
+	}
+
+	/* gamma compensation for gamma mode2 48/96hz VRR modes */
+	if (!IS_ERR_OR_NULL(vdd->panel_func.samsung_brightness_gm2_gamma_comp)) {
+		level_key = false;
+		tx_cmd = vdd->panel_func.samsung_brightness_gm2_gamma_comp(vdd, &level_key);
 
 		update_packet_level_key_enable(vdd, packet, &cmd_cnt, level_key);
 		ss_update_brightness_packet(packet, &cmd_cnt, tx_cmd);

@@ -754,6 +754,8 @@ static int sec_bat_check_mix_temp(struct sec_battery_info *battery, int input_cu
 
 static void sec_bat_check_wpc_temp(struct sec_battery_info *battery, int *input_current, int *charging_current)
 {
+	int wpc_high_temp = 0, wpc_high_temp_recovery = 0;
+
 	if (battery->pdata->wpc_temp_check_type == SEC_BATTERY_TEMP_CHECK_NONE)
 		return;
 
@@ -762,10 +764,15 @@ static void sec_bat_check_wpc_temp(struct sec_battery_info *battery, int *input_
 		int wpc_vout_level = 0;
 		bool flicker_wa = false;
 
-		if (battery->cable_type == SEC_BATTERY_CABLE_HV_WIRELESS_20)
+		if (battery->cable_type == SEC_BATTERY_CABLE_HV_WIRELESS_20) {
 			wpc_vout_level = battery->wpc_max_vout_level;
-		else
+			wpc_high_temp = battery->pdata->wpc_high_temp;
+			wpc_high_temp_recovery = battery->pdata->wpc_high_temp_recovery;
+		} else {
 			wpc_vout_level = WIRELESS_VOUT_10V;
+			wpc_high_temp = battery->pdata->non_wc20_wpc_high_temp;
+			wpc_high_temp_recovery = battery->pdata->non_wc20_wpc_high_temp_recovery;
+		}
 		mutex_lock(&battery->voutlock);
 
 		/* get vout level */
@@ -783,8 +790,8 @@ static void sec_bat_check_wpc_temp(struct sec_battery_info *battery, int *input_
 			int temp_val = sec_bat_get_temp_by_temp_control_source(battery,
 				battery->pdata->wpc_temp_control_source);
 
-			if ((!battery->chg_limit && temp_val >= battery->pdata->wpc_high_temp) ||
-				(battery->chg_limit && temp_val > battery->pdata->wpc_high_temp_recovery)) {
+			if ((!battery->chg_limit && temp_val >= wpc_high_temp) ||
+				(battery->chg_limit && temp_val > wpc_high_temp_recovery)) {
 				battery->chg_limit = true;
 				if(*input_current > battery->pdata->wpc_input_limit_current) {
 					if (battery->cable_type == SEC_BATTERY_CABLE_WIRELESS_TX &&
@@ -1731,10 +1738,6 @@ int sec_bat_set_charge(struct sec_battery_info *battery,
 #if defined(CONFIG_BATTERY_CISD)
 		battery->usb_overheat_check = false;
 		battery->cisd.ab_vbat_check_count = 0;
-		if (chg_mode == SEC_BAT_CHG_MODE_BUCK_OFF) {
-			battery->cisd.data[CISD_DATA_BUCK_OFF]++;
-			battery->cisd.data[CISD_DATA_BUCK_OFF_PER_DAY]++;
-		}
 #endif
 	}
 
@@ -5932,6 +5935,16 @@ static void sec_bat_cable_work(struct work_struct *work)
 		sec_bat_reset_step_charging(battery);
 #endif		
 #endif
+#if defined(CONFIG_PDIC_PD30)
+		if (!battery->pd_list.pd_info[battery->pd_list.now_pd_index].comm_capable
+				|| !battery->pd_list.pd_info[battery->pd_list.now_pd_index].suspend) {
+				pr_info("%s : clear suspend event now_pd_index:%d, comm:%d, suspend:%d\n", __func__,
+					battery->pd_list.now_pd_index,
+					battery->pd_list.pd_info[battery->pd_list.now_pd_index].comm_capable,
+					battery->pd_list.pd_info[battery->pd_list.now_pd_index].suspend);
+				sec_bat_set_current_event(battery, 0, SEC_BAT_CURRENT_EVENT_USB_SUSPENDED);
+		}
+#endif
 	}
 #endif
 
@@ -6757,9 +6770,6 @@ static int sec_bat_set_property(struct power_supply *psy,
 #endif
 			}
 			mutex_unlock(&battery->wclock);
-#if defined(CONFIG_BATTERY_CISD)
-			increase_cisd_count(CISD_DATA_DROP_VALUE);
-#endif
 			break;
 		case POWER_SUPPLY_EXT_PROP_WDT_STATUS:
 			if(val->intval)
@@ -7944,6 +7954,10 @@ static int make_pd_list(struct sec_battery_info *battery)
 		battery->pdic_info.sink_status.power_list[1].max_voltage;
 	battery->pd_list.pd_info[0].max_current =
 		battery->pdic_info.sink_status.power_list[1].max_current;
+	battery->pd_list.pd_info[0].comm_capable=
+		battery->pdic_info.sink_status.power_list[1].comm_capable;
+	battery->pd_list.pd_info[0].suspend=
+		battery->pdic_info.sink_status.power_list[1].suspend;
 #else
 	battery->pd_list.pd_info[0].input_voltage =
 		battery->pdic_info.sink_status.power_list[1].max_voltage;
@@ -7991,6 +8005,8 @@ static int make_pd_list(struct sec_battery_info *battery)
 		battery->pd_list.pd_info[pd_list_index].max_voltage = pSelected_power_list->max_voltage;
 		battery->pd_list.pd_info[pd_list_index].max_current = pSelected_power_list->max_current;
 		battery->pd_list.pd_info[pd_list_index].min_voltage = 0;
+		battery->pd_list.pd_info[pd_list_index].comm_capable = pSelected_power_list->comm_capable;
+		battery->pd_list.pd_info[pd_list_index].suspend = pSelected_power_list->suspend;
 #else
 		battery->pd_list.pd_info[pd_list_index].input_voltage = pSelected_power_list->max_voltage;
 		battery->pd_list.pd_info[pd_list_index].input_current = pSelected_power_list->max_current;
@@ -8056,13 +8072,15 @@ static int make_pd_list(struct sec_battery_info *battery)
 
 	for (i = 0; i < num_pd_list; i++) {
 #if defined(CONFIG_PDIC_PD30)
-		pr_info("%s: Made pd_list[%d] %s[%d,%s] maxVol:%d, minVol:%d, maxCur:%d\n",
+		pr_info("%s: Made pd_list[%d] %s[%d,%s] maxVol:%d, minVol:%d, maxCur:%d, comm:%d, suspend:%d\n",
 			__func__, i, i == pd_list_select ? "**" : " ",
 			battery->pd_list.pd_info[i].pdo_index,
 			battery->pd_list.pd_info[i].apdo ? "APDO" : "FIXED",
 			battery->pd_list.pd_info[i].max_voltage,
 			battery->pd_list.pd_info[i].min_voltage,
-			battery->pd_list.pd_info[i].max_current);
+			battery->pd_list.pd_info[i].max_current,
+			battery->pd_list.pd_info[i].comm_capable,
+			battery->pd_list.pd_info[i].suspend);
 #else
 		pr_info("%s: Made pd_list[%d] %s[%d] voltage : %d, current : %d\n",
 			__func__, i, i == pd_list_select ? "**" : " ",

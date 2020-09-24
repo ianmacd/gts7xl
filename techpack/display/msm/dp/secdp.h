@@ -187,6 +187,12 @@ struct secdp_dex {
 	int  prev;		/*previously known as "dex_now"*/
 	int  curr;		/*previously known as "dex_en"*/
 	int  setting_ui;	/*"dex_set", true if setting has Dex mode*/
+	/* 
+	 * 2 if resolution is changed during dex mode change.
+         * And once dex framework reads the dex_node_stauts using dex node,
+         * it's assigned to same value with curr.
+	 */
+	int dex_node_status;
 
 	enum dex_support_res_t res;	/*dex supported resolution*/
 	char fw_ver[10];	/*firmware ver, 0:h/w, 1:s/w major, 2:s/w minor*/

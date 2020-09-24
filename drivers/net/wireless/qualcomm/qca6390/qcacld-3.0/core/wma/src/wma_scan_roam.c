@@ -3455,10 +3455,14 @@ wma_get_trigger_detail_str(struct wmi_roam_trigger_info *roam_info, char *buf)
 		buf_left -= buf_cons;
 
 		buf_cons = qdf_snprint(temp, buf_left,
-			    "validity_interval: %d candidate_list_cnt: %d resp_status: %d",
+			    "validity_interval: %d candidate_list_cnt: %d resp_status: %d, bss_termination_timeout: %d, mbo_assoc_retry_timeout: %d",
 			    roam_info->btm_trig_data.validity_interval,
 			    roam_info->btm_trig_data.candidate_list_count,
-			    roam_info->btm_trig_data.btm_resp_status);
+			    roam_info->btm_trig_data.btm_resp_status,
+			    roam_info->btm_trig_data.
+					btm_bss_termination_timeout,
+			    roam_info->btm_trig_data.
+					btm_mbo_assoc_retry_timeout);
 		buf_left -= buf_cons;
 		temp += buf_cons;
 		return;
@@ -3477,8 +3481,17 @@ wma_get_trigger_detail_str(struct wmi_roam_trigger_info *roam_info, char *buf)
 		return;
 	case WMI_ROAM_TRIGGER_REASON_LOW_RSSI:
 	case WMI_ROAM_TRIGGER_REASON_PERIODIC:
-		buf_cons = qdf_snprint(temp, buf_left, "Cur_rssi_threshold: %d",
-				       roam_info->rssi_trig_data.threshold);
+		/*
+		 * Use roam_info->current_rssi get the RSSI of current AP after
+		 * roam scan is triggered. This avoids discrepency with the
+		 * next rssi threshold value printed in roam scan details.
+		 * roam_info->rssi_trig_data.threshold gives the rssi threshold
+		 * for the Low Rssi/Periodic scan trigger.
+		 */
+		buf_cons = qdf_snprint(temp, buf_left,
+				       " Cur_Rssi threshold:%d Current AP RSSI: %d",
+				       roam_info->rssi_trig_data.threshold,
+				       roam_info->current_rssi);
 		temp += buf_cons;
 		buf_left -= buf_cons;
 		return;
@@ -3529,25 +3542,29 @@ wma_log_roam_scan_candidates(struct wmi_roam_candidate_info *ap,
 			     uint8_t num_entries)
 {
 	uint16_t i;
-	char time[TIME_STRING_LEN];
+	char time[TIME_STRING_LEN], time2[TIME_STRING_LEN];
 
-	WMA_LOGD("%40s%40s", LINE_STR, LINE_STR);
-	WMA_LOGI("%13s %16s %8s %4s %4s %5s/%3s %3s/%3s %7s",
-		 "AP BSSID", "TSTAMP", "CH", "TY", "ETP", "RSSI",
-		 "SCR", "CU%", "SCR", "TOT_SCR");
-	WMA_LOGD("%40s%40s", LINE_STR, LINE_STR);
+	wma_nofl_info("%62s%62s", LINE_STR, LINE_STR);
+	wma_nofl_info("%13s %16s %8s %4s %4s %5s/%3s %3s/%3s %7s %7s %6s %12s %20s",
+		      "AP BSSID", "TSTAMP", "CH", "TY", "ETP", "RSSI",
+		      "SCR", "CU%", "SCR", "TOT_SCR", "BL_RSN", "BL_SRC",
+		      "BL_TSTAMP", "BL_TIMEOUT(ms)");
+	wma_nofl_info("%62s%62s", LINE_STR, LINE_STR);
 
 	if (num_entries > MAX_ROAM_CANDIDATE_AP)
 		num_entries = MAX_ROAM_CANDIDATE_AP;
 
 	for (i = 0; i < num_entries; i++) {
 		mlme_get_converted_timestamp(ap->timestamp, time);
-		WMA_LOGI(QDF_MAC_ADDR_STR " %17s %4d %-4s %4d %3d/%-4d %2d/%-4d %5d",
-			 QDF_MAC_ADDR_ARRAY(ap->bssid.bytes), time, ap->freq,
-			 ((ap->type == 0) ? "C_AP" :
-			  ((ap->type == 2) ? "R_AP" : "P_AP")),
-			 ap->etp, ap->rssi, ap->rssi_score, ap->cu_load,
-			 ap->cu_score, ap->total_score);
+		mlme_get_converted_timestamp(ap->bl_timestamp, time2);
+		wma_nofl_info(QDF_MAC_ADDR_STR " %17s %4d %-4s %4d %3d/%-4d %2d/%-4d %5d %7d %7d   %17s %9d",
+			      QDF_MAC_ADDR_ARRAY(ap->bssid.bytes), time,
+			      ap->freq,
+			      ((ap->type == 0) ? "C_AP" :
+			       ((ap->type == 2) ? "R_AP" : "P_AP")),
+			      ap->etp, ap->rssi, ap->rssi_score, ap->cu_load,
+			      ap->cu_score, ap->total_score, ap->bl_reason,
+			      ap->bl_source, time2, ap->bl_original_timeout);
 		ap++;
 	}
 }
@@ -4131,6 +4148,8 @@ wma_roam_ho_fail_handler(tp_wma_handle wma, uint32_t vdev_id,
 
 	ap_info.bssid = bssid;
 	ap_info.reject_ap_type = DRIVER_AVOID_TYPE;
+	ap_info.reject_reason = REASON_ROAM_HO_FAILURE;
+	ap_info.source = ADDED_BY_DRIVER;
 	wlan_blm_add_bssid_to_reject_list(wma->pdev, &ap_info);
 
 	ho_failure_ind = qdf_mem_malloc(sizeof(*ho_failure_ind));
@@ -6297,6 +6316,38 @@ QDF_STATUS wma_send_ht40_obss_scanind(tp_wma_handle wma,
 	return status;
 }
 
+static enum blm_reject_ap_reason wma_get_reject_reason(uint32_t reason)
+{
+	switch(reason) {
+	case WMI_BL_REASON_NUD_FAILURE:
+		return REASON_NUD_FAILURE;
+	case WMI_BL_REASON_STA_KICKOUT:
+		return REASON_STA_KICKOUT;
+	case WMI_BL_REASON_ROAM_HO_FAILURE:
+		return REASON_ROAM_HO_FAILURE;
+	case WMI_BL_REASON_ASSOC_REJECT_POOR_RSSI:
+		return REASON_ASSOC_REJECT_POOR_RSSI;
+	case WMI_BL_REASON_ASSOC_REJECT_OCE:
+		return REASON_ASSOC_REJECT_OCE;
+	case WMI_BL_REASON_USERSPACE_BL:
+		return REASON_USERSPACE_BL;
+	case WMI_BL_REASON_USERSPACE_AVOID_LIST:
+		return REASON_USERSPACE_AVOID_LIST;
+	case WMI_BL_REASON_BTM_DIASSOC_IMMINENT:
+		return REASON_BTM_DISASSOC_IMMINENT;
+	case WMI_BL_REASON_BTM_BSS_TERMINATION:
+		return REASON_BTM_BSS_TERMINATION;
+	case WMI_BL_REASON_BTM_MBO_RETRY:
+		return REASON_BTM_MBO_RETRY;
+	case WMI_BL_REASON_REASSOC_RSSI_REJECT:
+		return REASON_REASSOC_RSSI_REJECT;
+	case WMI_BL_REASON_REASSOC_NO_MORE_STAS:
+		return REASON_REASSOC_NO_MORE_STAS;
+	default:
+		return REASON_UNKNOWN;
+	}
+}
+
 int wma_handle_btm_blacklist_event(void *handle, uint8_t *cmd_param_info,
 				   uint32_t len)
 {
@@ -6356,9 +6407,11 @@ int wma_handle_btm_blacklist_event(void *handle, uint8_t *cmd_param_info,
 		WMI_MAC_ADDR_TO_CHAR_ARRAY(&src_list->bssid,
 					   roam_blacklist->bssid.bytes);
 		roam_blacklist->timeout = src_list->timeout;
-		roam_blacklist->received_time =
-			qdf_do_div(qdf_get_monotonic_boottime(),
-				   QDF_MC_TIMER_TO_MS_UNIT);
+		roam_blacklist->received_time = src_list->timestamp;
+		roam_blacklist->original_timeout = src_list->original_timeout;
+		roam_blacklist->reject_reason =
+				wma_get_reject_reason(src_list->reason);
+		roam_blacklist->source = src_list->source;
 		roam_blacklist++;
 		src_list++;
 	}

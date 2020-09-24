@@ -2059,6 +2059,9 @@ ssize_t sec_bat_store_attrs(
 			if (x >= 0 && x <= 100) {
 				dev_info(battery->dev, "%s: batt_asoc(%d)\n", __func__, x);
 				battery->batt_asoc = x;
+#if defined(CONFIG_BATTERY_CISD)
+				battery->cisd.data[CISD_DATA_ASOC] = x;
+#endif
 				sec_bat_check_battery_health(battery);
 			}
 			ret = count;
