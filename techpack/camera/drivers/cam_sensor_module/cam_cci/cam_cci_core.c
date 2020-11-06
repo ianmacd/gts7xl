@@ -1193,9 +1193,9 @@ static int32_t cam_cci_burst_read(struct v4l2_subdev *sd,
 					CCI_I2C_M0_READ_BUF_LEVEL_ADDR +
 					master * 0x100);
 				CAM_ERR(CAM_CCI,
-					"wait timeout for RD_DONE irq for cci: %d, master: %d, rc = %d FIFO buf_lvl:0x%x, rc: %d",
+					"wait timeout for RD_DONE irq for cci: %d, master: %d, FIFO buf_lvl:0x%x, exp_words: %d",
 					cci_dev->soc_info.index, master,
-					val, rc);
+					val, exp_words);
 				#ifdef DUMP_CCI_REGISTERS
 					cam_cci_dump_registers(cci_dev,
 						master, queue);
@@ -1292,8 +1292,6 @@ static int32_t cam_cci_read(struct v4l2_subdev *sd,
 
 	mutex_lock(&cci_dev->cci_master_info[master].mutex_q[queue]);
 
-	// read operation done only in Q1 
-	reinit_completion(&cci_dev->cci_master_info[master].rd_done);
 	reinit_completion(&cci_dev->cci_master_info[master].report_q[queue]);
 	/*
 	 * Call validate queue to make sure queue is empty before starting.
@@ -1681,7 +1679,12 @@ static int32_t cam_cci_read_bytes(struct v4l2_subdev *sd,
 	 * THRESHOLD irq's, we reinit the threshold wait before
 	 * we load the burst read cmd.
 	 */
+	mutex_lock(&cci_dev->cci_master_info[master].mutex_q[QUEUE_1]);
+
+	reinit_completion(&cci_dev->cci_master_info[master].rd_done);
 	reinit_completion(&cci_dev->cci_master_info[master].th_complete);
+	
+	mutex_unlock(&cci_dev->cci_master_info[master].mutex_q[QUEUE_1]);
 
 	CAM_DBG(CAM_CCI, "Bytes to read %u", read_bytes);
 	do {
@@ -1844,10 +1847,16 @@ int32_t cam_cci_core_cfg(struct v4l2_subdev *sd,
 		return -EINVAL;
 	}
 
-	if (cci_dev->cci_master_info[master].status < 0) {
-		CAM_WARN(CAM_CCI, "CCI hardware is resetting");
-		return -EAGAIN;
+	mutex_lock(&cci_dev->cci_master_info[master].mutex);
+	if(!cci_dev->cci_master_info[master].is_initilized && 
+		cci_ctrl->cmd != MSM_CCI_INIT)
+	{
+		mutex_unlock(&cci_dev->cci_master_info[master].mutex);
+		CAM_ERR(CAM_CCI, "CCI Master:%d not initialized,cmd:%d", master, cci_ctrl->cmd);
+		return -EINVAL;
 	}
+	mutex_unlock(&cci_dev->cci_master_info[master].mutex);
+
 	CAM_DBG(CAM_CCI, "master = %d, cmd = %d", master, cci_ctrl->cmd);
 
 	switch (cci_ctrl->cmd) {

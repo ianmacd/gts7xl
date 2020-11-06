@@ -422,10 +422,11 @@ static void stm32_pogo_touchpad_event(struct stm32_touchpad_dev *stm32, char *ev
 				else
 					latest_id = (i == 0) ? 1 : 0;
 
+				input_mt_slot(stm32->input_dev, i);
+				input_mt_report_slot_state(stm32->input_dev, MT_TOOL_FINGER, 0);
+
 				skip_touch_event = stm32_check_skip_release(stm32, i);
 				if (skip_touch_event == false) {
-					input_mt_slot(stm32->input_dev, i);
-					input_mt_report_slot_state(stm32->input_dev, MT_TOOL_FINGER, 0);
 					stm32_print_event(stm32, i, GENERATE_NONE);
 				}
 
@@ -518,10 +519,11 @@ static void stm32_pogo_touchpad_event(struct stm32_touchpad_dev *stm32, char *ev
 			else
 				latest_id = (i == 0) ? 1 : 0;
 
+			input_mt_slot(stm32->input_dev, i);
+			input_mt_report_slot_state(stm32->input_dev, MT_TOOL_FINGER, 0);
+
 			skip_touch_event = stm32_check_skip_release(stm32, i);
 			if (skip_touch_event == false) {
-				input_mt_slot(stm32->input_dev, i);
-				input_mt_report_slot_state(stm32->input_dev, MT_TOOL_FINGER, 0);
 				stm32_print_event(stm32, i, GENERATE_NONE);
 			}
 
@@ -550,6 +552,9 @@ out_sync:
 
 			if (stm32->button == ICON_BUTTON_DOWN) {
 				stm32->button_state = ICON_BUTTON_DOWN;
+				input_mt_slot(stm32->input_dev, latest_id);
+				input_mt_report_slot_state(stm32->input_dev, MT_TOOL_FINGER, 1);
+				input_report_key(stm32->input_dev, BTN_TOUCH, 1);
 				input_report_key(stm32->input_dev, stm32->button_code, ICON_BUTTON_DOWN);
 				input_info(true, &stm32->pdev->dev,
 						"[BP] tID:%d 0x%X btn_f:%d\n", latest_id, stm32->button_code,

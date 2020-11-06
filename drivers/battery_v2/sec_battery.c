@@ -1176,7 +1176,7 @@ static void sec_bat_check_pdic_temp(struct sec_battery_info *battery, int *input
 static int sec_bat_check_pd_input_current(struct sec_battery_info *battery, int input_current)
 {
 	if (battery->current_event & SEC_BAT_CURRENT_EVENT_SELECT_PDO) {
-		input_current = battery->input_current;
+		input_current = SELECT_PDO_INPUT_CURRENT;
 		pr_info("%s: change input_current(%d), cable_type(%d)\n", __func__, input_current, battery->cable_type);
 	}
 

@@ -2701,6 +2701,41 @@ static ssize_t mipi_samsung_poc_info_show(struct device *dev,
 	return strlen(buf);
 }
 
+static ssize_t ss_fw_update_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int ret = 0;
+	int input;
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		return -ENODEV;
+	}
+
+	if (!ss_is_ready_to_send_cmd(vdd)) {
+		LCD_ERR("Panel is not ready. Panel State(%d)\n", vdd->panel_state);
+		return -EBUSY;
+	}
+
+	if (sscanf(buf, "%d ", &input) != 1)
+		return -EINVAL;
+
+	LCD_INFO("INPUT : (%d)\n", input);
+
+	if (input) {
+		if (IS_ERR_OR_NULL(vdd->panel_func.samsung_fw_up)) {
+			LCD_ERR("FW Update func is null\n");
+			ret = FW_UP_ERR_UPDATE_FAIL;
+		} else {
+			ret = vdd->panel_func.samsung_fw_up(vdd);
+		}
+	}
+
+	return size;
+}
+
 static ssize_t xtalk_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
@@ -4918,6 +4953,7 @@ static DEVICE_ATTR(mst, S_IRUGO | S_IWUSR | S_IWGRP, NULL, mipi_samsung_mst_stor
 static DEVICE_ATTR(poc, S_IRUGO | S_IWUSR | S_IWGRP, mipi_samsung_poc_show, mipi_samsung_poc_store);
 static DEVICE_ATTR(poc_mca, S_IRUGO | S_IWUSR | S_IWGRP, mipi_samsung_poc_mca_show, NULL);
 static DEVICE_ATTR(poc_info, S_IRUGO | S_IWUSR | S_IWGRP, mipi_samsung_poc_info_show, NULL);
+static DEVICE_ATTR(fw_up, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_fw_update_store);
 static DEVICE_ATTR(irc_mode, S_IRUGO | S_IWUSR | S_IWGRP, ss_irc_mode_show, ss_irc_mode_store);
 //static DEVICE_ATTR(ldu_correction, S_IRUGO | S_IWUSR | S_IWGRP, ss_ldu_correction_show, ss_ldu_correction_store);
 static DEVICE_ATTR(adaptive_control, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_adaptive_control_store);
@@ -5024,6 +5060,7 @@ static struct attribute *panel_sysfs_attributes[] = {
 	&dev_attr_poc.attr,
 	&dev_attr_poc_mca.attr,
 	&dev_attr_poc_info.attr,
+	&dev_attr_fw_up.attr,
 	&dev_attr_dpui.attr,
 	&dev_attr_dpui_dbg.attr,
 	&dev_attr_dpci.attr,

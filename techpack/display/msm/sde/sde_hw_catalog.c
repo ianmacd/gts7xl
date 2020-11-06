@@ -2475,6 +2475,8 @@ static int sde_dspp_parse_dt(struct device_node *np,
 			sblk->ltm.version = PROP_VALUE_ACCESS(ltm_prop_value,
 				LTM_VERSION, 0);
 			set_bit(SDE_DSPP_LTM, &dspp->features);
+			SDE_INFO("ltm base(0x%8x), version(0x%8x)\n",
+				sblk->ltm.base, sblk->ltm.version);
 		}
 
 	}

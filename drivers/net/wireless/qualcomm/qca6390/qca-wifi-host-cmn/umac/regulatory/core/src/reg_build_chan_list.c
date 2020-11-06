@@ -36,8 +36,8 @@
 #include "reg_build_chan_list.h"
 #include <qdf_platform.h>
 
-#define MAX_PWR_FCC_CHAN_12 8
-#define MAX_PWR_FCC_CHAN_13 2
+#define MAX_PWR_FCC_CHAN_12 4
+#define MAX_PWR_FCC_CHAN_13 4
 #define CHAN_144_CENT_FREQ 5720
 
 /**
