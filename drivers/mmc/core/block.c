@@ -88,7 +88,7 @@ static int cprm_ake_retry_flag;
  * second software timer to timeout the whole request, so 10 seconds should be
  * ample.
  */
-#define MMC_BLK_TIMEOUT_MS  (20 * 1000)
+#define MMC_BLK_TIMEOUT_MS  (10 * 1000)
 #define MMC_SANITIZE_REQ_TIMEOUT 240000
 #define MMC_EXTRACT_INDEX_FROM_ARG(x) ((x & 0x00FF0000) >> 16)
 #define MMC_EXTRACT_VALUE_FROM_ARG(x) ((x & 0x0000FF00) >> 8)

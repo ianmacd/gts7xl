@@ -849,9 +849,11 @@ static void fastrpc_mmap_free(struct fastrpc_mmap *map, uint32_t flags)
 	fl = map->fl;
 	if (map->flags == ADSP_MMAP_HEAP_ADDR ||
 				map->flags == ADSP_MMAP_REMOTE_HEAP_ADDR) {
+		spin_lock(&me->hlock);
 		map->refs--;
 		if (!map->refs)
 			hlist_del_init(&map->hn);
+		spin_unlock(&me->hlock);
 		if (map->refs > 0)
 			return;
 	} else {
@@ -3127,7 +3129,7 @@ static int fastrpc_internal_munmap(struct fastrpc_file *fl,
 		pr_err("adsprpc: ERROR: %s: user application %s trying to unmap without initialization\n",
 			 __func__, current->comm);
 		err = EBADR;
-		goto bail;
+		return err;
 	}
 	mutex_lock(&fl->internal_map_mutex);
 
@@ -3184,14 +3186,15 @@ static int fastrpc_internal_munmap_fd(struct fastrpc_file *fl,
 
 	VERIFY(err, (fl && ud));
 	if (err)
-		goto bail;
+		return err;
 	VERIFY(err, fl->dsp_proc_init == 1);
 	if (err) {
 		pr_err("adsprpc: ERROR: %s: user application %s trying to unmap without initialization\n",
 			__func__, current->comm);
 		err = EBADR;
-		goto bail;
+		return err;
 	}
+	mutex_lock(&fl->internal_map_mutex);
 	mutex_lock(&fl->map_mutex);
 	if (fastrpc_mmap_find(fl, ud->fd, ud->va, ud->len, 0, 0, &map)) {
 		pr_err("adsprpc: mapping not found to unmap fd 0x%x, va 0x%llx, len 0x%x\n",
@@ -3201,10 +3204,13 @@ static int fastrpc_internal_munmap_fd(struct fastrpc_file *fl,
 		mutex_unlock(&fl->map_mutex);
 		goto bail;
 	}
-	if (map)
+	if (map && (map->attr & FASTRPC_ATTR_KEEP_MAP)) {
+		map->attr = map->attr & (~FASTRPC_ATTR_KEEP_MAP);
 		fastrpc_mmap_free(map, 0);
+	}
 	mutex_unlock(&fl->map_mutex);
 bail:
+	mutex_unlock(&fl->internal_map_mutex);
 	return err;
 }
 
@@ -3223,7 +3229,7 @@ static int fastrpc_internal_mmap(struct fastrpc_file *fl,
 		pr_err("adsprpc: ERROR: %s: user application %s trying to map without initialization\n",
 			__func__, current->comm);
 		err = EBADR;
-		goto bail;
+		return err;
 	}
 	mutex_lock(&fl->internal_map_mutex);
 	if ((ud->flags == ADSP_MMAP_ADD_PAGES) ||
@@ -3416,10 +3422,9 @@ static int fastrpc_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
 	struct smq_invoke_rspv2 *rspv2 = NULL;
 	struct fastrpc_apps *me = &gfa;
 	uint32_t index, rspFlags = 0, earlyWakeTime = 0;
-	int err = 0, cid;
-	struct fastrpc_channel_ctx *chan = 0;
+	int err = 0, cid = -1;
+	struct fastrpc_channel_ctx *chan = NULL;
 	unsigned long irq_flags = 0;
-	bool is_ctxtable_locked = false;
 
 	cid = get_cid_from_rpdev(rpdev);
 	VERIFY(err, (cid >= ADSP_DOMAIN_ID && cid <= NUM_CHANNELS));
@@ -3453,31 +3458,28 @@ static int fastrpc_rpmsg_callback(struct rpmsg_device *rpdev, void *data,
 	if (err)
 		goto bail;
 
-	if (rspFlags == COMPLETE_SIGNAL) {
-		spin_lock_irqsave(&chan->ctxlock, irq_flags);
-		is_ctxtable_locked = true;
-	}
+	spin_lock_irqsave(&chan->ctxlock, irq_flags);
 	VERIFY(err, !IS_ERR_OR_NULL(chan->ctxtable[index]));
 	if (err)
-		goto bail;
+		goto bail_unlock;
 
 	VERIFY(err, ((chan->ctxtable[index]->ctxid ==
 		(rsp->ctx & ~CONTEXT_PD_CHECK)) &&
 			chan->ctxtable[index]->magic ==
 				FASTRPC_CTX_MAGIC));
 	if (err)
-		goto bail;
+		goto bail_unlock;
 
 	if (rspv2) {
 		VERIFY(err, rspv2->version == FASTRPC_RSP_VERSION2);
 		if (err)
-			goto bail;
+			goto bail_unlock;
 	}
 	context_notify_user(chan->ctxtable[index], rsp->retval,
 				 rspFlags, earlyWakeTime);
+bail_unlock:
+	spin_unlock_irqrestore(&chan->ctxlock, irq_flags);
 bail:
-	if (rspFlags == COMPLETE_SIGNAL && is_ctxtable_locked)
-		spin_unlock_irqrestore(&chan->ctxlock, irq_flags);
 	if (err)
 		pr_err("adsprpc: ERROR: %s: invalid response (data %pK, len %d) from remote subsystem (err %d)\n",
 				__func__, data, len, err);

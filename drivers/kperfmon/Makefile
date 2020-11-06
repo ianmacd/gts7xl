@@ -42,5 +42,4 @@ $(info kperfmon_DUMMY="$(shell cp -f $(srctree)/drivers/kperfmon/ologk.h $(srctr
 	obj-y				+= kperfmon.o
 else
 	obj-y				+= ologk.o
-#$(info kperfmon_DUMMY="$(shell cp -f $(srctree)/drivers/kperfmon/ologk.h $(srctree)/include/linux/)")
 endif

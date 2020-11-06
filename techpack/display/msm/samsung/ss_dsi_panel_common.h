@@ -700,6 +700,48 @@ struct POC {
 	bool need_sleep_in;
 };
 
+/* FirmWare Update */
+struct FW_UP {
+	bool is_support;
+
+	u32 start_addr;
+	u32 image_size;
+	u32 sector_size;
+	u8 *image_buf;
+
+	/* ERASE */
+	int er_try_cnt;
+	int er_fail_cnt;
+	u32 erase_delay_us; /* usleep */
+	u32 erase_data_size;
+	int erase_addr_idx[3];
+	int erase_size_idx[3];
+
+	/* WRITE */
+	int wr_try_cnt;
+	int wr_fail_cnt;
+	u32 write_delay_us; /* usleep */
+	u32 write_data_size;
+	int write_addr_idx[3];
+	int write_size_idx[3];
+
+	/* READ */
+	u32 read_data_size;
+	u32 read_delay_us;	/* usleep */
+	u32 read_status_value;
+	u32 read_done_check;
+
+	bool need_sleep_in;
+};
+
+enum fw_up_state {
+	FW_UP_DONE,
+	FW_UP_ERR_UPDATE_FAIL,
+	FW_UP_ERR_ALREADY_DONE,
+	FW_UP_ERR_NOT_SUPPORT,
+	MAX_FW_UP_STATE,
+};
+
 #define GCT_RES_CHECKSUM_PASS	(1)
 #define GCT_RES_CHECKSUM_NG	(0)
 #define GCT_RES_CHECKSUM_OFF	(-2)
@@ -1025,6 +1067,10 @@ struct panel_func {
 
 	/* POC */
 	int (*samsung_poc_ctrl)(struct samsung_display_driver_data *vdd, u32 cmd, const char *buf);
+
+	/* FirmWare Update */
+	int (*samsung_fw_up)(struct samsung_display_driver_data *vdd);
+
 
 	/* Gram Checksum Test */
 	int (*samsung_gct_read)(struct samsung_display_driver_data *vdd);
@@ -1721,6 +1767,9 @@ struct samsung_display_driver_data {
 	 *  POC
 	 */
 	struct POC poc_driver;
+
+	/*  FirmWare Update */
+	struct FW_UP fw_up;
 
 	/*
 	 *  Dynamic MIPI Clock

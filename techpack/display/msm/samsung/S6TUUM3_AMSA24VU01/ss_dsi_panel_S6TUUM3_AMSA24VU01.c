@@ -44,6 +44,7 @@ int prev_bl_s6tuum3; /* To save previous brightness level */
 static int prev_refresh_rate;
 ktime_t time_vrr;
 int init_smooth_off;
+int poc_done;
 
 static struct dsi_panel_cmd_set *__ss_vrr(struct samsung_display_driver_data *vdd,
 					int *level_key, bool is_hbm, bool is_hmt)
@@ -173,6 +174,8 @@ static int ss_fw_id_read(struct samsung_display_driver_data *vdd)
 
 static int samsung_panel_on_pre(struct samsung_display_driver_data *vdd)
 {
+	struct dsi_panel_cmd_set *poc_read_tx_cmds = NULL;
+
 	if (IS_ERR_OR_NULL(vdd)) {
 	        LCD_ERR(": Invalid data vdd : 0x%zx", (size_t)vdd);
 		return false;
@@ -210,6 +213,44 @@ static int samsung_panel_on_pre(struct samsung_display_driver_data *vdd)
 		/* For PV3 : 0ms from dtsi*/
 	}
 
+	/* Read flash to check if poc done at first boot */
+	if (vdd->display_status_dsi.first_commit_disp_on) {
+		poc_read_tx_cmds = ss_get_cmds(vdd, TX_POC_READ);
+		if (SS_IS_CMDS_NULL(poc_read_tx_cmds)) {
+			LCD_ERR("no cmds for TX_POC_READ..\n");
+			return -EINVAL;
+		} else {
+			u8 rx_buf[128], status_c1;
+			int read_addr = vdd->poc_driver.start_addr + 527;
+
+			poc_read_tx_cmds->cmds[0].msg.tx_buf[vdd->poc_driver.read_addr_idx[0]]
+										= (read_addr & 0xFF0000) >> 16;
+			poc_read_tx_cmds->cmds[0].msg.tx_buf[vdd->poc_driver.read_addr_idx[1]]
+										= (read_addr & 0x00FF00) >> 8;
+			poc_read_tx_cmds->cmds[0].msg.tx_buf[vdd->poc_driver.read_addr_idx[2]]
+										= read_addr & 0x0000FF;
+
+			ss_send_cmd(vdd, TX_POC_READ);
+			usleep_range(40000, 40005); //40ms
+
+			ss_panel_data_read(vdd, RX_POC_STATUS, &status_c1, LEVEL_KEY_NONE);
+
+			if (!(status_c1 == 04))
+				LCD_ERR("READ status not 04 ret:%d\n", status_c1);
+			else {
+				LCD_INFO("READ status_c1: %02x\n", status_c1); /* Read status 1 byte*/
+
+				ss_panel_data_read(vdd, RX_POC_READ, rx_buf, LEVEL_KEY_NONE);
+
+				LCD_DEBUG("addr[%x] = [0x%x 0x%x 0x%x]\n",
+					read_addr, rx_buf[0], rx_buf[1], rx_buf[2]);
+
+				//Compare if 0xA33Ae7
+				if ((rx_buf[0] == 0xA3) && (rx_buf[1] == 0x3A) && (rx_buf[2] == 0xe7))
+					poc_done = 1;
+			}
+		}
+	}
 	return true;
 }
 
@@ -257,6 +298,10 @@ static int samsung_panel_on_post(struct samsung_display_driver_data *vdd)
 			ss_send_cmd(vdd, TX_HSYNC_ON);
 		}
 	}
+
+	/* Stress Profiler off at 17~18 */
+	if ((vdd->manufacture_id_dsi > 0x801416) && (vdd->manufacture_id_dsi < 0x801419))
+		ss_send_cmd(vdd, TX_NORMAL_BRIGHTNESS_ETC);
 
 	/* Check if support selfmask */
 	if (!vdd->self_disp.is_support)
@@ -309,11 +354,12 @@ struct dsi_panel_cmd_set *ss_brightness_gm2_gamma_comp(struct samsung_display_dr
 	char id3 = ss_panel_id2_get(vdd);
 	int cur_rr = vdd->vrr.cur_refresh_rate;
 
-	LCD_INFO("+++ ID3: 0x%x, bl_level: %d, VRR: %d Hz\n",
-			id3, vdd->br_info.common_br.bl_level, cur_rr);
+	LCD_INFO("+++ ID3: 0x%x, bl_level: %d, VRR: %d Hz poc:%d\n",
+			id3, vdd->br_info.common_br.bl_level, cur_rr, poc_done);
 
 	if ((id3 > 0x19 || id3 < 0x16) || /* support ID3 0x16 ~ 0x19*/
-			(cur_rr != 120)) { /* support for VRR 120HS */
+			(cur_rr != 120) || /* support for VRR 120HS */
+			poc_done) { /* Avoid comp if poc has done */
 		LCD_INFO("skip green weight\n");
 		return NULL;
 	}
@@ -1231,6 +1277,229 @@ static void ss_update_panel_lpm_ctrl_cmd(struct samsung_display_driver_data *vdd
 }
 #endif
 
+static int ss_fw_up_send_cmd(struct samsung_display_driver_data *vdd, enum dsi_cmd_set_type type, u32 delay_us)
+{
+	int ret = 0;
+	u8 status_check[2] = {0,};
+
+	ss_send_cmd(vdd, type);
+	usleep_range(delay_us, delay_us+10);
+	ss_panel_data_read(vdd, RX_FW_UP_STATUS, status_check, LEVEL_KEY_NONE);
+	if (status_check[0] != vdd->fw_up.read_status_value) {
+		LCD_ERR("%s send Fail status_check = 0x%x\n", status_check[0]);
+		return FW_UP_ERR_UPDATE_FAIL;
+	}
+
+	return ret;
+}
+
+static int ss_swire_rework_check(struct samsung_display_driver_data *vdd)
+{
+	int ret = 0;
+	u8 read_data[256] = {0,};
+
+	if (ss_panel_id2_get(vdd) < 0x17) {
+		LCD_ERR("Does not support swire rework, ID3 = 0x%x\n", ss_panel_id2_get(vdd));
+		return FW_UP_ERR_NOT_SUPPORT;
+	}
+
+	if (ss_panel_id2_get(vdd) > 0x17) {
+		LCD_ERR("Swire rework is already done, ID3 = 0x%x\n", ss_panel_id2_get(vdd));
+		return FW_UP_ERR_ALREADY_DONE;
+	}
+
+	ret = ss_fw_up_send_cmd(vdd, TX_FW_UP_READ, vdd->fw_up.write_delay_us);
+	if (ret) {
+		LCD_ERR("FirmWare Write for Read Fail!!\n");
+		return ret;
+	}
+
+	ss_panel_data_read(vdd, RX_FW_UP_READ, read_data, LEVEL_KEY_NONE);
+
+	if (read_data[39] == vdd->fw_up.read_done_check) {
+		LCD_ERR("Swire rework is already done, read_value = 0x%x\n", read_data[39]);
+		return FW_UP_ERR_ALREADY_DONE;
+	}
+
+	LCD_INFO("Rework Done Check Value = 0x%x\n", read_data[39]);
+	return ret;
+}
+
+static int ss_swire_rework(struct samsung_display_driver_data *vdd)
+{
+	int ret = FW_UP_DONE;
+	int loop = 0;
+	struct dsi_panel_cmd_set *write_tx_cmds = NULL;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd\n");
+		return FW_UP_ERR_UPDATE_FAIL;
+	}
+
+	write_tx_cmds = ss_get_cmds(vdd, TX_FW_UP_WRITE);
+	if (SS_IS_CMDS_NULL(write_tx_cmds)) {
+		LCD_ERR("No cmds for TX_FW_WRITE..\n");
+		return FW_UP_ERR_UPDATE_FAIL;
+	}
+
+	LCD_INFO("Swire Rework ++\n");
+
+	/* FW ERASE */
+	ret = ss_fw_up_send_cmd(vdd, TX_FW_UP_ERASE, vdd->fw_up.erase_delay_us);
+	if (ret) {
+		LCD_ERR("FirmWare Erase Fail!!\n");
+		return ret;
+	}
+
+	/* FW WRITE */
+	for (loop = 0; loop < SWRIE_REWORK_SEQ_MAX; loop++) {
+		memcpy(&write_tx_cmds->cmds[0].msg.tx_buf[1], swrie_rework_seq[loop], SWRIE_REWORK_SEQ_SIZE);
+		ret = ss_fw_up_send_cmd(vdd, TX_FW_UP_WRITE, vdd->fw_up.write_delay_us);
+		if (ret) {
+			LCD_ERR("FirmWare Write [%d] Fail!!\n", loop);
+			return ret;
+		}
+	}
+
+	LCD_INFO("Swire Rework --\n");
+	return ret;
+}
+
+static int ss_mtp_id_update(struct samsung_display_driver_data *vdd)
+{
+	int ret = FW_UP_DONE;
+	int loop = 0;
+	u8 mtp_id_read[34];
+	struct dsi_panel_cmd_set *mtp_id_write_tx_cmds = NULL;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd\n");
+		return FW_UP_ERR_UPDATE_FAIL;
+	}
+
+	mtp_id_write_tx_cmds = ss_get_cmds(vdd, TX_FW_UP_MTP_ID_WRITE);
+	if (SS_IS_CMDS_NULL(mtp_id_write_tx_cmds)) {
+		LCD_ERR("No cmds for TX_FW_UP_MTP_ID_WRITE..\n");
+		return FW_UP_ERR_UPDATE_FAIL;
+	}
+
+	LCD_INFO("MTP_ID Update ++\n");
+
+	/* Original MTP_ID Data Read */
+	ss_panel_data_read(vdd, RX_FW_UP_MTP_ID_READ, mtp_id_read, LEVEL_KEY_NONE);
+	mtp_id_read[2] = 0x18;
+	mtp_id_read[14] = 0x11; /* Byte15 = 11h */
+
+	/* Copy and Change MTP_ID Data */
+	memcpy(&mtp_id_write_tx_cmds->cmds[0].msg.tx_buf[17], mtp_id_read, SWIRE_REWORK_MTP_ID_LEN);
+
+	/* MTP_ID ERASE */
+	ret = ss_fw_up_send_cmd(vdd, TX_FW_UP_MTP_ID_ERASE, vdd->fw_up.erase_delay_us);
+	if (ret) {
+		LCD_ERR("FirmWare MTP_ID Erase Fail!!\n");
+		return ret;
+	}
+
+	/* MTP_ID WRITE */
+	ret = ss_fw_up_send_cmd(vdd, TX_FW_UP_MTP_ID_WRITE, vdd->fw_up.write_delay_us);
+	if (ret) {
+		LCD_ERR("FirmWare Write [%d] Fail!!\n", loop);
+		return ret;
+	}
+
+	LCD_INFO("MTP_ID Update --\n");
+	return ret;
+}
+
+static int ss_firmware_update(struct samsung_display_driver_data *vdd)
+{
+	int ret = FW_UP_DONE;
+	int wait_cnt = 1000; /* 1000 * 0.5ms = 500ms */
+	struct dsi_display *display = NULL;
+	struct msm_drm_private *priv = NULL;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd\n");
+		return -EINVAL;
+	}
+
+	display = GET_DSI_DISPLAY(vdd);
+	if (IS_ERR_OR_NULL(display)) {
+		LCD_ERR("no display");
+		return -EINVAL;
+	}
+
+	if (!vdd->fw_up.is_support) {
+		LCD_ERR("FirmWare Update is not supported\n");
+		return FW_UP_ERR_NOT_SUPPORT;
+	}
+
+	LCD_INFO("FirmWare Update Start\n");
+
+	/* MAX CPU/BW ON */
+	priv = display->drm_dev->dev_private;
+	ss_set_max_cpufreq(vdd, true, CPUFREQ_CLUSTER_ALL);
+	ss_set_max_mem_bw(vdd, true);
+	dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_ON);
+
+	/* Enter exclusive mode */
+	mutex_lock(&vdd->exclusive_tx.ex_tx_lock);
+	vdd->exclusive_tx.permit_frame_update = false;
+	vdd->exclusive_tx.enable = true;
+	while (!list_empty(&vdd->cmd_lock.wait_list) && --wait_cnt)
+		usleep_range(500, 500);
+	ss_set_exclusive_tx_packet(vdd, TX_FW_UP_ERASE, 1);
+	ss_set_exclusive_tx_packet(vdd, TX_FW_UP_MTP_ID_ERASE, 1);
+	ss_set_exclusive_tx_packet(vdd, TX_FW_UP_WRITE, 1);
+	ss_set_exclusive_tx_packet(vdd, TX_FW_UP_MTP_ID_WRITE, 1);
+	ss_set_exclusive_tx_packet(vdd, TX_FW_UP_READ, 1);
+	ss_set_exclusive_tx_packet(vdd, RX_FW_UP_READ, 1);
+	ss_set_exclusive_tx_packet(vdd, RX_FW_UP_MTP_ID_READ, 1);
+	ss_set_exclusive_tx_packet(vdd, RX_FW_UP_STATUS, 1);
+	ss_set_exclusive_tx_packet(vdd, RX_FW_UP_CHECK, 1);
+	ss_set_exclusive_tx_packet(vdd, TX_REG_READ_POS, 1);
+
+	ret = ss_swire_rework_check(vdd);
+	if (ret)
+		LCD_ERR("Skip SWIRE Rework\n");
+	else {
+		ret = ss_swire_rework(vdd);
+		if (ret) {
+			LCD_ERR("Swire Rework Fail\n");
+			goto skip;
+		}
+		ret = ss_mtp_id_update(vdd);
+		if (ret)
+			LCD_ERR("MTP_ID Update Fail\n");
+	}
+
+skip:
+	/* exit exclusive mode*/
+	ss_set_exclusive_tx_packet(vdd, TX_FW_UP_ERASE, 0);
+	ss_set_exclusive_tx_packet(vdd, TX_FW_UP_MTP_ID_ERASE, 0);
+	ss_set_exclusive_tx_packet(vdd, TX_FW_UP_WRITE, 0);
+	ss_set_exclusive_tx_packet(vdd, TX_FW_UP_MTP_ID_WRITE, 0);
+	ss_set_exclusive_tx_packet(vdd, TX_FW_UP_READ, 0);
+	ss_set_exclusive_tx_packet(vdd, RX_FW_UP_READ, 0);
+	ss_set_exclusive_tx_packet(vdd, RX_FW_UP_MTP_ID_READ, 0);
+	ss_set_exclusive_tx_packet(vdd, RX_FW_UP_STATUS, 0);
+	ss_set_exclusive_tx_packet(vdd, RX_FW_UP_CHECK, 0);
+	ss_set_exclusive_tx_packet(vdd, TX_REG_READ_POS, 0);
+	vdd->exclusive_tx.enable = false;
+	mutex_unlock(&vdd->exclusive_tx.ex_tx_lock);
+	wake_up_all(&vdd->exclusive_tx.ex_tx_waitq);
+
+	/* MAX CPU OFF */
+	dsi_display_clk_ctrl(display->dsi_clk_handle, DSI_ALL_CLKS, DSI_CLK_OFF);
+	ss_set_max_mem_bw(vdd, false);
+	ss_set_max_cpufreq(vdd, false, CPUFREQ_CLUSTER_ALL);
+
+	vdd->debug_data->print_cmds = false;
+
+	LCD_INFO("FirmWare Update Finish\n");
+	return ret;
+}
+
 static int ss_self_display_data_init(struct samsung_display_driver_data *vdd)
 {
 	LCD_INFO("++\n");
@@ -1484,8 +1753,10 @@ cancel_poc:
 		ret = -EIO;
 	}
 
-	if (pos == image_size || ret == -EIO)
-		LCD_DEBUG("WRITE_LOOP_END pos : %d \n", pos);
+	if (pos == last_pos) {
+		poc_done = 1;
+		LCD_INFO("WRITE_LOOP_END pos:%d poc:%d\n", pos, poc_done);
+	}
 
 	/* exit exclusive mode*/
 	for (type = TX_POC_CMD_START; type < TX_POC_CMD_END + 1 ; type++)
@@ -1858,9 +2129,13 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->poc_driver.poc_read = poc_read;
 	vdd->poc_driver.poc_comp = NULL;
 
+	/* FirmWare Update */
+	vdd->panel_func.samsung_fw_up = ss_firmware_update;
+
 	vdd->debug_data->print_cmds = false;
 	prev_bl_s6tuum3 = 0;
 	prev_refresh_rate = 0;
+	poc_done = 0;
 
 	LCD_INFO("S6TUUM3_AMSA24VU01 : -- \n");
 }

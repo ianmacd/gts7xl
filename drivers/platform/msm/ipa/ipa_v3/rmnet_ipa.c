@@ -1618,8 +1618,6 @@ static int handle3_egress_format(struct net_device *dev,
 			rc = ipa3_qmi_set_aggr_info(DATA_AGGR_TYPE_QMAP_V01);
 		}
 		rmnet_ipa3_ctx->ipa_mhi_aggr_formet_set = true;
-		/* register Q6 indication */
-		rc = ipa3_qmi_req_ind();
 		return rc;
 	}
 
@@ -2699,8 +2697,8 @@ static const struct of_device_id rmnet_ipa_dt_match[] = {
 MODULE_DEVICE_TABLE(of, rmnet_ipa_dt_match);
 
 static const struct dev_pm_ops rmnet_ipa_pm_ops = {
-	.suspend = rmnet_ipa_ap_suspend,
-	.resume_noirq = rmnet_ipa_ap_resume,
+	.suspend_late = rmnet_ipa_ap_suspend,
+	.resume_early = rmnet_ipa_ap_resume,
 };
 
 static struct platform_driver rmnet_ipa_driver = {

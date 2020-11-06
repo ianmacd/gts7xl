@@ -4471,6 +4471,32 @@ static void ss_panel_parse_dt(struct samsung_display_driver_data *vdd)
 		ss_panel_parse_spi_cmd(np, vdd);
 	}
 
+	/* SWIRE Rework */
+	vdd->fw_up.is_support = of_property_read_bool(np, "samsung,support_firmware_update");
+	LCD_INFO("[FW_UP]is_support = %d\n", vdd->fw_up.is_support);
+
+	if (vdd->fw_up.is_support) {
+		/* ERASE */
+		rc = of_property_read_u32(np, "samsung,firmware_update_erase_delay_us", tmp);
+		vdd->fw_up.erase_delay_us = (!rc ? tmp[0] : 0);
+
+		/* WRITE */
+		rc = of_property_read_u32(np, "samsung,firmware_update_write_delay_us", tmp);
+		vdd->fw_up.write_delay_us = (!rc ? tmp[0] : 0);
+
+		/* READ */
+		rc = of_property_read_u32(np, "samsung,firmware_update_read_delay_us", tmp);
+		vdd->fw_up.read_delay_us = (!rc ? tmp[0] : 0);
+		rc = of_property_read_u32(np, "samsung,firmware_update_status_read_value", tmp);
+		vdd->fw_up.read_status_value = (!rc ? tmp[0] : 0);
+		rc = of_property_read_u32(np, "samsung,firmware_update_done_check_read_value", tmp);
+		vdd->fw_up.read_done_check = (!rc ? tmp[0] : 0);
+
+		LCD_INFO("[FW_UP] E/W/R delay_us(%d/%d/%d) status_read_value (0x%x) rework_done_check_value(0x%x)\n",
+			vdd->fw_up.erase_delay_us, vdd->fw_up.write_delay_us, vdd->fw_up.read_delay_us,
+			vdd->fw_up.read_status_value, vdd->fw_up.read_done_check);
+	}
+
 	/* PAC */
 	vdd->br_info.common_br.pac = of_property_read_bool(np, "samsung,support_pac");
 	LCD_INFO("vdd->br_info.common_br.pac = %d\n", vdd->br_info.common_br.pac);
