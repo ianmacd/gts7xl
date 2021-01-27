@@ -48,6 +48,7 @@ struct s2mpb02_data {
 
 #if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SEC_F2Q_PROJECT)
 struct s2mpb02_data *local_rdata[TYPE_S2MPB02_REG_MAX];
+int recovery_id[TYPE_S2MPB02_REG_MAX];
 #endif
 
 static int s2m_enable(struct regulator_dev *rdev)
@@ -362,6 +363,16 @@ int s2mpb02_recovery(int pmic_id)
 	if (!local_rdata[pmic_id]) {
 		pr_info("%s: There is no local rdev data\n", __func__);
 		return -ENODEV;
+	}
+
+	// Skip recovery if register value is not reset
+	if (recovery_id[pmic_id] >= 0) {
+		rdev = local_rdata[pmic_id]->rdev[recovery_id[pmic_id]];
+		ret = s2mpb02_read_reg(local_rdata[pmic_id]->iodev->i2c, rdev->desc->enable_reg, &val);
+		if (val & 0x80) {
+			pr_info("%s: No need to recovery, recovery_id[%d]:%d\n", __func__, pmic_id, recovery_id[pmic_id]);
+			return 0;
+		}
 	}
 
 	pr_info("%s: Start recovery\n", __func__);
@@ -693,6 +704,7 @@ static int s2mpb02_pmic_probe(struct platform_device *pdev)
 	pdev_id = platform_get_device_id(pdev);
 	id_num = pdev_id->driver_data;
 	local_rdata[id_num] = s2mpb02;
+	recovery_id[id_num] = -1;
 	pr_debug("%s: pdev_id->name(%s), id_num(%d)\n", __func__, pdev_id->name, id_num);
 #endif
 
@@ -711,6 +723,10 @@ static int s2mpb02_pmic_probe(struct platform_device *pdev)
 			s2mpb02->rdev[i] = NULL;
 			goto err_s2mpb02_data;
 		}
+#if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SEC_F2Q_PROJECT)
+		if ((recovery_id[id_num] < 0) && s2mpb02->rdev[i]->constraints->always_on)
+			recovery_id[id_num] = id;
+#endif
 	}
 #ifdef CONFIG_DRV_SAMSUNG_PMIC
 	/* create sysfs */
@@ -729,12 +745,13 @@ err_pdata:
 
 static int s2mpb02_pmic_remove(struct platform_device *pdev)
 {
+#ifdef CONFIG_DRV_SAMSUNG_PMIC
 	struct s2mpb02_data *s2mpb02 = platform_get_drvdata(pdev);
 
-	dev_info(&pdev->dev, "%s\n", __func__);
-#ifdef CONFIG_DRV_SAMSUNG_PMIC
 	pmic_device_destroy(s2mpb02->dev->devt);
 #endif
+	dev_info(&pdev->dev, "%s\n", __func__);
+
 	return 0;
 }
 

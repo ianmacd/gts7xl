@@ -272,7 +272,7 @@ int ufsf_query_ioctl(struct ufsf_feature *ufsf, int lun, void __user *buffer,
 	int err = 0;
 	int index = 0;
 	int length = 0;
-	int buf_len = 0;
+	unsigned int buf_len = 0;
 
 	opcode = ioctl_data->opcode & 0xffff;
 
@@ -281,6 +281,12 @@ int ufsf_query_ioctl(struct ufsf_feature *ufsf, int lun, void __user *buffer,
 
 	buf_len = (ioctl_data->idn == QUERY_DESC_IDN_STRING) ?
 		IOCTL_DEV_CTX_MAX_SIZE : QUERY_DESC_MAX_SIZE;
+
+	if (buf_len < ioctl_data->buf_size) {
+		ERR_MSG("Invalid ioctl_data->buf_size : %u, buf_len : %u", ioctl_data->buf_size, buf_len);
+		err = -EINVAL;
+		goto out;
+	}
 
 	kernel_buf = kzalloc(buf_len, GFP_KERNEL);
 	if (!kernel_buf) {

@@ -72,9 +72,9 @@
 #if defined(CONFIG_FOLDER_HALL)
 #define HALLIC_PATH		"/sys/class/sec/sec_flip/flipStatus"
 #else
-#define HALLIC_PATH		"/sys/class/sec/sec_key/hall_detect"
+#define HALLIC_PATH		"/sys/class/sec/hall_ic/hall_detect"
 #endif
-#define HALLIC_CERT_PATH	"/sys/class/sec/sec_key/certify_hall_detect"
+#define HALLIC_CERT_PATH	"/sys/class/sec/hall_ic/certify_hall_detect"
 
 struct sx9360_p {
 	struct i2c_client *client;
@@ -235,7 +235,7 @@ static void sx9360_initialize_register(struct sx9360_p *data)
 	u8 val = 0;
 	unsigned int idx;
 
-	for (idx = 0; idx < (sizeof(setup_reg) >> 1); idx++) {		
+	for (idx = 0; idx < (unsigned int)(sizeof(setup_reg) >> 1); idx++) {
 		sx9360_i2c_write(data, setup_reg[idx].reg, setup_reg[idx].val);
 		pr_info("[SX9360]: %s - Write Reg: 0x%x Value: 0x%x\n",
 			__func__, setup_reg[idx].reg, setup_reg[idx].val);

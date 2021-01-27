@@ -37,7 +37,7 @@
 #define MSG_DIGITAL_HALL_ANGLE_MAX 58
 #endif
 #ifdef CONFIG_SUPPORT_DUAL_DDI_COPR_FOR_LIGHT_SENSOR
-#define MSG_DDI_MAX 2
+#define MSG_DDI_MAX 12
 #endif
 
 enum {

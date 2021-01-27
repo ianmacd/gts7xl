@@ -141,7 +141,6 @@ static struct dsi_panel_cmd_set * ss_brightness_gamma_mode2_hbm(struct samsung_d
 
 	pcmds = ss_get_cmds(vdd, TX_GAMMA_MODE2_HBM);
 
-	pcmds->cmds[0].msg.tx_buf[1] = vdd->finger_mask_updated? 0xE0 : 0xE8;	/* HBM Smooth transition : 0xE8 */
 	pcmds->cmds[1].msg.tx_buf[1] = vdd->br_info.temperature > 0 ?	vdd->br_info.temperature : (char)(BIT(7) | (-1*vdd->br_info.temperature));
 	pcmds->cmds[1].msg.tx_buf[3] = elvss_table[vdd->br_info.common_br.cd_idx];	/* ELVSS Value for HBM brgihtness */
 	pcmds->cmds[2].msg.tx_buf[1] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 8, 2);
@@ -154,22 +153,23 @@ static struct dsi_panel_cmd_set * ss_brightness_gamma_mode2_hbm(struct samsung_d
 
 static struct dsi_panel_cmd_set * ss_brightness_gamma_mode2_hmt(struct samsung_display_driver_data *vdd, int *level_key)
 {
- 	struct dsi_panel_cmd_set *pcmds = NULL;
+	struct dsi_panel_cmd_set *pcmds;
 
-#if 0 // no TX_GAMMA_MODE2_HMT..
-    if (IS_ERR_OR_NULL(vdd)) {
-        LCD_ERR(": Invalid data vdd : 0x%zx", (size_t)vdd);
-        return NULL;
-    }
+	if (IS_ERR_OR_NULL(vdd)) {
+	        LCD_ERR("Invalid data vdd : 0x%zx", (size_t)vdd);
+		return NULL;
+	}
 
 	pcmds = ss_get_cmds(vdd, TX_GAMMA_MODE2_HMT);
-	pcmds->cmds[0].msg.tx_buf[1] = get_bit(vdd->br_info.hmt_stat.candela_level_hmt, 8, 2);
-	pcmds->cmds[0].msg.tx_buf[2] = get_bit(vdd->br_info.hmt_stat.candela_level_hmt, 0, 8);
-	LCD_INFO("HMT : Scaled Level [%d] / 51h [0x%x][0x%x] \n", vdd->br_info.hmt_stat.candela_level_hmt,
-		pcmds->cmds[0].msg.tx_buf[1], pcmds->cmds[0].msg.tx_buf[2]);
-#endif
 
-	*level_key = LEVEL1_KEY;
+	pcmds->cmds[0].msg.tx_buf[1] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 8, 2);
+	pcmds->cmds[0].msg.tx_buf[2] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 0, 8);
+
+	LCD_INFO("cd_idx: %d, cd_level: %d, WRDISBV: %x %x\n",
+			vdd->br_info.common_br.cd_idx,
+			vdd->br_info.common_br.cd_level,
+			pcmds->cmds[0].msg.tx_buf[1],
+			pcmds->cmds[0].msg.tx_buf[2]);
 
 	return pcmds;
 }
@@ -962,6 +962,13 @@ static void ss_copr_panel_init(struct samsung_display_driver_data *vdd)
 static int samsung_panel_off_pre(struct samsung_display_driver_data *vdd)
 {
 	int rc = 0;
+	int rddpm;
+
+	rddpm = ss_read_rddpm(vdd);
+
+	SS_XLOG(rddpm);
+	LCD_INFO("panel dbg rddpm: %x\n", rddpm);
+
 	return rc;
 }
 

@@ -45,7 +45,6 @@
 #include <linux/sched.h>
 #include <linux/poll.h>
 #include <linux/regulator/consumer.h>
-#include <linux/wakelock.h>
 #ifdef CONFIG_UWB_PMIC_CLOCK
 #include <linux/clk.h>
 #endif
@@ -55,7 +54,6 @@
 
 #ifdef CONFIG_NFC_FEATURE_SN100U
 /*Invoke cold reset if no response from eSE*/
-#include "../nfc/pn547.h"
 extern long p61_cold_reset(void);
 #endif
 static bool read_abort_requested = false;
@@ -106,8 +104,9 @@ struct sr100_dev {
   struct miscdevice sr100_device; /* char device as misc driver */
   unsigned int ce_gpio;           /* SW Reset gpio */
   unsigned int irq_gpio;          /* SR100 will interrupt DH for any ntf */
-  unsigned int rtc_sync_gpio;     /* host ready to read data */
-  unsigned int wakeup_gpio;         /* wakeup gpio */
+  unsigned int spi_handshake_gpio;/* host ready to read data */
+  unsigned int rtc_sync_gpio;     /* rtc sync support for helios ranging */
+  unsigned int ant_connection_status_gpio; /* antenna connection status */
   bool irq_enabled;               /* flag to indicate irq is used */
   bool irq_received;              /* flag to indicate that irq is received */
   spinlock_t irq_enabled_lock;    /* spin lock for read irq */
@@ -123,10 +122,10 @@ struct sr100_dev {
   const char *uwb_vdd_io;
   const char *uwb_vdd;
   const char *uwb_vdd_rf;
+  const char *uwb_vdd_se_i2c_pullup;
 #ifdef CONFIG_UWB_PMIC_CLOCK
   struct   clk *clk;
 #endif
-  struct wake_lock uwb_wake_lock;
 };
 #if (ENABLE_THROUGHPUT_MEASUREMENT == 1)
 #define READ_THROUGH_PUT 0x01
@@ -294,7 +293,6 @@ static irqreturn_t sr100_dev_irq_handler(int irq, void* dev_id) {
   sr100_disable_irq(sr100_dev);
   /* Wake up waiting readers */
   wake_up(&sr100_dev->read_wq);
-  wake_lock_timeout(&sr100_dev->uwb_wake_lock, 2*HZ);
 
   return IRQ_HANDLED;
 }
@@ -320,16 +318,22 @@ static long sr100_dev_ioctl(struct file* filp, unsigned int cmd,
   switch (cmd) {
     case SR100_SET_PWR:
       if (arg == PWR_ENABLE) {
-        SR100_DBG_MSG(" enable power request\n");
+        SR100_DBG_MSG("enable power request\n");
+        if((int)sr100_dev->rtc_sync_gpio > 0) {
+          gpio_set_value(sr100_dev->rtc_sync_gpio, 1);
+        }
         gpio_set_value(sr100_dev->ce_gpio, 1);
         msleep(10);
       } else if (arg == PWR_DISABLE) {
         SR100_DBG_MSG("disable power request\n");
         gpio_set_value(sr100_dev->ce_gpio, 0);
+        if((int)sr100_dev->rtc_sync_gpio > 0) {
+          gpio_set_value(sr100_dev->rtc_sync_gpio, 0);
+        }
         sr100_disable_irq(sr100_dev);
         msleep(10);
       } else if (arg == ABORT_READ_PENDING) {
-        SR100_DBG_MSG( "%s Abort Read Pending\n", __func__);
+        SR100_DBG_MSG( "Abort Read Pending\n");
         read_abort_requested = true;
         sr100_disable_irq(sr100_dev);
         /* Wake up waiting readers */
@@ -340,10 +344,10 @@ static long sr100_dev_ioctl(struct file* filp, unsigned int cmd,
       if (arg == 1) {
         is_fw_dwnld_enabled = true;
         read_abort_requested = false;
-        SR100_DBG_MSG("%s FW download enabled\n", __func__);
+        SR100_DBG_MSG("FW download enabled\n");
       } else if(arg == 0){
         is_fw_dwnld_enabled = false;
-        SR100_DBG_MSG("%s FW download disabled\n", __func__);
+        SR100_DBG_MSG("FW download disabled\n");
       }
       break;
     case SR100_GET_THROUGHPUT:
@@ -366,10 +370,20 @@ static long sr100_dev_ioctl(struct file* filp, unsigned int cmd,
       break;
 #ifdef CONFIG_NFC_FEATURE_SN100U
     case SR100_ESE_RESET:
-      SR100_DBG_MSG("%s SR100_ESE_RESET Enter\n", __func__);
+      SR100_DBG_MSG("SR100_ESE_RESET Enter\n");
       ret = p61_cold_reset();
       break;
 #endif
+
+    case SR100_GET_ANT_CONNECTION_STATUS:
+      SR100_DBG_MSG("SR100_GET_ANT_CONNECTION_STATUS Enter\n");
+      if((int)sr100_dev->ant_connection_status_gpio > 0) {
+        ret = !gpio_get_value(sr100_dev->ant_connection_status_gpio);
+      } else {
+        ret = -1;
+      }
+      SR100_DBG_MSG("SR100_GET_ANT_CONNECTION_STATUS ret =%d \n", ret);
+      break;
     default:
       SR100_DBG_MSG(" Error case\n");
       ret = -EINVAL;  // ToDo: After adding proper switch cases we have to
@@ -398,8 +412,6 @@ static int sr100_dev_transceive(struct sr100_dev* sr100_dev, int op_mode, int co
   sr100_dev->IsExtndLenIndication = 0;
   ret = -1;
   retry_count = 0;
-  /*500ms timeout in jiffies*/
-  sr100_dev->timeOutInMs = ((500*HZ)/1000);
 
   switch(sr100_dev->mode){
     case SR100_WRITE_MODE:
@@ -435,7 +447,7 @@ static int sr100_dev_transceive(struct sr100_dev* sr100_dev, int op_mode, int co
         goto transcive_end;
       }
       retry_count = 0;
-      gpio_set_value(sr100_dev->rtc_sync_gpio, 1);
+      gpio_set_value(sr100_dev->spi_handshake_gpio, 1);
       while (gpio_get_value(sr100_dev->irq_gpio)) {
         if (retry_count == 100) {
            break;
@@ -484,7 +496,7 @@ static int sr100_dev_transceive(struct sr100_dev* sr100_dev, int op_mode, int co
         sr100_dev->totalBtyesToRead = ((sr100_dev->totalBtyesToRead << 8) | sr100_dev->rx_buffer[EXTENDED_LENGTH_OFFSET]);
       }
       if(sr100_dev->totalBtyesToRead > MAX_UCI_PKT_SIZE) {
-        SR100_ERR_MSG("Length %d  exceeds the max limit %d....\n",(int)sr100_dev->totalBtyesToRead,(int)SR100_RXBUF_SIZE);
+        SR100_ERR_MSG("Length %d  exceeds the max limit %d....\n",(int)sr100_dev->totalBtyesToRead,(int)MAX_UCI_PKT_SIZE);
         ret = -1;
         goto transcive_end;
       }
@@ -495,18 +507,18 @@ static int sr100_dev_transceive(struct sr100_dev* sr100_dev, int op_mode, int co
           goto transcive_end;
         }
       }
-      sr100_dev->read_count = sr100_dev->totalBtyesToRead + NORMAL_MODE_HEADER_LEN;
+      sr100_dev->read_count = (unsigned int)(sr100_dev->totalBtyesToRead + NORMAL_MODE_HEADER_LEN);
       retry_count = 0;
       do{
         usleep_range(5,10);
         retry_count++;
         if(retry_count == 200){
-          SR100_ERR_MSG("Slave not released the IRQ even after 1ms\n");
+          SR100_ERR_MSG("IC not released the IRQ even after 1ms\n");
           break;
         }
       }while(gpio_get_value(sr100_dev->irq_gpio));
       ret = spi_transcive_success;
-      gpio_set_value(sr100_dev->rtc_sync_gpio, 0);
+      gpio_set_value(sr100_dev->spi_handshake_gpio, 0);
     }
     break;
     default:
@@ -515,7 +527,7 @@ static int sr100_dev_transceive(struct sr100_dev* sr100_dev, int op_mode, int co
   }
 transcive_end:
   if(sr100_dev->mode == SR100_READ_MODE){
-    gpio_set_value(sr100_dev->rtc_sync_gpio, 0);
+    gpio_set_value(sr100_dev->spi_handshake_gpio, 0);
   }
   mutex_unlock(&sr100_dev->sr100_access_lock);
   return ret;
@@ -598,7 +610,7 @@ static ssize_t sr100_dev_write(struct file* filp, const char* buf, size_t count,
   sr100_stop_throughput_measurement(WRITE_THROUGH_PUT, ret);
 #endif
 #ifdef DEBUG_LOG
-  SR100_DBG_MSG("w ret %d\n", ret);
+  SR100_DBG_MSG("w %d\n", ret);
 #endif
 write_end:
   return ret;
@@ -618,11 +630,25 @@ write_end:
  ****************************************************************************/
 static ssize_t sr100_hbci_read(struct sr100_dev *sr100_dev,char* buf, size_t count){
   int ret = -EIO;
-  ret = wait_event_interruptible(sr100_dev->read_wq, sr100_dev->irq_received);
-  if (ret) {
-    SR100_ERR_MSG("hbci wait_event_interruptible() : Failed.\n");
+  if(count > SR100_RXBUF_SIZE) {
+    SR100_ERR_MSG("count(%d) out of range(0-%d)\n", count, SR100_RXBUF_SIZE);
+    ret = -EINVAL;
     goto hbci_fail;
   }
+  /* wait for inetrrupt upto 500ms after that timeout will happen and returns read fail */
+  ret = wait_event_interruptible_timeout(sr100_dev->read_wq, sr100_dev->irq_received, sr100_dev->timeOutInMs);
+  if (ret == 0) {
+    SR100_ERR_MSG("hbci wait_event_interruptible timeout() : Failed.\n");
+    ret = -1;
+    goto hbci_fail;
+  }
+
+  if (read_abort_requested) {
+    read_abort_requested = false;
+    SR100_ERR_MSG("HBCI Abort Read pending......");
+    return ret;
+  }
+
   if(!gpio_get_value(sr100_dev->irq_gpio)){
     SR100_DBG_MSG("IRQ is low during firmware download\n");
     goto hbci_fail;
@@ -645,7 +671,7 @@ static ssize_t sr100_hbci_read(struct sr100_dev *sr100_dev,char* buf, size_t cou
     ret = -EFAULT;
   }
 #ifdef DEBUG_LOG
-  SR100_DBG_MSG("sr100_hbci_read ret %d- Exit \n", ret);
+  SR100_DBG_MSG("R %d\n", ret);
 #endif
   return ret;
 hbci_fail:
@@ -673,7 +699,8 @@ static ssize_t sr100_dev_read(struct file* filp, char* buf, size_t count,
 #ifdef DEBUG_LOG
   SR100_DBG_MSG("r\n");
 #endif
-
+  /*500ms timeout in jiffies*/
+  sr100_dev->timeOutInMs = ((500*HZ)/1000);
   memset(sr100_dev->rx_buffer, 0x00, SR100_RXBUF_SIZE);
   if (!gpio_get_value(sr100_dev->irq_gpio)) {
     if (filp->f_flags & O_NONBLOCK) {
@@ -691,7 +718,9 @@ first_irq_wait:
   if (!read_abort_requested) {
     ret = wait_event_interruptible(sr100_dev->read_wq, sr100_dev->irq_received);
     if (ret) {
-      SR100_ERR_MSG("read_wq wait_event_interruptible() :%d Failed.\n", ret);
+      if (ret != -ERESTARTSYS) {
+        SR100_ERR_MSG("read_wq wait_event_interruptible() :%d Failed.\n", ret);
+      }
       goto read_end;
     }
   }
@@ -720,7 +749,9 @@ first_irq_wait:
   }
 read_end:
 #ifdef DEBUG_LOG
-  SR100_DBG_MSG("r ret %d\n", ret);
+  if (ret != -ERESTARTSYS) {
+    SR100_DBG_MSG("r %d\n", ret);
+  }
 #endif
   retry_count = 0;
   return ret;
@@ -763,35 +794,54 @@ static int sr100_hw_setup(struct sr100_spi_platform_data* platform_data,
     SR100_ERR_MSG("sr100 - Failed setting ce gpio - %d\n", platform_data->ce_gpio);
     goto fail_gpio;
   }
+  if((int)platform_data->rtc_sync_gpio > 0) {
+    ret = gpio_request(platform_data->rtc_sync_gpio, "sr100 rtc sync");
+    if (ret < 0) {
+      SR100_ERR_MSG("sr100 - Failed requesting rtc sync gpio - %d\n", platform_data->rtc_sync_gpio);
+      goto fail_gpio;
+    }
+    ret = gpio_direction_output(platform_data->rtc_sync_gpio, 0);
+    if (ret < 0) {
+      SR100_ERR_MSG("sr100 - Failed setting rtc sync gpio - %d\n", platform_data->rtc_sync_gpio);
+      goto fail_gpio;
+    }
+  }
+  ret = gpio_request(platform_data->spi_handshake_gpio, "sr100 ri");
+  if (ret < 0) {
+    SR100_ERR_MSG("sr100 - Failed requesting spi handshake gpio - %d\n", platform_data->spi_handshake_gpio);
+    goto fail_gpio;
+  }
+  ret = gpio_direction_output(platform_data->spi_handshake_gpio, 0);
+  if (ret < 0) {
+    SR100_ERR_MSG("sr100 - Failed setting spi handshake gpio - %d\n", platform_data->spi_handshake_gpio);
+    goto fail_gpio;
+  }
+  if((int)platform_data->ant_connection_status_gpio > 0) {
+    ret = gpio_request(platform_data->ant_connection_status_gpio, "sr100 ant connection status");
+    if (ret < 0) {
+      SR100_ERR_MSG("sr100 - Failed requesting ant connection status gpio - %d\n", platform_data->ant_connection_status_gpio);
+      goto fail_gpio;
+    }
+    ret = gpio_direction_input(platform_data->ant_connection_status_gpio);
+    if (ret < 0) {
+      SR100_ERR_MSG("sr100 - Failed setting ant connection status gpio - %d\n", platform_data->ant_connection_status_gpio);
+      goto fail_gpio;
+    }
+  }
 
-  ret = gpio_request(platform_data->rtc_sync_gpio, "sr100 rtc sync");
-  if (ret < 0) {
-    SR100_ERR_MSG("sr100 - Failed requesting rtc sync gpio - %d\n", platform_data->rtc_sync_gpio);
-    goto fail_gpio;
-  }
-  ret = gpio_direction_output(platform_data->rtc_sync_gpio, 0);
-  if (ret < 0) {
-    SR100_ERR_MSG("sr100 - Failed setting rtc sync gpio - %d\n", platform_data->rtc_sync_gpio);
-    goto fail_gpio;
-  }  
-
-  ret = gpio_request(platform_data->wakeup_gpio, "sr100 wakeup");
-  if (ret < 0) {
-    SR100_ERR_MSG("sr100 - Failed requesting wake gpio - %d\n", platform_data->wakeup_gpio);
-    goto fail_gpio;
-  }
-  ret = gpio_direction_output(platform_data->wakeup_gpio, 0);
-  if (ret < 0) {
-    SR100_ERR_MSG("sr100 - Failed setting wake gpio - %d\n", platform_data->wakeup_gpio);
-    goto fail_gpio;
-  }
   ret = 0;
   SR100_DBG_MSG("Exit : %s\n", __FUNCTION__);
   return ret;
 
 fail_gpio:
+  if((int)platform_data->ant_connection_status_gpio > 0) {
+    gpio_free(platform_data->ant_connection_status_gpio);
+  }
+  gpio_free(platform_data->spi_handshake_gpio);
   gpio_free(platform_data->ce_gpio);
-  gpio_free(platform_data->rtc_sync_gpio);
+  if((int)platform_data->rtc_sync_gpio > 0) {
+    gpio_free(platform_data->rtc_sync_gpio);
+  }
 fail_irq:
   gpio_free(platform_data->irq_gpio);
 fail:
@@ -852,41 +902,52 @@ static int sr100_parse_dt(struct device* dev,
   
   pdata->irq_gpio = of_get_named_gpio(np, "nxp,sr100-irq", 0);
   if (!gpio_is_valid(pdata->irq_gpio)) {
-    SR100_ERR_MSG("nxp,sr100-irq\n");
+    SR100_ERR_MSG("nxp,sr100-irq not found\n");
     return -EINVAL;
   }
   pdata->ce_gpio = of_get_named_gpio(np, "nxp,sr100-ce", 0);
   if (!gpio_is_valid(pdata->ce_gpio)) {
-    SR100_ERR_MSG("nxp,sr100-ce\n");
+    SR100_ERR_MSG("nxp,sr100-ce not found\n");
     return -EINVAL;
   }
-  pdata->rtc_sync_gpio = of_get_named_gpio(np, "nxp,sr100-ri", 0);
+  pdata->rtc_sync_gpio = of_get_named_gpio(np, "nxp,sr100-rtc-sync", 0);
   if (!gpio_is_valid(pdata->rtc_sync_gpio)) {
-    SR100_ERR_MSG("nxp,sr100-ri\n");
+    SR100_ERR_MSG("nxp,sr100-rtc-sync not found\n");
+    //return -EINVAL;
+  }
+  pdata->spi_handshake_gpio = of_get_named_gpio(np, "nxp,sr100-ri", 0);
+  if (!gpio_is_valid(pdata->spi_handshake_gpio)) {
+    SR100_ERR_MSG("nxp,sr100-ri not found\n");
     return -EINVAL;
   }
-  pdata->wakeup_gpio = of_get_named_gpio(np, "nxp,sr100-wakeup", 0);
-  if (!gpio_is_valid(pdata->wakeup_gpio)) {
-    SR100_ERR_MSG("nxp,sr100-wakeup\n");
-    return -EINVAL;
+  pdata->ant_connection_status_gpio= of_get_named_gpio(np, "nxp,sr100-ant-connection-status", 0);
+  if (!gpio_is_valid(pdata->ant_connection_status_gpio)) {
+    SR100_ERR_MSG("nxp,sr100-ant-connection-status not found\n");
+    //return -EINVAL;
   }
   if (of_property_read_string(np, "nxp,vdd-io", &pdata->uwb_vdd_io) < 0) {
-    SR100_ERR_MSG("get uwb_vdd_io error\n");
+    SR100_ERR_MSG("uwb_vdd_io not found\n");
     pdata->uwb_vdd_io = NULL;
   } else {
     SR100_ERR_MSG("uwb_vdd_io :%s\n", pdata->uwb_vdd_io);
   }
   if (of_property_read_string(np, "nxp,vdd", &pdata->uwb_vdd) < 0) {
-    SR100_ERR_MSG("get uwb_vdd error\n");
+    SR100_ERR_MSG("uwb_vdd not found\n");
     pdata->uwb_vdd = NULL;
   } else {
     SR100_ERR_MSG("uwb_vdd :%s\n", pdata->uwb_vdd);
   }
   if (of_property_read_string(np, "nxp,vdd-rf", &pdata->uwb_vdd_rf) < 0) {
-    SR100_ERR_MSG("get uwb_vdd_rf error\n");
+    SR100_ERR_MSG("uwb_vdd_rf not found\n");
     pdata->uwb_vdd_rf = NULL;
   } else {
     SR100_ERR_MSG("uwb_vdd_rf :%s\n", pdata->uwb_vdd_rf);
+  }
+  if (of_property_read_string(np, "nxp,vdd-se-i2c-pullup", &pdata->uwb_vdd_se_i2c_pullup) < 0) {
+    SR100_ERR_MSG("uwb_vdd_se_i2c_pullup not found\n");
+    pdata->uwb_vdd_se_i2c_pullup = NULL;
+  } else {
+    SR100_ERR_MSG("uwb_vdd_se_i2c_pullup :%s\n", pdata->uwb_vdd_se_i2c_pullup);
   }
 #ifdef CONFIG_UWB_PMIC_CLOCK
   if (of_get_property(np, "nxp,sr100-pm-clk", NULL)) {
@@ -900,15 +961,15 @@ static int sr100_parse_dt(struct device* dev,
     }  
   }
 #endif
-  SR100_DBG_MSG("sr100 : irq_gpio = %d, ce_gpio = %d, rtc_sync_gpio = %d, wakeup_gpio = %d\n",
-          pdata->irq_gpio, pdata->ce_gpio, pdata->rtc_sync_gpio, pdata->wakeup_gpio);
+  SR100_DBG_MSG("sr100 : irq_gpio = %u, ce_gpio = %u, rtc_sync_gpio = %u, spi_handshake_gpio = %u, ant_connection_status_gpio = %u\n",
+          pdata->irq_gpio, pdata->ce_gpio, pdata->rtc_sync_gpio, pdata->spi_handshake_gpio, pdata->ant_connection_status_gpio);
   return 0;
 }
 
 static int sr100_regulator_onoff(struct device *dev, struct sr100_dev* pdev, bool onoff)
 {
   int rc = 0;
-  struct regulator *regulator_uwb_vdd_io, *regulator_uwb_vdd, *regulator_uwb_vdd_rf;
+  struct regulator *regulator_uwb_vdd_io = NULL, *regulator_uwb_vdd = NULL, *regulator_uwb_vdd_rf = NULL, *regulator_uwb_vdd_se_i2c_pullup = NULL;
 
   if(pdev->uwb_vdd_io != NULL) {
     regulator_uwb_vdd_io = regulator_get(dev, pdev->uwb_vdd_io);
@@ -926,7 +987,7 @@ static int sr100_regulator_onoff(struct device *dev, struct sr100_dev* pdev, boo
     if (IS_ERR(regulator_uwb_vdd) || regulator_uwb_vdd == NULL) {
       SR100_ERR_MSG("regulator_uwb_vdd regulator_get fail\n");
       rc = -ENODEV;
-      goto regulator_err1;
+      goto regulator_err;
     }
   } else {
     regulator_uwb_vdd = NULL;
@@ -938,13 +999,24 @@ static int sr100_regulator_onoff(struct device *dev, struct sr100_dev* pdev, boo
     if (IS_ERR(regulator_uwb_vdd_rf) || regulator_uwb_vdd_rf == NULL) {
       SR100_ERR_MSG("regulator_uwb_vdd_rf regulator_get fail\n");
       rc = -ENODEV;
-      goto regulator_err2;
+      goto regulator_err;
     }
   } else {
     regulator_uwb_vdd_rf = NULL;
     SR100_ERR_MSG("regulator_uwb_vdd_rf not support\n");
   }
 
+  if(pdev->uwb_vdd_se_i2c_pullup != NULL) {
+    regulator_uwb_vdd_se_i2c_pullup = regulator_get(dev, pdev->uwb_vdd_se_i2c_pullup);
+    if (IS_ERR(regulator_uwb_vdd_se_i2c_pullup) || regulator_uwb_vdd_se_i2c_pullup == NULL) {
+      SR100_ERR_MSG("regulator_uwb_vdd_se_i2c_pullup regulator_get fail\n");
+      rc = -ENODEV;
+      goto regulator_err;
+    }
+  } else {
+    regulator_uwb_vdd_se_i2c_pullup = NULL;
+    SR100_ERR_MSG("regulator_uwb_vdd_se_i2c_pullup not support\n");
+  }
 
   SR100_DBG_MSG("sr100_regulator_onoff  = %d\n", onoff);
   if (onoff == true) {
@@ -952,31 +1024,38 @@ static int sr100_regulator_onoff(struct device *dev, struct sr100_dev* pdev, boo
       rc = regulator_enable(regulator_uwb_vdd_io);
       if (rc) {
         SR100_ERR_MSG("regulator_uwb_vdd_io enable failed, rc=%d\n", rc);
-        goto regulator_err3;
+        goto regulator_err;
       }
     }
     if(regulator_uwb_vdd != NULL) {
       rc = regulator_set_load(regulator_uwb_vdd, 400000);
       if (rc) {
         SR100_ERR_MSG("regulator_uwb_vdd set_load failed, rc=%d\n", rc);
-        goto regulator_err3;
+        goto regulator_err;
       }
       rc = regulator_enable(regulator_uwb_vdd);
       if (rc) {
         SR100_ERR_MSG("regulator_uwb_vdd enable failed, rc=%d\n", rc);
-        goto regulator_err3;
+        goto regulator_err;
       }
     }
     if(regulator_uwb_vdd_rf != NULL) {
       rc = regulator_set_load(regulator_uwb_vdd_rf, 400000);
       if (rc) {
         SR100_ERR_MSG("regulator_uwb_vdd_rf set_load failed, rc=%d\n", rc);
-        goto regulator_err3;
+        goto regulator_err;
       }
       rc = regulator_enable(regulator_uwb_vdd_rf);
       if (rc) {
         SR100_ERR_MSG("regulator_uwb_vdd_rf enable failed, rc=%d\n", rc);
-        goto regulator_err3;
+        goto regulator_err;
+      }
+    }
+    if(regulator_uwb_vdd_se_i2c_pullup != NULL) {
+      rc = regulator_enable(regulator_uwb_vdd_se_i2c_pullup);
+      if (rc) {
+        SR100_ERR_MSG("regulator_uwb_vdd_se_i2c_pullup enable failed, rc=%d\n", rc);
+        goto regulator_err;
       }
     }
   } else {
@@ -984,30 +1063,36 @@ static int sr100_regulator_onoff(struct device *dev, struct sr100_dev* pdev, boo
       rc = regulator_disable(regulator_uwb_vdd_rf);
       if (rc) {
         SR100_ERR_MSG("regulator_uwb_vdd_rf disable failed, rc=%d\n", rc);
-        goto regulator_err3;
+        goto regulator_err;
       }
     }
     if(regulator_uwb_vdd != NULL) {
       rc = regulator_disable(regulator_uwb_vdd);
       if (rc) {
         SR100_ERR_MSG("regulator_uwb_vdd disable failed, rc=%d\n", rc);
-        goto regulator_err3;
+        goto regulator_err;
       }
     }
     if(regulator_uwb_vdd_io != NULL) {
       rc = regulator_disable(regulator_uwb_vdd_io);
       if (rc) {
         SR100_ERR_MSG("regulator_uwb_vdd_io disable failed, rc=%d\n", rc);
-        goto regulator_err3;
+        goto regulator_err;
       }
     }
+    if(regulator_uwb_vdd_se_i2c_pullup != NULL) {
+      rc = regulator_disable(regulator_uwb_vdd_se_i2c_pullup);
+      if (rc) {
+        SR100_ERR_MSG("regulator_uwb_vdd_se_i2c_pullup disable failed, rc=%d\n", rc);
+        goto regulator_err;
+      }
+    }
+regulator_err:
+    if(regulator_uwb_vdd_rf != NULL) regulator_put(regulator_uwb_vdd_rf);
+    if(regulator_uwb_vdd != NULL) regulator_put(regulator_uwb_vdd);
+    if(regulator_uwb_vdd_io != NULL) regulator_put(regulator_uwb_vdd_io);
+    if(regulator_uwb_vdd_se_i2c_pullup != NULL) regulator_put(regulator_uwb_vdd_se_i2c_pullup);
   }
-regulator_err3:
-  if(regulator_uwb_vdd_rf != NULL) regulator_put(regulator_uwb_vdd_rf);
-regulator_err2:
-  if(regulator_uwb_vdd != NULL) regulator_put(regulator_uwb_vdd);
-regulator_err1:
-  if(regulator_uwb_vdd_io != NULL) regulator_put(regulator_uwb_vdd_io);
 
   return rc;
 }
@@ -1068,19 +1153,21 @@ static int sr100_probe(struct spi_device* spi) {
   sr100_dev->irq_gpio = platform_data->irq_gpio;
   sr100_dev->ce_gpio = platform_data->ce_gpio;
   sr100_dev->rtc_sync_gpio = platform_data->rtc_sync_gpio;
-  sr100_dev->wakeup_gpio = platform_data->wakeup_gpio;
+  sr100_dev->spi_handshake_gpio = platform_data->spi_handshake_gpio;
+  sr100_dev->ant_connection_status_gpio = platform_data->ant_connection_status_gpio;
   sr100_dev->uwb_vdd_io = platform_data->uwb_vdd_io;
   sr100_dev->uwb_vdd = platform_data->uwb_vdd;
   sr100_dev->uwb_vdd_rf = platform_data->uwb_vdd_rf;
+  sr100_dev->uwb_vdd_se_i2c_pullup = platform_data->uwb_vdd_se_i2c_pullup;
   sr100_dev->tx_buffer = kzalloc(SR100_TXBUF_SIZE, GFP_KERNEL);
   sr100_dev->rx_buffer = kzalloc(SR100_RXBUF_SIZE, GFP_KERNEL);
   if (sr100_dev->tx_buffer == NULL) {
     ret = -ENOMEM;
-    goto exit_free_dev;
+    goto err_exit1;
   }
   if (sr100_dev->rx_buffer == NULL) {
     ret = -ENOMEM;
-    goto exit_free_dev;
+    goto err_exit1;
   }
 
   dev_set_drvdata(&spi->dev, sr100_dev);
@@ -1094,7 +1181,7 @@ static int sr100_probe(struct spi_device* spi) {
   ret = misc_register(&sr100_dev->sr100_device);
   if (ret < 0) {
     SR100_ERR_MSG("misc_register failed! %d\n", ret);
-    goto err_exit0;
+    goto err_exit2;
   }
 
   ret = sr100_regulator_onoff(&spi->dev, sr100_dev, true);
@@ -1109,9 +1196,8 @@ static int sr100_probe(struct spi_device* spi) {
   if (sr100_dev->spi->irq < 0) {
     SR100_ERR_MSG("gpio_to_irq request failed gpio = 0x%x\n",
                   platform_data->irq_gpio);
-    goto err_exit1;
+    goto err_exit3;
   }
-  wake_lock_init(&sr100_dev->uwb_wake_lock, WAKE_LOCK_SUSPEND, "uwb_wake_lock");
   /* request irq.  the irq is set whenever the chip has data available
        * for reading.  it is cleared when all data has been read.
        */
@@ -1124,19 +1210,27 @@ static int sr100_probe(struct spi_device* spi) {
                     sr100_dev->sr100_device.name, sr100_dev);
   if (ret) {
     SR100_ERR_MSG("request_irq failed\n");
-    goto err_exit1;
+    goto err_exit3;
   }
   sr100_disable_irq(sr100_dev);
-
-  SR100_DBG_MSG("gpio_set_value rtc_sync 0\n");
-  gpio_set_value(sr100_dev->rtc_sync_gpio, 0);
-  
-  SR100_DBG_MSG("gpio_set_value wakeup_gpio 0\n");
-  gpio_set_value(sr100_dev->wakeup_gpio, 0);
+  if((int)sr100_dev->rtc_sync_gpio > 0) {
+    SR100_DBG_MSG("gpio_set_value rtc_sync 0\n");
+    gpio_set_value(sr100_dev->rtc_sync_gpio, 0);
+  }
+  SR100_DBG_MSG("gpio_set_value spi_handshake_gpio 0\n");
+  gpio_set_value(sr100_dev->spi_handshake_gpio, 0);
   SR100_DBG_MSG("Exit : %s\n", __FUNCTION__);
   return ret;
+
+err_exit3:
+  if (sr100_dev != NULL) {
+    misc_deregister(&sr100_dev->sr100_device);
+  }
+err_exit2:
+  if (sr100_dev != NULL) {
+    mutex_destroy(&sr100_dev->sr100_access_lock);
+  }
 err_exit1:
-exit_free_dev:
   if (sr100_dev != NULL) {
     if (sr100_dev->tx_buffer) {
       kfree(sr100_dev->tx_buffer);
@@ -1144,14 +1238,8 @@ exit_free_dev:
     if (sr100_dev->rx_buffer) {
       kfree(sr100_dev->rx_buffer);
     }
-    kfree(sr100_dev);
   }
-  return ret;
-  misc_deregister(&sr100_dev->sr100_device);
-  wake_lock_destroy(&sr100_dev->uwb_wake_lock);
-
 err_exit0:
-  mutex_destroy(&sr100_dev->sr100_access_lock);
   if (sr100_dev != NULL) kfree(sr100_dev);
 err_exit:
   SR100_ERR_MSG("ERROR: Exit : %s ret %d\n", __FUNCTION__, ret);
@@ -1171,12 +1259,18 @@ err_exit:
 static int sr100_remove(struct spi_device* spi) {
   struct sr100_dev* sr100_dev = sr100_get_data(spi);
   SR100_DBG_MSG("Entry : %s\n", __FUNCTION__);
-  wake_lock_destroy(&sr100_dev->uwb_wake_lock);
+  sr100_regulator_onoff(&spi->dev, sr100_dev, false);
   gpio_free(sr100_dev->ce_gpio);
   mutex_destroy(&sr100_dev->sr100_access_lock);
   free_irq(sr100_dev->spi->irq, sr100_dev);
   gpio_free(sr100_dev->irq_gpio);
-  gpio_free(sr100_dev->rtc_sync_gpio);
+  gpio_free(sr100_dev->spi_handshake_gpio);
+  if((int)sr100_dev->rtc_sync_gpio > 0) {
+    gpio_free(sr100_dev->rtc_sync_gpio);
+  }
+  if((int)sr100_dev->ant_connection_status_gpio > 0) {
+    gpio_free(sr100_dev->ant_connection_status_gpio);
+  }
   misc_deregister(&sr100_dev->sr100_device);
   if (sr100_dev->tx_buffer != NULL) kfree(sr100_dev->tx_buffer);
   if (sr100_dev->rx_buffer != NULL) kfree(sr100_dev->rx_buffer);

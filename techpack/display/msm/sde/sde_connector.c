@@ -379,6 +379,7 @@ static void sde_connector_get_avail_res_info(struct drm_connector *conn,
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
 	struct drm_encoder *drm_enc = NULL;
+	struct msm_display_info display_info;
 
 	if (!conn || !conn->dev || !conn->dev->dev_private)
 		return;
@@ -389,12 +390,17 @@ static void sde_connector_get_avail_res_info(struct drm_connector *conn,
 	if (!sde_kms)
 		return;
 
+	memset(&display_info, 0, sizeof(display_info));
+
 	if (conn->state && conn->state->best_encoder)
 		drm_enc = conn->state->best_encoder;
 	else
 		drm_enc = conn->encoder;
 
-	sde_rm_get_resource_info(&sde_kms->rm, drm_enc, avail_res);
+	sde_connector_get_info(conn, &display_info);
+
+	sde_rm_get_resource_info(&sde_kms->rm, drm_enc, avail_res,
+					 display_info.display_type);
 
 	avail_res->max_mixer_width = sde_kms->catalog->max_mixer_width;
 }
@@ -1306,16 +1312,16 @@ static int _sde_connector_set_ext_hdr_info(
 
 	connector = &c_conn->base;
 
-	if (!connector->hdr_supported) {
-		SDE_ERROR_CONN(c_conn, "sink doesn't support HDR\n");
-		rc = -ENOTSUPP;
-		goto end;
-	}
-
 	memset(&c_state->hdr_meta, 0, sizeof(c_state->hdr_meta));
 
 	if (!usr_ptr) {
 		SDE_DEBUG_CONN(c_conn, "hdr metadata cleared\n");
+		goto end;
+	}
+
+	if (!connector->hdr_supported) {
+		SDE_ERROR_CONN(c_conn, "sink doesn't support HDR\n");
+		rc = -ENOTSUPP;
 		goto end;
 	}
 
@@ -2191,6 +2197,7 @@ static int sde_connector_atomic_check(struct drm_connector *connector,
 					CONNECTOR_PROP_QSYNC_MODE);
 
 	SDE_DEBUG("has_modeset %d qsync_dirty %d\n", has_modeset, qsync_dirty);
+	SDE_EVT32(connector->base.id, has_modeset, has_modeset);
 	if (has_modeset && qsync_dirty) {
 		SDE_ERROR("invalid qsync update during modeset\n");
 		return -EINVAL;

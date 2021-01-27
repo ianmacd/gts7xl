@@ -33,6 +33,10 @@ enum {
 	OPTION_TYPE_MAX
 };
 
+#ifdef CONFIG_SUPPORT_BRIGHTNESS_NOTIFY_FOR_LIGHT_SENSOR
+#include "../../../techpack/display/msm/samsung/ss_panel_notify.h"
+#endif
+
 /*************************************************************************/
 /* factory Sysfs							 */
 /*************************************************************************/
@@ -254,6 +258,71 @@ static ssize_t light_register_write_store(struct device *dev,
 	return size;
 }
 
+#ifdef CONFIG_SUPPORT_BRIGHTNESS_NOTIFY_FOR_LIGHT_SENSOR
+void light_brightness_work_func(struct work_struct *work)
+{
+	struct adsp_data *data = container_of((struct work_struct*)work,
+		struct adsp_data, light_br_work);
+	int cnt = 0;
+
+	mutex_lock(&data->light_factory_mutex);
+	adsp_unicast(data->brightness_info, sizeof(data->brightness_info),
+		MSG_LIGHT, 0, MSG_TYPE_SET_CAL_DATA);
+
+	while (!(data->ready_flag[MSG_TYPE_SET_CAL_DATA] & 1 << MSG_LIGHT) &&
+		cnt++ < TIMEOUT_CNT)
+		usleep_range(500, 550);
+
+	data->ready_flag[MSG_TYPE_SET_CAL_DATA] &= ~(1 << MSG_LIGHT);
+
+	if (cnt >= TIMEOUT_CNT)
+		pr_err("[FACTORY] %s: Timeout!!!\n", __func__);
+	else
+		pr_info("[FACTORY] %s: set br %d\n",
+			__func__, data->msg_buf[MSG_LIGHT][0]);
+
+	mutex_unlock(&data->light_factory_mutex);
+}
+
+int light_panel_data_notify(struct notifier_block *nb,
+	unsigned long val, void *v)
+{
+	struct panel_bl_event_data *panel_data = v;
+	struct adsp_data *data;
+	static int32_t pre_bl_level = -1;
+	static int32_t pre_bl_idx = -1;
+	int32_t brightness_data[3] = {0, };
+
+	if (val == PANEL_EVENT_BL_CHANGED) {
+		data = adsp_get_struct_data();
+		brightness_data[0] = panel_data->bl_level;
+		brightness_data[1] = panel_data->aor_data;
+		brightness_data[2] = panel_data->display_idx;
+		data->brightness_info[0] = brightness_data[0];
+		data->brightness_info[1] = brightness_data[1];
+		data->brightness_info[2] = brightness_data[2];
+
+		if (brightness_data[0] == pre_bl_level && brightness_data[2] == pre_bl_idx)
+			return 0;
+
+		pre_bl_level = brightness_data[0];
+		pre_bl_idx = brightness_data[2];
+
+		schedule_work(&data->light_br_work);
+
+		pr_info("[FACTORY] %s: %d, %d, %d\n", __func__,
+			brightness_data[0], brightness_data[1], brightness_data[2]);
+	}
+
+	return 0;
+}
+
+static struct notifier_block light_panel_data_notifier = {
+	.notifier_call = light_panel_data_notify,
+	.priority = 1,
+};
+#endif /* CONFIG_SUPPORT_BRIGHTNESS_NOTIFY_FOR_LIGHT_SENSOR */
+
 static DEVICE_ATTR(lcd_onoff, 0220, NULL, light_lcd_onoff_store);
 static DEVICE_ATTR(light_circle, 0444, light_circle_show, NULL);
 static DEVICE_ATTR(register_write, 0220, NULL, light_register_write_store);
@@ -283,7 +352,9 @@ static struct device_attribute *light_attrs[] = {
 static int __init stk33617_light_factory_init(void)
 {
 	adsp_factory_register(MSG_LIGHT, light_attrs);
-
+#ifdef CONFIG_SUPPORT_BRIGHTNESS_NOTIFY_FOR_LIGHT_SENSOR
+	ss_panel_notifier_register(&light_panel_data_notifier);
+#endif
 	pr_info("[FACTORY] %s\n", __func__);
 
 	brightness = 0;
@@ -294,6 +365,9 @@ static int __init stk33617_light_factory_init(void)
 static void __exit stk33617_light_factory_exit(void)
 {
 	adsp_factory_unregister(MSG_LIGHT);
+#ifdef CONFIG_SUPPORT_BRIGHTNESS_NOTIFY_FOR_LIGHT_SENSOR
+	ss_panel_notifier_unregister(&light_panel_data_notifier);
+#endif
 
 	pr_info("[FACTORY] %s\n", __func__);
 }

@@ -18,7 +18,7 @@
 
 void uwb_logger_set_max_count(int count);
 void uwb_logger_print(const char *fmt, ...);
-void uwb_print_hex_dump(void *buf, void *pref, size_t len);
+void uwb_print_hex_dump(void *buf, void *pref, uint32_t size);
 int uwb_logger_init(void);
 
 #else /*CONFIG_SEC_UWB_LOGGER*/

@@ -100,6 +100,11 @@ static int samsung_panel_on_post(struct samsung_display_driver_data *vdd)
 		LCD_INFO("compensate gamma for 48/96hz mode\n");
 	}
 
+	if (vdd->is_factory_mode) {
+		LCD_INFO("tx fg_err\n");
+		ss_send_cmd(vdd, TX_FG_ERR);
+	}
+
 	return true;
 }
 
@@ -164,18 +169,6 @@ static char ss_panel_revision(struct samsung_display_driver_data *vdd)
 
 	LCD_INFO_ONCE("panel_revision = %c %d \n",
 			vdd->panel_revision + 'A', vdd->panel_revision);
-
-	/* SW W/A: support panel recovery by FG_ERR interrupt under panel revision D (ID3=0x42).
-	 * Remove FG_ERR interrupt gpio if panel revision is over than revision D.
-	 * Requested by Dlab.
-	 */
-	if (vdd->manufacture_id_dsi != -EINVAL &&
-			vdd->panel_revision + 'A' >= 'D' &&
-			vdd->esd_recovery.num_of_gpio > 1) {
-		LCD_INFO("W/A: prevent FG_ERR recovery support over than ID3 0x42, num_of_gpio: %d\n",
-				vdd->esd_recovery.num_of_gpio);
-		vdd->esd_recovery.num_of_gpio--;
-	}
 
 	return (vdd->panel_revision + 'A');
 }
@@ -452,7 +445,7 @@ err:
  * src : packed gamma value
  * dst : extended V values (V255 ~ VT)
  */
-static void convert_GAMMA_to_V_HAC(u8 *src, u32 *dst)
+static void convert_GAMMA_to_V_HAC(u8 *src, int *dst)
 {
 	/* i : V index
 	 * j : RGB index
@@ -486,7 +479,7 @@ static void convert_GAMMA_to_V_HAC(u8 *src, u32 *dst)
 				else if (j == B) /* k = 35 */
 					dst[k] |= GET_BITS(src[33], 0, 3);
 			} else if (i == V13) { /* k =36 */
-				dst[k] = GET_BITS(src[k + 2], 0, 7);
+				dst[k] = GET_BITS(src[k - 2], 0, 7);
 			} else { /* V2 ~ V10, k = 3 ~ 29 */
 				dst[k] = GET_BITS(src[k + 1], 0, 7);
 			}
@@ -507,14 +500,42 @@ static void convert_GAMMA_to_V_HAC(u8 *src, u32 *dst)
  * src : extended V values (V255 ~ VT)
  * dst : packed gamma values (CAh)
  */
-static void convert_V_to_GAMMA_HAC(u32 *src, u8 *dst)
+static void convert_V_to_GAMMA_HAC(int *src, u8 *dst)
 {
 	/* i : gamma index
 	 * k : packed gamma index
 	 */
 	int i,k = 0;
+	int dbg_org[GAMMA_V_SIZE];
+
+	for (i = 0; i < GAMMA_V_SIZE; i++)
+		dbg_org[i] = src[i];
 
 	memset(dst, 0, GAMMA_SET_SIZE);
+
+	/* prevent underflow */
+	for (i = 0; i < GAMMA_V_SIZE; i++)
+		src[i] = max(src[i], 0);
+
+	/* prevent overflow */
+	for (i = V255; i < V_MAX; i++) {
+		int max;
+
+		if (i == V255)
+			max = BIT(10) - 1; /* 10 bits: V255 */
+		else if (i == V11 || i == V12)
+			max = BIT(4) - 1; /* 4 bits: V0, VT */
+		else
+			max = BIT(8) - 1; /* 8 bits: V2~V10, V13 */
+
+		src[i * RGB_MAX + R] = min(src[i * RGB_MAX + R], max);
+		src[i * RGB_MAX + G] = min(src[i * RGB_MAX + G], max);
+		src[i * RGB_MAX + B] = min(src[i * RGB_MAX + B], max);
+	}
+
+	for (i = 0; i < GAMMA_V_SIZE; i++)
+		if (dbg_org[i] != src[i])
+			LCD_INFO("fix: src[%d] %02X -> %02X\n", i, dbg_org[i],  src[i]);
 
 	for (i = 0; i < GAMMA_SET_SIZE; i++) {
 		if (i == 0) {
@@ -566,7 +587,7 @@ static int ss_gm2_gamma_comp_init(struct samsung_display_driver_data *vdd)
 	u8 readbuf[GAMMA_SET_SIZE * GAMMA_SET_VRR_MAX * GAMMA_SET_MODE_MAX]; /* 444 */
 	u8 *buf;
 	int i_vrr, j_mode, k;
-	u32 gammaV[GAMMA_V_SIZE];
+	int gammaV[GAMMA_V_SIZE];
 	struct dsi_panel_cmd_set *rx_cmds;
 
 	gm2_mtp->gamma_org = kzalloc(GAMMA_SET_SIZE * GAMMA_SET_MODE_MAX * GAMMA_SET_VRR_MAX, GFP_KERNEL);
@@ -1399,16 +1420,20 @@ static struct dsi_panel_cmd_set *__ss_vrr(struct samsung_display_driver_data *vd
 		vrr_cmds->cmds[VRR_CMDID_AOR_GPARA].msg.tx_buf[1] = 0x41;	/* NS: B1h gpara 0x41~0x42 */
 
 	/* 17. AOR value */
-	if (vdd->panel_revision < 3)	/* panel rev.A~ rev.C */
-		memcpy(&vrr_cmds->cmds[VRR_CMDID_AOR].msg.tx_buf[1],
-				&cmd_aor_revA[vrr_id][0],
-				vrr_cmds->cmds[VRR_CMDID_AOR].msg.tx_len - 1);
-	else	/* panel rev.D: 4th panel (81 04 52) */
-		memcpy(&vrr_cmds->cmds[VRR_CMDID_AOR].msg.tx_buf[1],
-				&cmd_aor_revD[vrr_id][0],
-				vrr_cmds->cmds[VRR_CMDID_AOR].msg.tx_len - 1);
-
-
+	if (is_hmt) {
+		/* HMT: 0A 64 AOR 85% */
+		vrr_cmds->cmds[VRR_CMDID_AOR].msg.tx_buf[1] = 0x0A;
+		vrr_cmds->cmds[VRR_CMDID_AOR].msg.tx_buf[2] = 0x64;
+	} else {
+		if (vdd->panel_revision < 3)	/* panel rev.A~ rev.C */
+			memcpy(&vrr_cmds->cmds[VRR_CMDID_AOR].msg.tx_buf[1],
+					&cmd_aor_revA[vrr_id][0],
+					vrr_cmds->cmds[VRR_CMDID_AOR].msg.tx_len - 1);
+		else	/* panel rev.D: 4th panel (81 04 52) */
+			memcpy(&vrr_cmds->cmds[VRR_CMDID_AOR].msg.tx_buf[1],
+					&cmd_aor_revD[vrr_id][0],
+					vrr_cmds->cmds[VRR_CMDID_AOR].msg.tx_len - 1);
+	}
 
 	LCD_INFO("VRR: (cur: %d%s, adj: %d%s, te_mod: (%d %d), LFD: %uhz(%u)~%uhz(%u)\n",
 			cur_rr,
@@ -1626,6 +1651,7 @@ static int ss_module_info_read(struct samsung_display_driver_data *vdd)
 	int hour, min;
 	int x, y;
 	int mdnie_tune_index = 0;
+	int ret;
 
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("Invalid data vdd : 0x%zx", (size_t)vdd);
@@ -1633,7 +1659,11 @@ static int ss_module_info_read(struct samsung_display_driver_data *vdd)
 	}
 
 	if (ss_get_cmds(vdd, RX_MODULE_INFO)->count) {
-		ss_panel_data_read(vdd, RX_MODULE_INFO, buf, LEVEL1_KEY);
+		ret = ss_panel_data_read(vdd, RX_MODULE_INFO, buf, LEVEL1_KEY);
+		if (ret) {
+			LCD_ERR("fail to read module ID, ret: %d", ret);
+			return false;
+		}
 
 		/* Manufacture Date */
 
@@ -1918,11 +1948,12 @@ static void ss_set_panel_lpm_brightness(struct samsung_display_driver_data *vdd)
 enum LPMON_CMD_ID {
 	LPMON_CMDID_CTRL = 2,
 	LPMON_CMDID_BL = 4,
-	LPMON_CMDID_LFD = 8,
+	LPMON_CMDID_LFD = 6,
 };
 
 enum LPMOFF_CMD_ID {
 	LPMOFF_CMDID_CTRL = 3,
+	LPMOFF_CMDID_NORMAL_BL = 7,
 };
 
 /*
@@ -1938,6 +1969,7 @@ static void ss_update_panel_lpm_ctrl_cmd(struct samsung_display_driver_data *vdd
 	struct dsi_panel_cmd_set *set_lpm_off = ss_get_cmds(vdd, TX_LPM_OFF);
 	struct dsi_panel_cmd_set *set_lpm_bl;
 	u32 min_div, max_div;
+	int gm2_wrdisbv;	/* Gamma mode2 WRDISBV Write Display Brightness */
 
 	LCD_INFO("%s++\n", __func__);
 
@@ -1964,20 +1996,33 @@ static void ss_update_panel_lpm_ctrl_cmd(struct samsung_display_driver_data *vdd
 
 start_lpm_bl:
 	/* LPM_ON: 3. HLPM brightness */
+	/* should restore normal brightness in LPM off sequence to prevent flicker.. */
 	switch (vdd->panel_lpm.lpm_bl_level) {
 	case LPM_60NIT:
 		set_lpm_bl = ss_get_cmds(vdd, TX_LPM_60NIT_CMD);
+		gm2_wrdisbv = 127;
 		break;
 	case LPM_30NIT:
 		set_lpm_bl = ss_get_cmds(vdd, TX_LPM_30NIT_CMD);
+		gm2_wrdisbv = 64;
 		break;
 	case LPM_10NIT:
 		set_lpm_bl = ss_get_cmds(vdd, TX_LPM_10NIT_CMD);
+		gm2_wrdisbv = 23;
 		break;
 	case LPM_2NIT:
 	default:
 		set_lpm_bl = ss_get_cmds(vdd, TX_LPM_2NIT_CMD);
+		gm2_wrdisbv = 5;
 		break;
+	}
+
+	if (vdd->panel_revision >= 3) {	/* Rev.D: 4th panel (81 04 52) */
+		set_lpm_off->cmds[LPMOFF_CMDID_NORMAL_BL].msg.tx_buf[1] = get_bit(gm2_wrdisbv, 8, 2);
+		set_lpm_off->cmds[LPMOFF_CMDID_NORMAL_BL].msg.tx_buf[2] = get_bit(gm2_wrdisbv, 0, 8);
+		LCD_INFO("lpm off: brightness: %02X %02X\n",
+			set_lpm_off->cmds[LPMOFF_CMDID_NORMAL_BL].msg.tx_buf[1],
+			set_lpm_off->cmds[LPMOFF_CMDID_NORMAL_BL].msg.tx_buf[2]);
 	}
 
 	if (SS_IS_CMDS_NULL(set_lpm_bl)) {
@@ -1988,6 +2033,7 @@ start_lpm_bl:
 	memcpy(&set_lpm_on->cmds[LPMON_CMDID_BL].msg.tx_buf[1],
 			&set_lpm_bl->cmds->msg.tx_buf[1],
 			sizeof(char) * set_lpm_on->cmds[LPMON_CMDID_BL].msg.tx_len - 1);
+
 
 	/* 7. LFD min freq.=1hz and frame insertion=30hz-16frame */
 	ss_get_lfd_div(vdd, LFD_SCOPE_LPM, &min_div, &max_div);
@@ -2758,7 +2804,6 @@ static int ss_vrr_init(struct vrr_info *vrr)
 	vrr->brr_mode = BRR_OFF_MODE;
 
 	/* LFD mode */
-
 	for (i = 0, mngr = &vrr->lfd.lfd_mngr[i]; i < LFD_CLIENT_MAX; i++, mngr++) {
 		for (scope = 0; scope < LFD_SCOPE_MAX; scope++) {
 			mngr->fix[scope] = LFD_FUNC_FIX_OFF;
@@ -2771,9 +2816,10 @@ static int ss_vrr_init(struct vrr_info *vrr)
 #if defined(CONFIG_SEC_FACTORY)
 	mngr = &vrr->lfd.lfd_mngr[LFD_CLIENT_FAC];
 	mngr->fix[LFD_SCOPE_NORMAL] = LFD_FUNC_FIX_HIGH;
+	mngr->fix[LFD_SCOPE_LPM] = LFD_FUNC_FIX_HIGH;
+	mngr->fix[LFD_SCOPE_HMD] = LFD_FUNC_FIX_HIGH;
 #endif
 
-	/* LFD control */
 	/* TE modulation */
 	vrr->te_mod_on = 0;
 	vrr->te_mod_divider = 0;
@@ -2798,13 +2844,21 @@ static bool ss_check_support_mode(struct samsung_display_driver_data *vdd, enum 
 					cur_rr);
 		}
 		break;
+
 	case CHECK_SUPPORT_HMD:
 		if (!(cur_rr == 60 && !cur_hs)) {
 			is_support = false;
 			LCD_ERR("HMD fail: supported on 60NS(cur: %d%s)\n",
 					cur_rr, cur_hs ? "HS" : "NS");
 		}
+		break;
 
+	case CHECK_SUPPORT_BRIGHTDOT:
+		if (!(cur_rr == 120 && cur_hs)) {
+			is_support = false;
+			LCD_ERR("BRIGHT DOT fail: supported on 120HS(cur: %d%s)\n",
+					cur_rr, cur_hs ? "HS" : "NS");
+		}
 		break;
 
 	default:

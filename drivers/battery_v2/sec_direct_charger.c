@@ -174,9 +174,11 @@ static int sec_direct_chg_check_charging_source(struct sec_direct_charger_info *
 	psy_do_property("battery", get,
 			POWER_SUPPLY_EXT_PROP_DIRECT_VBAT_CHECK, value2);
 
-	if (charger->direct_chg_done || (charger->capacity >= 95) || !value.intval || value2.intval)
+	if (charger->direct_chg_done || (charger->capacity >= 95) || !value.intval || value2.intval ||
+		charger->store_mode)
 #else
-	if (charger->direct_chg_done || (charger->capacity >= 95) || !value.intval)
+	if (charger->direct_chg_done || (charger->capacity >= 95) || !value.intval ||
+		charger->store_mode)
 #endif
 		return SEC_DIRECT_CHG_CHARGING_SOURCE_SWITCHING;
 
@@ -569,15 +571,23 @@ static int sec_direct_chg_set_property(struct power_supply *psy,
 			charger->dc_err = false;
 			charger->dc_retry_cnt = 0;
 			break;
-        case POWER_SUPPLY_EXT_PROP_CHANGE_CHARGING_SOURCE:
-			charger->test_mode_source = val->intval;
-			pr_info("%s: POWER_SUPPLY_EXT_PROP_CHANGE_CHARGING_SOURCE(%d)", __func__, charger->test_mode_source);
+		case POWER_SUPPLY_EXT_PROP_CHANGE_CHARGING_SOURCE:
+			pr_info("%s: POWER_SUPPLY_EXT_PROP_CHANGE_CHARGING_SOURCE(%d, %d)\n",
+				__func__, val->strval[0], val->strval[1]);
+			if (val->strval[0] == SEC_STORE_MODE)
+				charger->store_mode = true;
+			if (is_pd_apdo_wire_type(charger->cable_type)) {
+				charger->test_mode_source = val->strval[1];
 
-			if (charger->test_mode_source == SEC_DIRECT_CHG_CHARGING_SOURCE_DIRECT)
-				charger->test_mode_source = sec_direct_chg_check_charging_source(charger);
+				if (charger->test_mode_source == SEC_DIRECT_CHG_CHARGING_SOURCE_DIRECT)
+					charger->test_mode_source = sec_direct_chg_check_charging_source(charger);
 
-			sec_direct_chg_set_charging_source(charger, SEC_BAT_CHG_MODE_CHARGING, charger->test_mode_source);
-            break;
+				sec_direct_chg_set_charging_source(charger, charger->charger_mode, charger->test_mode_source);
+			} else {
+				pr_info("%s: block to set charging_source (cable:%d, mode:%d, test:%d, store_mode:%d)\n",
+					__func__, charger->cable_type, charger->charger_mode, charger->test_mode_source, charger->store_mode);
+			}
+			break;
  		default:
 			ret = psy_do_property(charger->pdata->main_charger_name, set, ext_psp, value);
 			return ret;

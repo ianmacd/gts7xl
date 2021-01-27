@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _DSI_DEFS_H_
@@ -342,6 +342,7 @@ enum dsi_cmd_set_type {
 	TX_MDNIE_ADB_TEST,
 	TX_SELF_GRID_ON,
 	TX_SELF_GRID_OFF,
+	TX_LPM_ON_PRE,
 	TX_LPM_ON,
 	TX_LPM_OFF,
 	TX_LPM_AOD_ON,
@@ -376,6 +377,8 @@ enum dsi_cmd_set_type {
 	TX_HMT_REVERSE,
 	TX_HMT_FORWARD,
 	TX_FFC,
+	TX_FFC_OFF,
+	TX_DYNAMIC_FFC_PRE_SET,
 	TX_DYNAMIC_FFC_SET,
 	TX_CABC_ON,
 	TX_CABC_OFF,
@@ -401,6 +404,10 @@ enum dsi_cmd_set_type {
 	TX_MCD_READ_RESISTANCE_PRE, /* For read real MCD R/L resistance */
 	TX_MCD_READ_RESISTANCE, /* For read real MCD R/L resistance */
 	TX_MCD_READ_RESISTANCE_POST, /* For read real MCD R/L resistance */
+	TX_BRIGHTDOT_ON,
+	TX_BRIGHTDOT_OFF,
+	TX_BRIGHTDOT_LF_ON,
+	TX_BRIGHTDOT_LF_OFF,
 	TX_GRADUAL_ACL,
 	TX_HW_CURSOR,
 	TX_DYNAMIC_HLPM_ENABLE,
@@ -447,6 +454,9 @@ enum dsi_cmd_set_type {
 
 	TX_MICRO_SHORT_TEST_ON,
 	TX_MICRO_SHORT_TEST_OFF,
+	TX_TCON_PE_ON,
+	TX_TCON_PE_OFF,
+
 	TX_POC_CMD_START, /* START POC CMDS */
 	TX_POC_ENABLE,
 	TX_POC_DISABLE,
@@ -473,6 +483,7 @@ enum dsi_cmd_set_type {
 	TX_FW_UP_WRITE,
 	TX_FW_UP_MTP_ID_WRITE,
 	TX_FW_UP_READ,
+	TX_FLASH_CLEAR_BUFFER,
 	TX_GCT_ENTER,
 	TX_GCT_MID,
 	TX_GCT_EXIT,
@@ -620,6 +631,8 @@ enum dsi_cmd_set_type {
 	TX_DFPS,
 
 	TX_ADJUST_TE,
+
+	TX_FG_ERR,
 
 	TX_CMD_END,
 
@@ -881,6 +894,8 @@ struct dsi_split_link_config {
  * @t_clk_pre:           Number of byte clock cycles that the high spped clock
  *                       shall be driven prior to data lane transitions from LP
  *                       to HS mode.
+ * @t_clk_pre_extend:    Increment t_clk_pre counter by 2 byteclk if set to
+ *                       true, otherwise increment by 1 byteclk.
  * @ignore_rx_eot:       Ignore Rx EOT packets if set to true.
  * @append_tx_eot:       Append EOT packets for forward transmissions if set to
  *                       true.
@@ -907,6 +922,7 @@ struct dsi_host_common_cfg {
 	bool bit_swap_blue;
 	u32 t_clk_post;
 	u32 t_clk_pre;
+	bool t_clk_pre_extend;
 	bool ignore_rx_eot;
 	bool append_tx_eot;
 	bool ext_bridge_mode;
@@ -969,7 +985,7 @@ struct dsi_cmd_engine_cfg {
  * @common_config:         Host configuration common to both Video and Cmd mode.
  * @video_engine:          Video engine configuration if panel is in video mode.
  * @cmd_engine:            Cmd engine configuration if panel is in cmd mode.
- * @esc_clk_rate_khz:      Esc clock frequency in Hz.
+ * @esc_clk_rate_hz:      Esc clock frequency in Hz.
  * @bit_clk_rate_hz:       Bit clock frequency in Hz.
  * @bit_clk_rate_hz_override: DSI bit clk rate override from dt/sysfs.
  * @video_timing:          Video timing information of a frame.
@@ -1037,6 +1053,7 @@ struct dsi_display_mode_priv_info {
  * @pixel_clk_khz:  Pixel clock in Khz.
  * @dsi_mode_flags: Flags to signal other drm components via private flags
  * @panel_mode:      Panel mode
+ * @is_preferred:   Is mode preferred
  * @priv_info:      Mode private info
  */
 struct dsi_display_mode {
@@ -1044,6 +1061,7 @@ struct dsi_display_mode {
 	u32 pixel_clk_khz;
 	u32 dsi_mode_flags;
 	enum dsi_op_mode panel_mode;
+	bool is_preferred;
 	struct dsi_display_mode_priv_info *priv_info;
 };
 

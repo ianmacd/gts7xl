@@ -217,6 +217,7 @@ void ss_mafpc_update_enable_cmds_HAC(struct samsung_display_driver_data *vdd)
 static struct dsi_panel_cmd_set *ss_mafpc_brightness_scale(struct samsung_display_driver_data *vdd, int *level_key)
 {
 	struct dsi_panel_cmd_set *scale_cmds = ss_get_cmds(vdd, TX_MAFPC_BRIGHTNESS_SCALE);
+	int bl_level;
 	int idx;
 
 	if (!vdd->mafpc.is_support) {
@@ -240,9 +241,13 @@ static struct dsi_panel_cmd_set *ss_mafpc_brightness_scale(struct samsung_displa
 	}
 
 	/* 0 ~ 73 for Noraml Brightness, 74 for HBM */
-	idx = vdd->br_info.common_br.cd_idx;
-	if (vdd->br_info.common_br.cd_level > 420)
-		idx = 74; /* HBM */
+
+	/* HBM */
+	bl_level = vdd->br_info.common_br.bl_level;
+	if (bl_level >= MAX_MAFPC_BL_SCALE)
+		bl_level = MAX_MAFPC_BL_SCALE - 1;
+
+	idx = brightness_scale_idx[bl_level];
 
 	scale_cmds->cmds[2].msg.tx_buf[1] = brightness_scale_table[idx][0];
 	scale_cmds->cmds[2].msg.tx_buf[2] = brightness_scale_table[idx][1];
@@ -371,6 +376,8 @@ static void ss_mafpc_enable(struct samsung_display_driver_data *vdd, int enable)
 			ss_send_cmd(vdd, TX_MAFPC_ON_FACTORY);
 		else
 			ss_send_cmd(vdd, TX_MAFPC_ON);
+		/* To update mAFPC brightness scale factor */
+		ss_brightness_dcs(vdd, USE_CURRENT_BL_LEVEL, BACKLIGHT_NORMAL);
 	} else
 		ss_send_cmd(vdd, TX_MAFPC_OFF);
 

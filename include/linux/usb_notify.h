@@ -2,12 +2,12 @@
 /*
  *  usb notify header
  *
- * Copyright (C) 2019 Samsung, Inc.
+ * Copyright (C) 2011-2020 Samsung, Inc.
  * Author: Dongrak Shin <dongrak.shin@samsung.com>
  *
  */
 
- /* usb notify layer v3.4 */
+ /* usb notify layer v3.5 */
 
 #ifndef __LINUX_USB_NOTIFY_H__
 #define __LINUX_USB_NOTIFY_H__
@@ -45,6 +45,7 @@ enum otg_notify_events {
 	NOTIFY_EVENT_SMSC_OVC,
 	NOTIFY_EVENT_SMTD_EXT_CURRENT,
 	NOTIFY_EVENT_MMD_EXT_CURRENT,
+	NOTIFY_EVENT_HMD_EXT_CURRENT,
 	NOTIFY_EVENT_DEVICE_CONNECT,
 	NOTIFY_EVENT_GAMEPAD_CONNECT,
 	NOTIFY_EVENT_LANHUB_CONNECT,
@@ -129,10 +130,15 @@ enum usb_certi_type {
 	USB_CERTI_HUB_DEPTH_EXCEED,
 	USB_CERTI_HUB_POWER_EXCEED,
 	USB_CERTI_HOST_RESOURCE_EXCEED,
+	USB_CERTI_WARM_RESET,
 };
 
 enum usb_err_type {
 	USB_ERR_ABNORMAL_RESET,
+};
+
+enum usb_itracker_type {
+	NOTIFY_USB_CC_REPEAT,
 };
 
 enum usb_current_state {
@@ -166,6 +172,7 @@ struct otg_notify {
 	int (*set_chg_current)(int state);
 	void (*set_ldo_onoff)(void *data, unsigned int onoff);
 	int (*get_gadget_speed)(void);
+	int (*is_skip_list)(int index);
 	void *o_data;
 	void *u_notify;
 };
@@ -175,12 +182,13 @@ struct otg_booster {
 	int (*booster)(bool enable);
 };
 
-#ifdef CONFIG_USB_NOTIFY_LAYER
+#if IS_ENABLED(CONFIG_USB_NOTIFY_LAYER)
 extern const char *event_string(enum otg_notify_events event);
 extern const char *status_string(enum otg_notify_event_status status);
 extern void send_usb_mdm_uevent(void);
 extern void send_usb_certi_uevent(int usb_certi);
 extern void send_usb_err_uevent(int usb_certi, int mode);
+extern void send_usb_itracker_uevent(int err_type);
 extern int usb_check_whitelist_for_mdm(struct usb_device *dev);
 extern int usb_otg_restart_accessory(struct usb_device *dev);
 extern void send_otg_notify(struct otg_notify *n,
@@ -209,6 +217,8 @@ extern int inc_hw_param(struct otg_notify *n,
 					enum usb_hw_param index);
 extern int inc_hw_param_host(struct host_notify_dev *dev,
 					enum usb_hw_param index);
+extern int register_hw_param_manager(struct otg_notify *n,
+					unsigned long (*fptr)(int));
 #endif
 extern void *get_notify_data(struct otg_notify *n);
 extern void set_notify_data(struct otg_notify *n, void *data);
@@ -223,6 +233,7 @@ static inline const char *status_string(enum otg_notify_event_status status)
 static inline void send_usb_mdm_uevent(void) {}
 static inline void send_usb_certi_uevent(int usb_certi) {}
 static inline void send_usb_err_uevent(int usb_certi, int mode) {}
+static inline void send_usb_itracker_uevent(int err_type) {}
 static inline int usb_check_whitelist_for_mdm(struct usb_device *dev)
 			{return 0; }
 static inline int usb_otg_restart_accessory(struct usb_device *dev)
@@ -257,6 +268,8 @@ static inline int inc_hw_param(struct otg_notify *n,
 			enum usb_hw_param index) {return 0; }
 static inline int inc_hw_param_host(struct host_notify_dev *dev,
 			enum usb_hw_param index) {return 0; }
+static inline int register_hw_param_manager(struct otg_notify *n,
+			unsigned long (*fptr)(int)) {return 0; }
 #endif
 static inline void *get_notify_data(struct otg_notify *n) {return NULL; }
 static inline void set_notify_data(struct otg_notify *n, void *data) {}

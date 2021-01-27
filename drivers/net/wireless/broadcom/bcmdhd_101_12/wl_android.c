@@ -2124,6 +2124,11 @@ wl_android_set_scan_channel_time(struct net_device *dev, char *command)
 		WL_ERR(("Failed to get Parameter\n"));
 		return BCME_ERROR;
 	}
+
+	if (time == 0) {
+		/* Set default value when Private param is 0. */
+		time = DHD_SCAN_ASSOC_ACTIVE_TIME;
+	}
 #ifdef CUSTOMER_SCAN_TIMEOUT_SETTING
 	wl_cfg80211_custom_scan_time(dev, WL_CUSTOM_SCAN_CHANNEL_TIME, time);
 	error = wldev_ioctl_set(dev, WLC_SET_SCAN_CHANNEL_TIME, &time, sizeof(time));
@@ -2163,6 +2168,10 @@ wl_android_set_scan_unassoc_time(struct net_device *dev, char *command)
 	if (sscanf(command, "%*s %d", &time) != 1) {
 		WL_ERR(("Failed to get Parameter\n"));
 		return BCME_ERROR;
+	}
+	if (time == 0) {
+		/* Set default value when Private param is 0. */
+		time = DHD_SCAN_UNASSOC_ACTIVE_TIME;
 	}
 #ifdef CUSTOMER_SCAN_TIMEOUT_SETTING
 	wl_cfg80211_custom_scan_time(dev, WL_CUSTOM_SCAN_UNASSOC_TIME, time);
@@ -2204,6 +2213,10 @@ wl_android_set_scan_passive_time(struct net_device *dev, char *command)
 		WL_ERR(("Failed to get Parameter\n"));
 		return BCME_ERROR;
 	}
+	if (time == 0) {
+		/* Set default value when Private param is 0. */
+		time = DHD_SCAN_PASSIVE_TIME;
+	}
 #ifdef CUSTOMER_SCAN_TIMEOUT_SETTING
 	wl_cfg80211_custom_scan_time(dev, WL_CUSTOM_SCAN_PASSIVE_TIME, time);
 	error = wldev_ioctl_set(dev, WLC_SET_SCAN_PASSIVE_TIME, &time, sizeof(time));
@@ -2242,6 +2255,10 @@ int wl_android_set_scan_home_time(struct net_device *dev, char *command)
 	if (sscanf(command, "%*s %d", &time) != 1) {
 		WL_ERR(("Failed to get Parameter\n"));
 		return BCME_ERROR;
+	}
+	if (time == 0) {
+		/* Set default value when Private param is 0. */
+		time = DHD_SCAN_HOME_TIME;
 	}
 #ifdef CUSTOMER_SCAN_TIMEOUT_SETTING
 	wl_cfg80211_custom_scan_time(dev, WL_CUSTOM_SCAN_HOME_TIME, time);
@@ -2282,6 +2299,10 @@ wl_android_set_scan_home_away_time(struct net_device *dev, char *command)
 	if (sscanf(command, "%*s %d", &time) != 1) {
 		WL_ERR(("Failed to get Parameter\n"));
 		return BCME_ERROR;
+	}
+	if (time == 0) {
+		/* Set default value when Private param is 0. */
+		time = DHD_SCAN_HOME_AWAY_TIME;
 	}
 #ifdef CUSTOMER_SCAN_TIMEOUT_SETTING
 	wl_cfg80211_custom_scan_time(dev, WL_CUSTOM_SCAN_HOME_AWAY_TIME, time);
@@ -9808,23 +9829,19 @@ exit:
 #endif /* WL_BCNRECV */
 
 #ifdef SUPPORT_LATENCY_CRITICAL_DATA
-#define DISABLE_LATENCY_CRT_DATA	0
-#define ENABLE_LATENCY_CRT_DATA		1
-
 static int
-wl_android_set_latency_crt_data(struct net_device *dev, int enable)
+wl_android_set_latency_crt_data(struct net_device *dev, int mode)
 {
 	int ret;
 #ifdef DHD_GRO_ENABLE_HOST_CTRL
 	dhd_pub_t *dhdp = NULL;
 #endif /* DHD_GRO_ENABLE_HOST_CTRL */
-	if (!(enable == DISABLE_LATENCY_CRT_DATA ||
-		enable == ENABLE_LATENCY_CRT_DATA)) {
+	if (mode >= LATENCY_CRT_DATA_MODE_LAST) {
 		return BCME_BADARG;
 	}
 #ifdef DHD_GRO_ENABLE_HOST_CTRL
 	dhdp = wl_cfg80211_get_dhdp(dev);
-	if (enable == ENABLE_LATENCY_CRT_DATA) {
+	if (mode != LATENCY_CRT_DATA_MODE_OFF) {
 		WL_ERR(("Not permitted GRO by framework\n"));
 		dhdp->permitted_gro = FALSE;
 	} else {
@@ -9832,10 +9849,10 @@ wl_android_set_latency_crt_data(struct net_device *dev, int enable)
 		dhdp->permitted_gro = TRUE;
 	}
 #endif /* DHD_GRO_ENABLE_HOST_CTRL */
-	ret = wldev_iovar_setint(dev, "latency_critical_data", enable);
+	ret = wldev_iovar_setint(dev, "latency_critical_data", mode);
 	if (ret != BCME_OK) {
-		WL_ERR(("failed to set latency_critical_data enable %d, error = %d\n",
-			enable, ret));
+		WL_ERR(("failed to set latency_critical_data mode %d, error = %d\n",
+			mode, ret));
 		return ret;
 	}
 
@@ -9846,17 +9863,17 @@ static int
 wl_android_get_latency_crt_data(struct net_device *dev, char *command, int total_len)
 {
 	int ret;
-	int enable = DISABLE_LATENCY_CRT_DATA;
+	int mode = LATENCY_CRT_DATA_MODE_OFF;
 	int bytes_written;
 
-	ret = wldev_iovar_getint(dev, "latency_critical_data", &enable);
+	ret = wldev_iovar_getint(dev, "latency_critical_data", &mode);
 	if (ret != BCME_OK) {
 		WL_ERR(("failed to get latency_critical_data error = %d\n", ret));
 		return ret;
 	}
 
 	bytes_written = snprintf(command, total_len, "%s %d",
-		CMD_GET_LATENCY_CRITICAL_DATA, enable);
+		CMD_GET_LATENCY_CRITICAL_DATA, mode);
 
 	return bytes_written;
 }

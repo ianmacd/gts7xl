@@ -1648,7 +1648,7 @@ static int cam_ife_csid_enable_csi2(
 	struct cam_hw_soc_info                     *soc_info;
 	struct cam_ife_csid_cid_data               *cid_data;
 	uint32_t val = 0;
-#if defined(CONFIG_SEC_BLOOMXQ_PROJECT)
+#if defined(CONFIG_SEC_BLOOMXQ_PROJECT) || defined(CONFIG_SEC_F2Q_PROJECT) || defined(CONFIG_SEC_VICTORY_PROJECT)
 	uint32_t val2, val3;
 #endif
 
@@ -1695,7 +1695,7 @@ static int cam_ife_csid_enable_csi2(
 
 	if (csid_hw->res_type == CAM_ISP_IFE_IN_RES_TPG) {
 		CAM_INFO(CAM_ISP, "csid hw:%d configure the TPG",
-			csid_hw->hw_intf->hw_idx);		
+			csid_hw->hw_intf->hw_idx);
 		/* Config the TPG */
 		rc = cam_ife_csid_config_tpg(csid_hw, res);
 		if (rc) {
@@ -1704,7 +1704,7 @@ static int cam_ife_csid_enable_csi2(
 		}
 	}
 
-#if defined(CONFIG_SEC_BLOOMXQ_PROJECT)
+#if defined(CONFIG_SEC_BLOOMXQ_PROJECT) || defined(CONFIG_SEC_F2Q_PROJECT) || defined(CONFIG_SEC_VICTORY_PROJECT)
 	/* after configuring the csi rx,  reset hw once */
 	rc = cam_ife_csid_reset_regs(csid_hw, true);
 	if (rc < 0) {
@@ -3450,7 +3450,7 @@ static int cam_ife_csid_reset_regs(
 		csid_hw->csid_info->csid_reg;
 	struct cam_hw_soc_info          *soc_info;
 	uint32_t val = 0;
-	unsigned long flags;
+	unsigned long flags, rem_jiffies = 0;
 
 	soc_info = &csid_hw->hw_info->soc_info;
 
@@ -3495,9 +3495,9 @@ static int cam_ife_csid_reset_regs(
 
 	spin_unlock_irqrestore(&csid_hw->hw_info->hw_lock, flags);
 	CAM_DBG(CAM_ISP, "CSID reset start");
-	rc = wait_for_completion_timeout(&csid_hw->csid_top_complete,
+	rem_jiffies = wait_for_completion_timeout(&csid_hw->csid_top_complete,
 		msecs_to_jiffies(IFE_CSID_TIMEOUT));
-	if (rc <= 0) {
+	if (rem_jiffies == 0) {
 		val = cam_io_r_mb(soc_info->reg_map[0].mem_base +
 			csid_reg->cmn_reg->csid_top_irq_status_addr);
 		if (val & 0x1) {
@@ -3509,19 +3509,18 @@ static int cam_ife_csid_reset_regs(
 			CAM_DBG(CAM_ISP, "CSID:%d %s reset completed %d",
 				csid_hw->hw_intf->hw_idx,
 				reset_hw ? "hw" : "sw",
-				rc);
-			rc = 0;
+				rem_jiffies);
 			goto end;
 		}
 		CAM_ERR(CAM_ISP, "CSID:%d csid_reset %s fail rc = %d",
-			csid_hw->hw_intf->hw_idx, reset_hw ? "hw" : "sw", rc);
+			csid_hw->hw_intf->hw_idx, reset_hw ? "hw" : "sw",
+			rem_jiffies);
 		rc = -ETIMEDOUT;
 		goto end;
-	} else {
+	} else
 		CAM_DBG(CAM_ISP, "CSID:%d %s reset completed %d",
-			csid_hw->hw_intf->hw_idx, reset_hw ? "hw" : "sw", rc);
-		rc = 0;
-	}
+			csid_hw->hw_intf->hw_idx, reset_hw ? "hw" : "sw",
+			rem_jiffies);
 
 end:
 	csid_hw->is_resetting = false;
@@ -3620,7 +3619,7 @@ STATIC int cam_ife_csid_init_hw(void *hw_priv,
 		break;
 	}
 
-#if defined(CONFIG_SEC_BLOOMXQ_PROJECT)
+#if defined(CONFIG_SEC_BLOOMXQ_PROJECT) || defined(CONFIG_SEC_F2Q_PROJECT) || defined(CONFIG_SEC_VICTORY_PROJECT)
 	/* csid hw reset done after configuring the csi2  */
 	if (res->res_type != CAM_ISP_RESOURCE_CID) {
 		rc = cam_ife_csid_reset_regs(csid_hw, true);
@@ -3936,6 +3935,9 @@ STATIC int cam_ife_csid_sof_irq_debug(
 	bool sof_irq_enable = false;
 	const struct cam_ife_csid_reg_offset    *csid_reg;
 	struct cam_hw_soc_info                  *soc_info;
+	struct cam_ife_csid_path_cfg            *path_data;
+	struct cam_isp_resource_node            *res = NULL;
+	uint32_t byte_cnt_ping, byte_cnt_pong;
 
 	csid_reg = csid_hw->csid_info->csid_reg;
 	soc_info = &csid_hw->hw_info->soc_info;
@@ -4009,6 +4011,60 @@ STATIC int cam_ife_csid_sof_irq_debug(
 
 	CAM_INFO(CAM_ISP, "SOF freeze: CSID SOF irq %s",
 		(sof_irq_enable == true) ? "enabled" : "disabled");
+
+	CAM_INFO(CAM_ISP, "dump all acquire CSID info details");
+
+	if (csid_hw->ipp_res.res_state > CAM_ISP_RESOURCE_STATE_AVAILABLE) {
+		res = &csid_hw->ipp_res;
+		path_data = (struct cam_ife_csid_path_cfg *) res->res_priv;
+		/* Dump all the acquire data for this hardware */
+		CAM_INFO(CAM_ISP,
+			"CSID:%d res id:%d type:%d state:%d in f:%d out f:%d st pix:%d end pix:%d st line:%d end line:%d vc:%d dt:%d cid:%d",
+			csid_hw->hw_intf->hw_idx, res->res_id, res->res_type,
+			res->res_type, path_data->in_format, path_data->out_format,
+			path_data->start_pixel, path_data->end_pixel,
+			path_data->start_line, path_data->end_line,
+			path_data->vc, path_data->dt, path_data->cid);
+	}
+
+	if (csid_hw->ppp_res.res_state > CAM_ISP_RESOURCE_STATE_AVAILABLE) {
+		res = &csid_hw->ppp_res;
+		path_data = (struct cam_ife_csid_path_cfg *) res->res_priv;
+
+		/* Dump all the acquire data for this hardware */
+		CAM_INFO(CAM_ISP,
+			"CSID:%d res id:%d type:%d state:%d in f:%d out f:%d st pix:%d end pix:%d st line:%d end line:%d vc:%d dt:%d cid:%d",
+			csid_hw->hw_intf->hw_idx, res->res_id, res->res_type,
+			res->res_type, path_data->in_format, path_data->out_format,
+			path_data->start_pixel, path_data->end_pixel,
+			path_data->start_line, path_data->end_line,
+			path_data->vc, path_data->dt, path_data->cid);
+	}
+
+	for ( i = 0; i < CAM_IFE_CSID_RDI_MAX; i++) {
+		res  =  &csid_hw->rdi_res[i];
+		path_data = (struct cam_ife_csid_path_cfg *) res->res_priv;
+
+		if (res->res_state > CAM_ISP_RESOURCE_STATE_AVAILABLE) {
+			CAM_INFO(CAM_ISP,
+				"CSID:%d res id:%d type:%d state:%d in f:%d out f:%d st pix:%d end pix:%d st line:%d end line:%d vc:%d dt:%d cid:%d",
+				csid_hw->hw_intf->hw_idx, res->res_id, res->res_type,
+				res->res_type, path_data->in_format, path_data->out_format,
+				path_data->start_pixel, path_data->end_pixel,
+				path_data->start_line, path_data->end_line,
+				path_data->vc, path_data->dt, path_data->cid);
+
+			/* read total number of bytes transmitted through RDI */
+			byte_cnt_ping = cam_io_r_mb(soc_info->reg_map[0].mem_base +
+			csid_reg->rdi_reg[res->res_id]->csid_rdi_byte_cntr_ping_addr);
+			byte_cnt_pong = cam_io_r_mb(soc_info->reg_map[0].mem_base +
+			csid_reg->rdi_reg[res->res_id]->csid_rdi_byte_cntr_pong_addr);
+			CAM_INFO(CAM_ISP,
+				"CSID:%d res id:%d byte cnt val ping:%d pong:%d",
+				csid_hw->hw_intf->hw_idx, res->res_id,
+				byte_cnt_ping, byte_cnt_pong);
+		}
+	}
 
 	return 0;
 }

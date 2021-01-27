@@ -102,6 +102,9 @@
 #include <linux/firmware.h>
 #include <linux/sensor/sensors_core.h>
 #include <linux/spi/spi-geni-qcom.h> //for sec qc spi config
+#include <linux/spi/spidev.h>
+#include <linux/platform_device.h>
+#include <linux/of_platform.h>
 
 #define MODULE_NAME "range_sensor"
 
@@ -135,24 +138,35 @@ static const struct spi_device_id vl53l5_k_spi_id[] = {
 static int vl53l5_suspend(struct device *dev)
 {
 	struct vl53l5_k_module_t *p_module = dev_get_drvdata(dev);
+	int status;
 
 	vl53l5_k_log_info("fac en %d, state %d",
 		p_module->enabled,
 		p_module->state_preset);
-/*
-    Fix current consumption problem and enable this logic.
 
-	if (p_module->state_preset == VL53L5_STATE_RANGING)
-		vl53l5_ioctl_stop(p_module, NULL, 1);
-*/
+	p_module->suspend_state = true;
+	if (p_module->state_preset == VL53L5_STATE_RANGING) {
+		msleep(20);
+		vl53l5_k_log_info("force stop");
+		status = vl53l5_ioctl_stop(p_module, NULL, 1);
+		if (status != STATUS_OK) {
+			status = vl53l5_ioctl_init(p_module);
+			vl53l5_k_log_error("fail reset %d", status);
+			status = vl53l5_ioctl_stop(p_module, NULL, 1);
+		}
+		if (status == STATUS_OK)
+			vl53l5_k_log_info("stop success");
+		p_module->force_suspend_count++;
+ 	}
+
 	return 0;
 }
 
 static int vl53l5_resume(struct device *dev)
 {
 	struct vl53l5_k_module_t *p_module = dev_get_drvdata(dev);
-
-	vl53l5_k_log_info("err %d", p_module->last_driver_error);
+	p_module->suspend_state = false;
+	vl53l5_k_log_info("err %d, force stop count %u", p_module->last_driver_error, p_module->force_suspend_count);
 
 	return 0;
 }
@@ -215,18 +229,34 @@ int vl53l5_ext_control(enum vl53l5_external_control input, void *data, u32 *size
 		if (size != NULL)
 			*size = 0;
 		return -1;
-	} else if (global_p_module->last_driver_error <= VL53L5_PROBE_FAILED) {
+	} else if ((global_p_module->last_driver_error == VL53L5_PROBE_FAILED)
+			|| (global_p_module->last_driver_error == VL53L5_SHUTDOWN)
+			|| (global_p_module->suspend_state == true)) {
 		if ((input == VL53L5_EXT_START)
 			|| (input == VL53L5_EXT_STOP))
 			vl53l5_k_log_error("failed %d", global_p_module->last_driver_error);
 		else
 			if(size) *size = 0;
+		if (global_p_module->suspend_state == true)
+			vl53l5_k_log_error("cmd %d is called in suspend", input);
 		return -1;
 	}
 
 	switch (input) {
 	case VL53L5_EXT_START:
 		status = vl53l5_ioctl_start(global_p_module, NULL, 1);
+#ifdef VL53L5_TEST_ENABLE
+		if (status == STATUS_OK) {
+			vl53l5_k_log_error("test for reset");
+			status = -1;
+		}
+#endif
+		if ((status != STATUS_OK) || (global_p_module->last_driver_error != STATUS_OK)) {
+			status = vl53l5_ioctl_init(global_p_module);
+			vl53l5_k_log_error("fail reset %d", status);
+			status = vl53l5_ioctl_start(global_p_module, NULL, 1);
+		}
+
 		if (status != STATUS_OK) {
 			vl53l5_k_log_error("start err");
 			goto out_state;
@@ -235,6 +265,18 @@ int vl53l5_ext_control(enum vl53l5_external_control input, void *data, u32 *size
 		break;
 	case VL53L5_EXT_STOP:
 		status = vl53l5_ioctl_stop(global_p_module, NULL, 1);
+#ifdef VL53L5_TEST_ENABLE
+		if (status == STATUS_OK) {
+			vl53l5_k_log_error("test for reset");
+			status = -1;
+		}
+#endif
+		if ((status != STATUS_OK) || (global_p_module->last_driver_error != STATUS_OK)) {
+			status = vl53l5_ioctl_init(global_p_module);
+			vl53l5_k_log_error("fail reset %d", status);
+			status = vl53l5_ioctl_stop(global_p_module, NULL, 1);
+		}
+
 		if (status != STATUS_OK) {
 			vl53l5_k_log_error("stop err");
 			goto out_state;
@@ -334,7 +376,7 @@ out_release:
 	set_fs(old_fs);
 	release_firmware(fw_entry);
 out:
-	LOG_FUNCTION_END("");
+	LOG_FUNCTION_END(status);
 
 }
 #endif
@@ -347,6 +389,9 @@ static int vl53l5_parse_dt(struct device *dev,
 	vl53l5_k_log_debug("start");
 #endif
 #ifdef STM_VL53L5_SUPPORT_SEC_CODE
+	struct device_node *spi_device_node;
+	struct platform_device *spi_pdev;
+
 	vl53l5_k_log_info("start");
 #endif
 
@@ -474,10 +519,6 @@ static int vl53l5_parse_dt(struct device *dev,
 		p_module->avdd_vreg_name = NULL;
 	}
 	vl53l5_k_log_info("%s: a_vdd %s\n", __func__, p_module->avdd_vreg_name);
-
-	//when regulator is on boot, should set on for blance use-count
-	vl53l5_k_power_onoff(p_module, p_module->avdd_vreg, p_module->avdd_vreg_name, 1);
-	vl53l5_k_power_onoff(p_module, p_module->iovdd_vreg, p_module->iovdd_vreg_name, 1);
 #endif
 	of_property_read_string(np, "stm,firmware_name",
 				&p_module->firmware_name);
@@ -500,6 +541,30 @@ static int vl53l5_parse_dt(struct device *dev,
 		p_module->fac_rotation_mode = VL53L5_K_ROTATION_SEL__NONE;
 	else
 		vl53l5_k_log_info("fac_rotation_mode %d", p_module->fac_rotation_mode);
+
+	//for pinctrl on vddoff
+	p_module->pinctrl = NULL;
+	p_module->pinctrl_vddoff = NULL;
+	spi_device_node = of_parse_phandle(np, "stm,spi_node", 0);
+	if (!IS_ERR_OR_NULL(spi_device_node)) {
+		spi_pdev = of_find_device_by_node(spi_device_node);
+		if (!spi_pdev)
+			vl53l5_k_log_error("of_find_device_by_node failed\n");
+		else {
+			p_module->pinctrl = devm_pinctrl_get(&spi_pdev->dev);
+			if (IS_ERR(p_module->pinctrl)) {
+				vl53l5_k_log_error("devm_pinctrl_get failed\n");
+				p_module->pinctrl = NULL;
+			}
+			else {
+				p_module->pinctrl_vddoff = pinctrl_lookup_state(p_module->pinctrl, "vddoff");
+				if (IS_ERR(p_module->pinctrl_vddoff)) {
+					p_module->pinctrl_vddoff = NULL;
+					vl53l5_k_log_error("pinctrl_lookup_state failed\n");
+				}
+			}
+		}
+	}
 #endif
 	return status;
 }
@@ -583,7 +648,7 @@ static ssize_t vl53l5_distance_show(struct device *dev,
 	p_module->read_data_valid = false;
 
 	if ((p_module->state_preset != VL53L5_STATE_RANGING)
-		|| (p_module->last_driver_error <= VL53L5_PROBE_FAILED)) {
+		|| (p_module->last_driver_error == VL53L5_PROBE_FAILED)) {
 		vl53l5_k_log_error("state %d, err %d", p_module->state_preset, p_module->last_driver_error);
 #ifdef VL53L5_TEST_ENABLE
 		msleep(50);
@@ -1066,7 +1131,7 @@ static ssize_t vl53l5_enable_store(struct device *dev,
 	u8 val;
 	int status;
 
-	if (p_module->last_driver_error <= VL53L5_PROBE_FAILED) {
+	if (p_module->last_driver_error == VL53L5_PROBE_FAILED) {
 		vl53l5_k_log_error("failed %d", p_module->last_driver_error);
 #ifdef VL53L5_TEST_ENABLE
 		msleep(50);
@@ -1084,9 +1149,22 @@ static ssize_t vl53l5_enable_store(struct device *dev,
 			vl53l5_k_log_info("probe failed\n");
 		else {
 			status = vl53l5_ioctl_start(p_module, NULL, 1);
+#ifdef VL53L5_TEST_ENABLE
+			if (status == STATUS_OK) {
+				vl53l5_k_log_error("test for reset");
+				status = -1;
+			}
+#endif
+			if (status != STATUS_OK) {
+				status = vl53l5_ioctl_init(p_module);
+				vl53l5_k_log_error("fail reset %d", status);
+				status = vl53l5_ioctl_start(p_module, NULL, 1);
+			}
+
 			if (status == STATUS_OK)
 				p_module->enabled = 1;
 			else {
+				vl53l5_k_log_error("start err");
 				vl53l5_k_store_error(p_module, status);
 #ifdef VL53L5_TCDM_DUMP
 				vl53l5_k_log_debug("Lock");
@@ -1109,6 +1187,17 @@ static ssize_t vl53l5_enable_store(struct device *dev,
 			vl53l5_k_log_info("probe failed\n");
 		else {
 			status = vl53l5_ioctl_stop(p_module, NULL, 1);
+#ifdef VL53L5_TEST_ENABLE
+			if (status == STATUS_OK) {
+				vl53l5_k_log_error("test for reset");
+				status = -1;
+			}
+#endif
+			if (status != STATUS_OK) {
+				status = vl53l5_ioctl_init(p_module);
+				vl53l5_k_log_error("fail reset %d", status);
+				status = vl53l5_ioctl_stop(p_module, NULL, 1);
+			}
 			if (status == STATUS_OK)
 				p_module->enabled = 0;
 			else {
@@ -1201,7 +1290,7 @@ static ssize_t vl53l5_frame_rate_show(struct device *dev,
 }
 
 #define CAL_XTALK_MIN_SPEC 0
-#define CAL_XTALK_MAX_SPEC 100
+#define CAL_XTALK_MAX_SPEC 120
 
 static ssize_t vl53l5_cal_xtalk_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -1359,7 +1448,7 @@ static ssize_t vl53l5_calibration_store(struct device *dev,
 	int ret;
 	int p2p, cha;
 
-	if (p_module->last_driver_error <= VL53L5_PROBE_FAILED) {
+	if (p_module->last_driver_error == VL53L5_PROBE_FAILED) {
 		vl53l5_k_log_error("failed %d", p_module->last_driver_error);
 		return count;
 	}
@@ -1533,7 +1622,7 @@ int vl53l5_dump_data_notify(struct notifier_block *nb,
 		vl53l5_k_log_info("device id 0x%02X", p_module->stdev.id_device);
 		vl53l5_k_log_info("revision id 0x%02X", p_module->stdev.id_revision);
 
-		vl53l5_k_log_info("state %d", p_module->state_preset);
+		vl53l5_k_log_info("state %d, force count %u", p_module->state_preset, p_module->force_suspend_count);
 	}
 	return 0;
 }
@@ -1630,7 +1719,7 @@ int vl53l5_k_spi_probe(struct spi_device *spi)
 	status = sensors_register(&p_module->factory_device,
 		p_module, sensor_attrs, MODULE_NAME);
 	if (status) {
-		vl53l5_k_log_error("%s - cound not register sensor(%d).\n",
+		vl53l5_k_log_error("%s - could not register sensor(%d).\n",
 			__func__, status);
 	}
 
@@ -1694,6 +1783,11 @@ void vl53l5_k_spi_shutdown(struct spi_device *device)
 
 	vl53l5_k_power_onoff(p_module, p_module->iovdd_vreg, p_module->iovdd_vreg_name, 0);
 	vl53l5_k_power_onoff(p_module, p_module->avdd_vreg, p_module->avdd_vreg_name, 0);
+	
+	if(p_module->pinctrl && p_module->pinctrl_vddoff) {
+		vl53l5_k_log_info("pinctrl_select_state for vddoff\n");
+		pinctrl_select_state(p_module->pinctrl, p_module->pinctrl_vddoff);
+	}
 }
 #endif
 static int setup_miscdev(struct vl53l5_k_module_t *p_module)
@@ -1733,10 +1827,6 @@ static int setup_miscdev(struct vl53l5_k_module_t *p_module)
 	}
 
 	if (status == STATUS_OK) {
-		vl53l5_ioctl_set_device_parameters(p_module, NULL, VL53L5_CFG__BACK_TO_BACK__8X8__15HZ);
-		usleep_range(1000, 1100);
-		vl53l5_ioctl_set_device_parameters(p_module, NULL, VL53L5_CFG__STATIC__SS_4PC__VCSELCP_OFF);
-		usleep_range(1000, 1100);
 		vl53l5_k_log_info("get_module_info start");
 		status = vl53l5_ioctl_get_module_info(p_module, NULL, &p_module->m_info);
 	}
@@ -1757,6 +1847,13 @@ static int setup_miscdev(struct vl53l5_k_module_t *p_module)
 		p_module->last_driver_error = VL53L5_PROBE_FAILED;
 		vl53l5_k_power_onoff(p_module, p_module->iovdd_vreg, p_module->iovdd_vreg_name, 0);
 		vl53l5_k_power_onoff(p_module, p_module->avdd_vreg, p_module->avdd_vreg_name, 0);
+
+		if(p_module->pinctrl && p_module->pinctrl_vddoff) {
+			vl53l5_k_log_info("pinctrl_select_state for vddoff\n");
+			status = pinctrl_select_state(p_module->pinctrl, p_module->pinctrl_vddoff);
+			if (status < 0)
+				vl53l5_k_log_error("pinctrl_select_state failed: %d\n", status);
+		}
 		status = STATUS_OK;
 	} else {
 #ifdef CONFIG_SENSORS_VL53L5_SUPPORT_KERNEL_INTERFACE
@@ -1815,6 +1912,7 @@ static int vl53l5_k_ioctl_handler(struct vl53l5_k_module_t *p_module,
 				  void __user *p)
 {
 	int status = 0;
+
 #ifdef STM_VL53L5_SUPPORT_LEGACY_CODE
 	if (!p_module) {
 		status = -EINVAL;
@@ -1829,11 +1927,15 @@ static int vl53l5_k_ioctl_handler(struct vl53l5_k_module_t *p_module,
 
 		status = -EINVAL;
 		goto exit;
-	} else if (p_module->last_driver_error <= VL53L5_PROBE_FAILED) {
+	} else if ((p_module->last_driver_error == VL53L5_PROBE_FAILED)
+				|| (p_module->last_driver_error == VL53L5_SHUTDOWN)
+				|| (p_module->suspend_state == true)) {
 		if ((cmd == VL53L5_IOCTL_START)
 			|| (cmd == VL53L5_IOCTL_STOP))
 			vl53l5_k_log_error("failed %d", p_module->last_driver_error);
 		status = -EINVAL;
+		if (p_module->suspend_state == true)
+			vl53l5_k_log_error("cmd %d is called in suspend", cmd);
 		goto exit;
 	}
 #endif
@@ -1860,6 +1962,19 @@ static int vl53l5_k_ioctl_handler(struct vl53l5_k_module_t *p_module,
 #ifdef STM_VL53L5_SUPPORT_SEC_CODE
 		vl53l5_k_log_info("START");
 		status = vl53l5_ioctl_start(p_module, p, 1);
+
+#ifdef VL53L5_TEST_ENABLE
+		if (status == STATUS_OK) {
+			vl53l5_k_log_error("test for reset");
+			status = -1;
+		}
+#endif
+
+		if ((status != STATUS_OK) || (p_module->last_driver_error != STATUS_OK)) {
+			status = vl53l5_ioctl_init(p_module);
+			vl53l5_k_log_error("fail reset %d", status);
+			status = vl53l5_ioctl_start(p_module, p, 1);
+		}
 #endif
 
 		break;
@@ -1871,6 +1986,19 @@ static int vl53l5_k_ioctl_handler(struct vl53l5_k_module_t *p_module,
 #ifdef STM_VL53L5_SUPPORT_SEC_CODE
 		vl53l5_k_log_info("STOP");
 		status = vl53l5_ioctl_stop(p_module, p, 1);
+
+#ifdef VL53L5_TEST_ENABLE
+		if (status == STATUS_OK) {
+			vl53l5_k_log_error("test for reset");
+			status = -1;
+		}
+#endif
+
+		if ((status != STATUS_OK) || (p_module->last_driver_error != STATUS_OK)) {
+			status = vl53l5_ioctl_init(p_module);
+			vl53l5_k_log_error("fail reset %d", status);
+			status = vl53l5_ioctl_stop(p_module, p, 1);
+		}
 #endif
 
 		break;

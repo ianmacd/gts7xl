@@ -1747,7 +1747,7 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 
 	/* stm */
 	vdd->stm.stm_on = 1;
-
+	vdd->old_aor_dimming = true;
 }
 
 static int __init samsung_panel_initialize(void)

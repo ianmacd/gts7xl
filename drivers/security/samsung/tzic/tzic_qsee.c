@@ -16,8 +16,8 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/printk.h>
 #include <linux/types.h>
-#include <linux/task_integrity.h>
 #include <soc/qcom/scm.h>
 #include "tzic.h"
 

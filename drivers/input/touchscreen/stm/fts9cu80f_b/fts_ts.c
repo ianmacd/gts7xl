@@ -176,7 +176,7 @@ static ssize_t fts_secure_touch_enable_store(struct device *dev,
 
 		fts_interrupt_handler(info->client->irq, info);
 
-		complete(&info->st_powerdown);
+		complete_all(&info->st_powerdown);
 		complete(&info->st_interrupt);
 
 		input_info(true, &info->client->dev, "%s: disabled\n", __func__);
@@ -274,6 +274,7 @@ static void fts_secure_touch_init(struct fts_ts_info *info)
 
 static void fts_secure_touch_stop(struct fts_ts_info *info, int blocking)
 {
+	mutex_lock(&info->st_lock);
 	if (atomic_read(&info->st_enabled)) {
 		atomic_set(&info->st_pending_irqs, -1);
 		sysfs_notify(&info->input_dev->dev.kobj, NULL, "secure_touch");
@@ -281,6 +282,7 @@ static void fts_secure_touch_stop(struct fts_ts_info *info, int blocking)
 		if (blocking)
 			wait_for_completion_interruptible(&info->st_powerdown);
 	}
+	mutex_unlock(&info->st_lock);
 }
 
 static irqreturn_t fts_filter_interrupt(struct fts_ts_info *info)
@@ -783,8 +785,7 @@ void fts_set_grip_type(struct fts_ts_info *info, u8 set_type)
 
 	if (set_type == GRIP_ALL_DATA) {
 		/* edge */
-		if (info->grip_edge_range != 60)
-			mode |= G_SET_EDGE_ZONE;
+		mode |= G_SET_EDGE_ZONE;
 
 		/* dead zone */
 		if (info->grip_landscape_mode == 1)	/* default 0 mode, 32 */
@@ -1864,6 +1865,16 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 					info->noise_count++;
 			}
 
+			if ((p_event_status->stype == FTS_EVENT_STATUSTYPE_INFORMATION) &&
+					(p_event_status->status_id == FTS_INFO_XENOSENSOR_DETECT)) {
+				info->xenosensor_detect = (p_event_status->status_data_5 & 0x80);
+				info->xenosensor_x = (p_event_status->status_data_1 << 4) | ((p_event_status->status_data_3 & 0xf0) >> 4);
+				info->xenosensor_y = (p_event_status->status_data_2 << 4) | (p_event_status->status_data_3 & 0x0f);
+
+				input_info(true, &info->client->dev, "%s: XENOSENSOR DETECT [%d] (%d,%d)\n",
+						__func__, info->xenosensor_detect, info->xenosensor_x, info->xenosensor_y);			
+			}
+
 			if (p_event_status->stype == FTS_EVENT_STATUSTYPE_VENDORINFO) {
 				if (p_event_status->status_id == 0x6A) {
 					input_report_abs(info->input_dev_proximity, ABS_MT_CUSTOM, p_event_status->status_data_1);
@@ -2109,6 +2120,15 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 				p_gesture_status->gesture_data_1, p_gesture_status->gesture_data_2,
 				p_gesture_status->gesture_data_3, p_gesture_status->gesture_data_4);
 
+			if (p_gesture_status->stype == FTS_SPONGE_EVENT_LARGE_PALM) {
+				input_info(true, &info->client->dev, "%s: LARGE PALM: %d\n", __func__, p_gesture_status->gesture_id);
+				if (p_gesture_status->gesture_id == 0)
+					input_report_key(info->input_dev, BTN_LARGE_PALM, 1);
+				else
+					input_report_key(info->input_dev, BTN_LARGE_PALM, 0);
+				input_sync(info->input_dev);
+			}
+
 #ifdef FTS_SUPPORT_SPONGELIB
 			if (p_gesture_status->stype == FTS_SPONGE_EVENT_DOUBLETAP) {
 				if (p_gesture_status->gesture_id == FTS_SPONGE_EVENT_GESTURE_ID_AOD) {
@@ -2151,23 +2171,24 @@ static u8 fts_event_handler_type_b(struct fts_ts_info *info)
 		case FTS_VENDOR_EVENT: // just print message for debugging
 			if (event_buff[1] == 0x01) {  // echo event
 				input_info(true, &info->client->dev,
-						"%s: echo event %02X %02X %02X %02X %02X %02X %02X %02X\n", __func__,
-						event_buff[0], event_buff[1], event_buff[2],
-						event_buff[3], event_buff[4], event_buff[5],
-						event_buff[6], event_buff[7]);
+						"%s: echo event %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
+						__func__, event_buff[0], event_buff[1], event_buff[2], event_buff[3], event_buff[4], event_buff[5],
+						event_buff[6], event_buff[7], event_buff[8], event_buff[9], event_buff[10], event_buff[11],
+						event_buff[12], event_buff[13], event_buff[14], event_buff[15]);
 			} else {
 				input_info(true, &info->client->dev,
-						"%s: %02X %02X %02X %02X %02X %02X %02X %02X\n", __func__,
-						event_buff[0], event_buff[1], event_buff[2],
-						event_buff[3], event_buff[4], event_buff[5],
-						event_buff[6], event_buff[7]);
+						"%s: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
+						__func__, event_buff[0], event_buff[1], event_buff[2], event_buff[3], event_buff[4], event_buff[5],
+						event_buff[6], event_buff[7], event_buff[8], event_buff[9], event_buff[10], event_buff[11],
+						event_buff[12], event_buff[13], event_buff[14], event_buff[15]);
 			}
 			break;
 		default:
 			input_info(true, &info->client->dev,
-					"%s: unknown event %02X %02X %02X %02X %02X %02X %02X %02X\n", __func__,
-					event_buff[0], event_buff[1], event_buff[2], event_buff[3],
-					event_buff[4], event_buff[5], event_buff[6], event_buff[7]);
+					"%s: unknown event %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X\n",
+						__func__, event_buff[0], event_buff[1], event_buff[2], event_buff[3], event_buff[4], event_buff[5],
+						event_buff[6], event_buff[7], event_buff[8], event_buff[9], event_buff[10], event_buff[11],
+						event_buff[12], event_buff[13], event_buff[14], event_buff[15]);
 			break;
 		}
 
@@ -2357,6 +2378,12 @@ static void fts_switching_work(struct work_struct *work)
 		fts_chk_tsp_ic_status(info, FTS_STATE_CHK_POS_HALL);
 
 		mutex_unlock(&info->switching_mutex);
+	} else if (info->board->support_flex_mode) {
+		input_info(true, &info->client->dev, "%s support_flex_mode\n", __func__);
+		mutex_lock(&info->switching_mutex);
+		fts_chk_tsp_ic_status(info, FTS_STATE_CHK_POS_SYSFS);
+		sec_input_notify(&info->nb, NOTIFIER_MAIN_TOUCH_ON, NULL);
+		mutex_unlock(&info->switching_mutex);
 	}
 }
 
@@ -2380,6 +2407,14 @@ static int fts_hall_ic_notify(struct notifier_block *nb,
 	info->flip_status_current = flip_cover;
 
 	schedule_work(&info->switching_work.work);
+
+	if (info->xenosensor_detect && info->flip_status_current) {
+		info->xenosensor_detect_count++;
+		info->xenosensor_detect_x = info->xenosensor_x;
+		info->xenosensor_detect_y = info->xenosensor_y;
+		time64_to_tm(ktime_get_real_seconds(), -sys_tz.tz_minuteswest * 60, &info->xenosensor_time);
+		input_info(true, &info->client->dev, "%s: xenosensor_detect_count %d\n", __func__, info->xenosensor_detect_count);
+	}
 
 	return 0;
 }
@@ -2899,6 +2934,7 @@ static void fts_set_input_prop(struct fts_ts_info *info, struct input_dev *dev, 
 	set_bit(propbit, dev->propbit);
 	set_bit(BTN_TOUCH, dev->keybit);
 	set_bit(BTN_TOOL_FINGER, dev->keybit);
+	set_bit(BTN_LARGE_PALM, dev->keybit);
 	set_bit(KEY_BLACK_UI_GESTURE, dev->keybit);
 	set_bit(KEY_WAKEUP, dev->keybit);
 	set_bit(KEY_INT_CANCEL, dev->keybit);
@@ -3022,6 +3058,9 @@ static int fts_probe(struct i2c_client *client, const struct i2c_device_id *idp)
 	mutex_init(&info->eventlock);
 	mutex_init(&info->status_mutex);
 	mutex_init(&info->wait_for);
+#if defined(CONFIG_INPUT_SEC_SECURE_TOUCH)
+	mutex_init(&info->st_lock);
+#endif
 	init_completion(&info->resume_done);
 	complete_all(&info->resume_done);
 
@@ -3238,6 +3277,9 @@ err_register_input:
 	kfree(info->pFrame);
 #endif
 err_fts_init:
+#if defined(CONFIG_INPUT_SEC_SECURE_TOUCH)
+	mutex_destroy(&info->st_lock);
+#endif
 	mutex_destroy(&info->device_mutex);
 	mutex_destroy(&info->i2c_mutex);
 	mutex_destroy(&info->status_mutex);
@@ -3616,7 +3658,11 @@ void fts_reinit(struct fts_ts_info *info, bool delay)
 	}
 
 	/* because edge and dead zone will recover soon */
+#if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE)
+	fts_set_grip_type(info, GRIP_ALL_DATA);
+#else
 	fts_set_grip_type(info, ONLY_EDGE_HANDLER);
+#endif
 
 	fts_delay(50);
 
@@ -3670,6 +3716,7 @@ void fts_release_all_finger(struct fts_ts_info *info)
 
 	input_report_key(info->input_dev, BTN_TOUCH, 0);
 	input_report_key(info->input_dev, BTN_TOOL_FINGER, 0);
+	input_report_key(info->input_dev, BTN_LARGE_PALM, 0);
 
 	if (info->board->support_sidegesture) {
 		input_report_key(info->input_dev, KEY_SIDE_GESTURE, 0);
@@ -3897,7 +3944,6 @@ void fts_chk_tsp_ic_status(struct fts_ts_info *info, int call_pos)
 		} else {
 			input_info(true, &info->client->dev, "%s: HALL : Nothing\n", __func__);
 		}
-
 	} else if (call_pos == FTS_STATE_CHK_POS_SYSFS) {
 		if (info->rear_selfie_mode) {
 			if (info->fts_power_state == FTS_POWER_STATE_LOWPOWER) {

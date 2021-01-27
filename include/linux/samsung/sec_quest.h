@@ -28,6 +28,9 @@
 #define STEP_MAIN_HLOS_TIMEOUT 	3000
 #define BUFF_SZ 			256
 #define MAX_DDR_ERR_ADDR_CNT 64
+#define CPR_BPS_SZ_BYTE		256
+#define QUEST_CPR_MODE_CNT 8
+
 
 /*
 We will determine if we insert ITEM_QUESTHLOS into STEP_SMDDL later.
@@ -53,6 +56,9 @@ So, let's call proper shell script as concept of STEP_SDMDL
 #if defined(CONFIG_SEC_QUEST_HLOS_DUMMY_MAIN_CAL)
 #define QUESTHLOS_HLOS_ITEM_MAIN_CAL	ITEM_QUESTHLOSDUMMY
 #define QUESTHLOS_PROG_MAIN_CAL			"/system/bin/quest/quest_dummy.sh"
+#elif defined(CONFIG_SEC_QUEST_USE_SS_HLOS_SH_MAIN_CAL)
+#define QUESTHLOS_HLOS_ITEM_MAIN_CAL	ITEM_QUESTHLOS
+#define QUESTHLOS_PROG_MAIN_CAL			"/system/bin/quest/quest_ss.sh"
 #else
 #define QUESTHLOS_HLOS_ITEM_MAIN_CAL	ITEM_QUESTHLOS
 #define QUESTHLOS_PROG_MAIN_CAL			"/system/bin/quest/quest.sh"
@@ -142,9 +148,25 @@ enum quest_enum_item {
 enum quest_enum_smd_subitem {
 	SUBITEM_NONE = 0,
 	SUBITEM_DDRSCANLOADER,
+#if defined(CONFIG_SEC_QUEST_EDL)
+	SUBITEM_QUESTSUEFI_GROUP1,
+	SUBITEM_QUESTSUEFI_GROUP2,
+	SUBITEM_QUESTSUEFI_GROUP3,
+	SUBITEM_QUESTSUEFI_GROUP4,
+	SUBITEM_QUESTSUEFI_GROUP5,
+	SUBITEM_QUESTQUEFI_GROUP1,
+	SUBITEM_QUESTQUEFI_GROUP2,
+	SUBITEM_QUESTQUEFI_GROUP3,
+	SUBITEM_QUESTQUEFI_GROUP4,
+	SUBITEM_QUESTQUEFI_GROUP5,
+	SUBITEM_QUESTQUEFI_GROUP6,
+	SUBITEM_QUESTQUEFI_GROUP7,
+	SUBITEM_QUESTQUEFI_GROUP8,	
+#else
 	SUBITEM_QUESTQUEFI,
 	SUBITEM_QUESTSUEFILIGHTCRYPTO,
 	SUBITEM_QUESTSUEFILIGHTCOMPLEX,
+#endif
 #if defined(CONFIG_SEC_QUEST_HLOS_DUMMY_SMD)
 	SUBITEM_QUESTHLOSDUMMY,
 #elif defined(CONFIG_SEC_QUEST_HLOS_NATURESCENE_SMD)
@@ -204,6 +226,12 @@ enum quest_enum_err_boot_code {
 	ERR_BOOT_CODESCOUNT,
 };
 
+struct param_quest_cpr_t {
+	uint32_t Modes;
+	uint32_t Floor;
+	uint32_t Ceiling;
+	uint32_t Current;
+};
 
 
 
@@ -281,7 +309,18 @@ struct param_quest_t {
 	uint32_t smd_hlos_init_thermal_first;
 	uint32_t smd_hlos_max_thermal_first;
 	uint32_t smd_ns_repeats_first;
+	uint32_t smd_quefi_rework;
+	uint32_t smd_suefi_rework;
+
+	uint32_t smd_quefi_total_pause_time;
+	uint32_t smd_quefi_total_pause_time_first;
 	/* smddl information */
+
+	struct param_quest_cpr_t smd_cx_cpr[8];
+	struct param_quest_cpr_t smd_mx_cpr[8];
+
+	struct param_quest_cpr_t curr_cx_cpr[8];
+	struct param_quest_cpr_t curr_mx_cpr[8];
 
 };
 

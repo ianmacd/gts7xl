@@ -406,12 +406,14 @@ struct wacom_i2c {
 	volatile bool probe_done;
 	bool query_status;
 	struct completion resume_done;
+	struct completion i2c_done;
 	struct regulator *regulator_avdd;
 	struct regulator *regulator_dvdd;
 
 	int irq;
 	int irq_pdct;
 	int pen_pdct;
+	bool pdct_lock_fail;
 	struct delayed_work pen_insert_dwork;
 
 	/* survey & garage */

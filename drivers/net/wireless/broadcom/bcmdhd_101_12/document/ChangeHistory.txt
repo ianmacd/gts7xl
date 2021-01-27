@@ -1,4 +1,15 @@
-BCM4375/BCM430132 DHD 101.12.36 for Android Canvas/Hubble/Noblesse Project
+BCM4375/BCM430132 DHD 101.12.38.1 for Android Canvas/Hubble/Noblesse Project
+
+DHD 101.12.38.1 - 2020.07.03
+Others
+ - CS00010646327(By Kim MinSoo) Set initial country code as XZ(World Wide Safe) for Location WiFi scanning mode
+
+
+DHD 101.12.38 - 2020.06.26
+Others
+ - CS00010526513(By Kang MinHo) Prevented connection state mismatch from a dead lock condition
+ - CS00010597429(By Choi Hyeonu) Added default reset scan dwell time when disable the wifi low latency mode
+
 
 DHD 101.12.36 - 2020.06.19
 New Feature
@@ -40,6 +51,10 @@ New Feature
    (This patch should be sync up with FW 18.41.24.2 or higher version)
 
 Others
+ - CS9045500(By Nam Counjong) Changed getWifiLinkLayerStats wme_cnt value from wme_counters to if_counters
+ - CS9531282(SoonHo Lee) Added log message for NDP keep alive
+ - CS9623149(Beom Jip Kim) Fixed delay for NAN_REQUEST_DISABLE command
+ - CS9702973(By Lim Junhak) Added to check connected state when SET MAC force disassoc
  - CS00010422901(By Choi Hyeonu) Corrected a wrong variable name
  - CS00010446591(By Xiao Zhiyong) Disabled GRO in latency mode
  - CS00010470953(By Choi Hyeonu) Applied spinlock only for hikey while collecting dongle memdump
@@ -48,6 +63,11 @@ Others
  - Fixed to update missing WIPS event
    (This patch should be sync up with FW 18.41.24.2 or higher version)
 
+ - CS9045500(By Nam Counjong) Changed getWifiLinkLayerStats wme_cnt value from wme_counters to if_counters
+ - CS9531282(SoonHo Lee) Added log message for NDP keep alive
+    (It should be sync up with FW 18.41.8.9 or higher version)
+ - CS9623149(Beom Jip Kim) Fixed delay for NAN_REQUEST_DISABLE command
+ - CS9702973(By Lim Junhak) Added to check connected state when SET MAC force disassoc
 
 DHD 101.12.31.1 - 2020.05.22
 New Feature

@@ -50,7 +50,7 @@
 #include <linux/leds.h>
 #endif /* CONFIG_ANDROID_TIMED_OUTPUT */
 
-#if defined (CONFIG_SEC_BLOOMXQ_PROJECT) && defined(CONFIG_BATTERY_SAMSUNG)
+#if defined(CONFIG_BATTERY_SAMSUNG)
 #include "../battery_v2/include/sec_charging_common.h"
 #endif
 
@@ -207,7 +207,7 @@ char sec_motor_type[MAX_STR_LEN_VIB_TYPE];
 char sec_prev_event_cmd[MAX_STR_LEN_EVENT_CMD];
 #endif
 
-#if defined (CONFIG_SEC_BLOOMXQ_PROJECT) && defined(CONFIG_BATTERY_SAMSUNG)
+#if defined(CONFIG_BATTERY_SAMSUNG)
 static int vib_get_temperature(void)
 {
 	union power_supply_propval value = {0, };
@@ -336,13 +336,50 @@ static int cs40l2x_dig_scale_get(struct cs40l2x_private *cs40l2x,
 static int cs40l2x_dig_scale_set(struct cs40l2x_private *cs40l2x,
 			unsigned int dig_scale);
 
+static int get_dig_scale_folder_type(struct cs40l2x_private *cs40l2x)
+{
+	struct cs40l2x_platform_data pdata;
+	EVENT_STATUS *status;
+#if defined(CONFIG_BATTERY_SAMSUNG)
+	int current_temp = vib_get_temperature();
+
+	pr_info("%s: current temp: %d\n", __func__, current_temp);
+#endif
+	pdata = cs40l2x->pdata;
+	status = &cs40l2x->save_vib_event;
+#if defined(CONFIG_BATTERY_SAMSUNG)
+#if defined (CONFIG_SEC_F2Q_PROJECT)
+	if (current_temp >= pdata.high_temp) {
+		return pdata.dig_scale_high_temp;
+	}
+#endif
+#endif
+	if(status->EVENTS.FOLDER_STATE == 0) {	/* Case for folder opened status */
+		if(status->EVENTS.SHORT_DURATION == 1)
+			return pdata.dig_scale_fo_sd;
+#if defined(CONFIG_BATTERY_SAMSUNG)
+#if defined (CONFIG_SEC_BLOOMXQ_PROJECT)
+		if (current_temp <= pdata.lower_temp)
+			return pdata.dig_scale_fo_ld_lower_temp;
+		else if (current_temp <= pdata.low_temp)
+			return pdata.dig_scale_fo_ld_low_temp;
+#endif
+#endif
+		return pdata.dig_scale_fo_ld;
+	}
+
+	/* case for folder closed status */
+	if(status->EVENTS.SHORT_DURATION == 1)
+		return pdata.dig_scale_fc_sd;
+
+	return pdata.dig_scale_fc_ld;
+}
+
 static int set_current_dig_scale(struct cs40l2x_private *cs40l2x) {
 	struct cs40l2x_platform_data pdata;
 	EVENT_STATUS *status;
 	int scale = 0;
-#if defined (CONFIG_SEC_BLOOMXQ_PROJECT) && defined(CONFIG_BATTERY_SAMSUNG)
-	int current_temp = vib_get_temperature();
-#endif
+
 	if (cs40l2x == NULL) {
 		pr_err("%s: device is null\n", __func__);
 		return -EINVAL;
@@ -351,31 +388,12 @@ static int set_current_dig_scale(struct cs40l2x_private *cs40l2x) {
 	pdata = cs40l2x->pdata;
 	status = &cs40l2x->save_vib_event;
 
-	if (pdata.folder_type) {
-		if(status->EVENTS.FOLDER_STATE == 0) {	/* Case for folder opened status */
-			if(status->EVENTS.SHORT_DURATION == 1)
-				scale = pdata.dig_scale_fo_sd;
-			else {
-#if defined (CONFIG_SEC_BLOOMXQ_PROJECT) && defined(CONFIG_BATTERY_SAMSUNG)
-				if (current_temp <= pdata.lower_temp)
-					scale = pdata.dig_scale_fo_ld_lower_temp;
-				else if (current_temp > pdata.lower_temp && current_temp <= pdata.low_temp)
-					scale = pdata.dig_scale_fo_ld_low_temp;
-				else
-					scale = pdata.dig_scale_fo_ld;
-#else
-				scale = pdata.dig_scale_fo_ld;
-#endif
-			}
-		} else {	/* Case for folder closed status */
-			if(status->EVENTS.SHORT_DURATION == 1)
-				scale = pdata.dig_scale_fc_sd;
-			else
-				scale = pdata.dig_scale_fc_ld;
-		}
-	} else {
+	if (pdata.folder_type)
+		scale = get_dig_scale_folder_type(cs40l2x);
+	else
 		scale = pdata.dig_scale_default;
-	}
+
+	pr_info("%s: scale set to %d\n", __func__, scale);
 
 	mutex_lock(&cs40l2x->lock);
 	cs40l2x_dig_scale_set(cs40l2x, scale);
@@ -8680,17 +8698,29 @@ static int cs40l2x_handle_of_data(struct i2c_client *i2c_client,
 
 		pr_info("%s: dig scale fo ld lower temp:%d\n", __func__, pdata->dig_scale_fo_ld_lower_temp);
 
-		ret = of_property_read_u32(np, "samsung,low_temp", &out_val);
+		ret = of_property_read_u32(np, "samsung,dig_scale_high_temp", &out_val);
+		if (!ret)
+			pdata->dig_scale_high_temp = out_val;
+
+		pr_info("%s: dig scale high temp:%d\n", __func__, pdata->dig_scale_high_temp);
+
+		ret = of_property_read_s32(np, "samsung,low_temp", &out_val);
 		if (!ret)
 			pdata->low_temp = out_val;
 
 		pr_info("%s: low temp:%d\n", __func__, pdata->low_temp);
 
-		ret = of_property_read_u32(np, "samsung,lower_temp", &out_val);
+		ret = of_property_read_s32(np, "samsung,lower_temp", &out_val);
 		if (!ret)
 			pdata->lower_temp = out_val;
 
 		pr_info("%s: lower temp:%d\n", __func__, pdata->lower_temp);
+
+		ret = of_property_read_s32(np, "samsung,high_temp", &out_val);
+		if (!ret)
+			pdata->high_temp = out_val;
+
+		pr_info("%s: high temp:%d\n", __func__, pdata->high_temp);
 	} else {
 		ret = of_property_read_u32(np, "samsung,dig_scale_default", &out_val);
 		if (!ret)

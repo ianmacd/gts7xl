@@ -125,6 +125,7 @@ struct zram_wb_work {
 	struct page *dst_page;
 	struct bio *bio;
 	struct zram *zram;
+	unsigned long handle;
 };
 
 struct zram_wb_entry {
@@ -186,7 +187,7 @@ struct zram {
 #ifdef CONFIG_ZRAM_LRU_WRITEBACK
 	struct task_struct *wbd;
 	wait_queue_head_t wbd_wait;
-	int *wb_table;
+	u8 *wb_table;
 	bool wbd_running;
 	bool io_complete;
 	struct list_head list;

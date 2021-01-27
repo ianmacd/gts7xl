@@ -69,6 +69,17 @@ enum max77705_muic_command_opcode {
 	COMMAND_NONE			= 0xff,
 };
 
+enum max77705_muic_irq_info {
+	MAX77705_MUIC_IRQ_UIADC,
+	MAX77705_MUIC_IRQ_CHGTYP,
+	MAX77705_MUIC_IRQ_SPR,
+	MAX77705_MUIC_IRQ_DCDTMO,
+	MAX77705_MUIC_IRQ_VBADC,
+	MAX77705_MUIC_IRQ_VBUSDET,
+	MAX77705_MUIC_IRQ_UNKNOWN,
+	MAX77705_MUIC_IRQ_SIZE
+};
+
 #define AFC_OP_OUT_LEN 11 /* OPCODE(1) + Result(1) + VBADC(1) + RX Data(8) */
 
 #if defined(CONFIG_MUIC_MAX77705_CCIC)
@@ -105,6 +116,7 @@ struct max77705_muic_data {
 	int				irq_dcdtmo;
 	int				irq_vbadc;
 	int				irq_vbusdet;
+	int				irq_fail_count[MAX77705_MUIC_IRQ_SIZE];
 
 	/* model dependant muic platform data */
 	struct muic_platform_data	*pdata;
@@ -364,6 +376,7 @@ extern int max77705_muic_suspend(struct max77705_usbc_platform_data *usbc_data);
 extern int max77705_muic_resume(struct max77705_usbc_platform_data *usbc_data);
 #if defined(CONFIG_HV_MUIC_MAX77705_AFC)
 extern bool max77705_muic_check_is_enable_afc(struct max77705_muic_data *muic_data, muic_attached_dev_t new_dev);
+extern void max77705_muic_check_afc_disabled(struct max77705_muic_data *muic_data);
 extern void max77705_muic_clear_hv_control(struct max77705_muic_data *muic_data);
 extern void max77705_muic_afc_hv_set(struct max77705_muic_data *muic_data, int voltage);
 extern void max77705_muic_qc_hv_set(struct max77705_muic_data *muic_data, int voltage);

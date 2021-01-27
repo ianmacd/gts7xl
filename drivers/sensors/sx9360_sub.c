@@ -74,10 +74,10 @@
 				| SX9360_IRQSTAT_COMPDONE_FLAG)
 
 #ifdef CONFIG_SENSORS_HALL
-#define HALLIC_PATH		"/sys/class/sec/sec_key/hall_detect"
+#define HALLIC_PATH		"/sys/class/sec/hall_ic/hall_detect"
 #endif
 #ifdef CONFIG_CERTIFY_HALL
-#define HALLIC_CERT_PATH	"/sys/class/sec/sec_key/certify_hall_detect"
+#define HALLIC_CERT_PATH	"/sys/class/sec/hall_ic/certify_hall_detect"
 #endif
 #ifdef CONFIG_FOLDER_HALL
 #define HALLIC_FOLD_PATH	"/sys/class/sec/sec_flip/flipStatus"
@@ -240,9 +240,9 @@ static u8 sx9360_read_irqstate(struct sx9360_p *data)
 static void sx9360_initialize_register(struct sx9360_p *data)
 {
 	u8 val = 0;
-	int idx;
+	unsigned int idx;
 
-	for (idx = 0; idx < (sizeof(setup_reg) >> 1); idx++) {
+	for (idx = 0; idx < (unsigned int)(sizeof(setup_reg) >> 1); idx++) {
 		sx9360_i2c_write(data, setup_reg[idx].reg, setup_reg[idx].val);
 		pr_info("[SX9360_SUB]: %s - Write Reg: 0x%x Value: 0x%x\n",
 			__func__, setup_reg[idx].reg, setup_reg[idx].val);

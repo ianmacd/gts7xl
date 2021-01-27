@@ -289,6 +289,7 @@ static int p3_regulator_onoff(struct p3_data *data, int onoff)
 				__func__, rc);
 			goto done;
 		}
+		msleep(30);
 	}
 
 	P3_DBG_MSG("success\n");
@@ -423,6 +424,13 @@ static int spip3_open(struct inode *inode, struct file *filp)
 	wake_lock(&p3_dev->ese_lock);
 #endif
 
+#ifdef FEATURE_ESE_POWER_ON_OFF
+	ret = p3_regulator_onoff(p3_dev, 1);
+	if (ret < 0)
+		P3_ERR_MSG(" %s : failed to turn on LDO()\n", __func__);
+	usleep_range(2000, 2500);
+#endif
+
 #ifdef LSI_AP
 #ifdef CONFIG_ESE_SECURE
 	p3_clk_control(p3_dev, true);
@@ -430,13 +438,6 @@ static int spip3_open(struct inode *inode, struct file *filp)
 #else
 	p3_pinctrl_config(p3_dev, true);
 #endif
-#endif
-
-#ifdef FEATURE_ESE_POWER_ON_OFF
-	ret = p3_regulator_onoff(p3_dev, 1);
-	if (ret < 0)
-		P3_ERR_MSG(" %s : failed to turn on LDO()\n", __func__);
-	usleep_range(2000, 2500);
 #endif
 
 	filp->private_data = p3_dev;
@@ -600,14 +601,19 @@ static ssize_t spip3_write(struct file *filp, const char *buf, size_t count,
 #endif
 
 	p3_dev = filp->private_data;
-	tx_buffer = p3_dev->tx_buffer;
-	rx_buffer = p3_dev->rx_buffer;
 
 	if (count > MAX_BUFFER_SIZE) {
 		P3_ERR_MSG("%s invalid size\n", __func__);
 		return -EMSGSIZE;
 	}
+
 	mutex_lock(&p3_dev->buffer_mutex);
+
+	tx_buffer = p3_dev->tx_buffer;
+	rx_buffer = p3_dev->rx_buffer;
+
+	memset(tx_buffer, 0, MAX_BUFFER_SIZE);
+	memset(rx_buffer, 0, MAX_BUFFER_SIZE);
 
 	if (copy_from_user(&tx_buffer[0], &buf[0], count)) {
 		P3_ERR_MSG("%s : failed to copy from user space\n", __func__);
@@ -641,7 +647,7 @@ static ssize_t spip3_write(struct file *filp, const char *buf, size_t count,
 	memset(&t, 0, sizeof(t));
 
 	t.tx_buf = tx_buffer;
-	t.rx_buf = NULL;
+	t.rx_buf = rx_buffer;
 	t.len = count;
 
 	spi_message_add_tail(&t, &m);
@@ -685,15 +691,18 @@ static ssize_t spip3_read(struct file *filp, char *buf, size_t count,
 		return -EMSGSIZE;
 	}
 
+	mutex_lock(&p3_dev->buffer_mutex);
+
 	tx_buffer = p3_dev->tx_buffer;
 	rx_buffer = p3_dev->rx_buffer;
 
-	mutex_lock(&p3_dev->buffer_mutex);
+	memset(tx_buffer, 0, MAX_BUFFER_SIZE);
+	memset(rx_buffer, 0, MAX_BUFFER_SIZE);
 
 	spi_message_init(&m);
 	memset(&t, 0, sizeof(t));
 
-	t.tx_buf = NULL;
+	t.tx_buf = tx_buffer;
 	t.rx_buf = rx_buffer;
 	t.len = count;
 
