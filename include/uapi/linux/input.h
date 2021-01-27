@@ -158,6 +158,7 @@ struct input_event {
 	__kernel_ulong_t __sec;
 #if defined(__sparc__) && defined(__arch64__)
 	unsigned int __usec;
+	unsigned int __pad;
 #else
 	__kernel_ulong_t __usec;
 #endif
@@ -367,6 +368,7 @@ struct input_mask {
  */
 #define SW_FLIP                 0x15  /* set = flip cover open, close*/
 #define SW_CERTIFYHALL          0x1b  /* set = certify_hall attach/detach */
+#define SW_WACOM_HALL		0x1e  /* set = wacom hall ic attach/detach */
 #define SW_HALL_LOGICAL		0x1f  /* set = logical hall ic attach/detach */
 
 /*

@@ -853,7 +853,7 @@ static ssize_t rear_early_retention_show(struct device *dev,
 	return 0;
 }
 #endif
-#if !defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM)
+#if !(defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM) || defined(CONFIG_SAMSUNG_FRONT_FIXED_FOCUS))
 uint32_t front_af_cal_pan;
 uint32_t front_af_cal_macro;
 static ssize_t front_camera_afcal_show(struct device *dev,
@@ -1977,7 +1977,7 @@ static ssize_t rear3_type_show(struct device *dev,
 	int rc = 0;
 #if defined(CONFIG_SEC_Z3Q_PROJECT)
 	char cam_type[] = "SONY_IMX586\n";
-#elif  defined(CONFIG_SEC_C2Q_PROJECT)  || defined(CONFIG_SEC_F2Q_PROJECT)
+#elif  defined(CONFIG_SEC_C2Q_PROJECT)  || defined(CONFIG_SEC_F2Q_PROJECT) || defined(CONFIG_SEC_VICTORY_PROJECT)
 	char cam_type[] = "SLSI_S5K3M5\n";
 #elif defined(CONFIG_SEC_R8Q_PROJECT)
 	char cam_type[] = "HYNIX_HI847\n";
@@ -2423,8 +2423,9 @@ static ssize_t rear2_type_show(struct device *dev,
 	char cam_type[] = "SLSI_S5K2L3\n";
 #elif defined(CONFIG_SEC_GTS7XL_PROJECT) || defined(CONFIG_SEC_GTS7L_PROJECT)
 	char cam_type[] = "SLSI_S5K5E9\n";
-#elif defined(CONFIG_SEC_BLOOMXQ_PROJECT) || defined(CONFIG_SEC_F2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT)
+#elif defined(CONFIG_SEC_BLOOMXQ_PROJECT) || defined(CONFIG_SEC_F2Q_PROJECT) || defined(CONFIG_SEC_R8Q_PROJECT) || defined(CONFIG_SEC_VICTORY_PROJECT)
 	char cam_type[] = "SLSI_S5K3L6\n";
+
 #else
 	char cam_type[] = "SLSI_S5K2LA\n";
 #endif
@@ -2822,7 +2823,7 @@ static ssize_t ois_reset_check(struct device *dev,
 	if (g_o_ctrl == NULL)
 		return 0;
 
-	pr_info("ois reset_check : %d\n", g_o_ctrl->ois_mode);
+	pr_debug("ois reset_check : %d\n", g_o_ctrl->ois_mode);
 	rc = scnprintf(buf, PAGE_SIZE, "%d", g_o_ctrl->ois_mode);
 	return rc;
 }
@@ -5908,7 +5909,7 @@ static DEVICE_ATTR(rear_f2_paf_cal_check, S_IRUGO,
 #if 0 //EARLY_RETENTION
 static DEVICE_ATTR(rear_early_retention, S_IRUGO, rear_early_retention_show, NULL);
 #endif
-#if !defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM)
+#if !(defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM) || defined(CONFIG_SAMSUNG_FRONT_FIXED_FOCUS))
 static DEVICE_ATTR(front_afcal, S_IRUGO, front_camera_afcal_show, NULL);
 #endif
 static DEVICE_ATTR(front_camtype, S_IRUGO, front_camera_type_show, NULL);
@@ -6610,7 +6611,7 @@ static int __init cam_sysfs_init(void)
 			dev_attr_front_caminfo.attr.name);
 	}
 #endif
-#if !defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM)
+#if !(defined(CONFIG_SAMSUNG_FRONT_TOP_EEPROM) || defined(CONFIG_SAMSUNG_FRONT_FIXED_FOCUS))
 	if (device_create_file(cam_dev_front, &dev_attr_front_afcal) < 0) {
 		pr_err("Failed to create device file!(%s)!\n",
 			dev_attr_front_afcal.attr.name);

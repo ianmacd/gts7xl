@@ -219,17 +219,19 @@ int mfc_get_firmware_version(struct mfc_charger_data *charger, int firm_mode)
 static int mfc_get_ic_id(struct mfc_charger_data *charger)
 {
 	u8 temp;
-	int ret;
+	int ret, i;
 
 	pr_info("%s: called by (%ps)\n", __func__, __builtin_return_address(0));
 
-	ret = mfc_reg_read(charger->client, MFC_HAL_CHIP_ID_L_REG, &temp);
-
-	if (ret >= 0) {
-		pr_info("%s ic id = 0x%x\n", __func__, temp);
-		ret =  temp;
+	for (i = 0; i < 3; i++) {
+		ret = mfc_reg_read(charger->client, MFC_HAL_CHIP_ID_L_REG, &temp);
+		if (ret >= 0) {
+			pr_info("%s ic id = 0x%x\n", __func__, temp);
+			ret =  temp;
+			break;
+		}
 	}
-	else
+	if (i == 3)
 		ret = -1;
 
 	return ret;
@@ -265,8 +267,8 @@ static int mfc_check_ic_info(struct mfc_charger_data *charger)
 	}
 
 	id = mfc_get_ic_id(charger);
-	if (id >= 0)
-		mfc_chip_id_now = id;
+	if (id == MFC_CHIP_ID_S2MIW04)
+		mfc_chip_id_now = MFC_CHIP_ID_S2MIW04;
 	else
 		mfc_chip_id_now = MFC_CHIP_ID_P9320; /* default is IDT */
 

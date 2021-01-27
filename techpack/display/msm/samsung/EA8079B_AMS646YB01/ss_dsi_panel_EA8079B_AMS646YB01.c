@@ -37,24 +37,330 @@ enum {
 };
 
 #define ALPM_REG	0x53	/* Register to control brightness level */
-#define ALPM_CTRL_REG	0xB9	/* Register to cnotrol ALPM/HLPM mode */
+#define ALPM_CTRL_REG	0xBB	/* Register to cnotrol ALPM/HLPM mode */
 
 #define IRC_MODERATO_MODE_VAL	0x61
 #define IRC_FLAT_GAMMA_MODE_VAL	0x21
+
+static int ss_gm2_gamma_comp_init(struct samsung_display_driver_data *vdd)
+{
+	struct vrr_info *vrr = &vdd->vrr;
+	struct dsi_panel_cmd_set *rx_cmds;
+	u8 readbuf[GAMMA_SET_SIZE];
+	int i_mode = 0;
+	int k = 0;
+	int m = 0;
+
+	rx_cmds = ss_get_cmds(vdd, RX_SMART_DIM_MTP);
+	if (SS_IS_CMDS_NULL(rx_cmds)) {
+		LCD_ERR("No cmds for RX_SMART_DIM_MTP..\n");
+		return -ENODEV;
+	}
+
+	//===========================================================================
+	// Read original gamma values for gammam modes (SET_1 ~ SET_6) : 60 HS
+	//===========================================================================
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB7;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 43;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 129;	// 0x81
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[0], LEVEL1_KEY);
+	memcpy(&G_offset_60_MTP_READ[GAMMA_SET_1][0], readbuf, GAMMA_SET_SIZE);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB7;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 43;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 172;	// 0xAC
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[0], LEVEL1_KEY);
+	memcpy(&G_offset_60_MTP_READ[GAMMA_SET_2][0], readbuf, GAMMA_SET_SIZE);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB7;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 28;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 215;	// 0xD7
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[0], LEVEL1_KEY);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB8;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 15;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 0x0;	// 0x00
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[28], LEVEL1_KEY);
+	memcpy(&G_offset_60_MTP_READ[GAMMA_SET_3][0], readbuf, GAMMA_SET_SIZE);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB8;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 43;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 15;	// 0x0F
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[0], LEVEL1_KEY);
+	memcpy(&G_offset_60_MTP_READ[GAMMA_SET_4][0], readbuf, GAMMA_SET_SIZE);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB8;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 43;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 58;	// 0x3A
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[0], LEVEL1_KEY);
+	memcpy(&G_offset_60_MTP_READ[GAMMA_SET_5][0], readbuf, GAMMA_SET_SIZE);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB8;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 43;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 101;	// 0x65
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[0], LEVEL1_KEY);
+	memcpy(&G_offset_60_MTP_READ[GAMMA_SET_6][0], readbuf, GAMMA_SET_SIZE);
+
+	for (i_mode = GAMMA_SET_1; i_mode < GAMMA_SET_MAX; i_mode++)
+		for (k = 0; k < GAMMA_SET_SIZE; k++)
+			LCD_DEBUG("G_offset_60_MTP_READ [SET_%d][%d] = %02x\n", i_mode+1, k, G_offset_60_MTP_READ[i_mode][k]);
+
+	//===========================================================================
+	// Read original gamma values for gammam modes (SET_1 ~ SET_6) : 120 HS
+	//===========================================================================
+	//SET_1:[B8:0xE6(230)] + [B9 : 0 ~ 0x29(41)]			//   0 ~  42
+	//SET_2:[B9:0x2A(42) ] ~ [B9 : 0x54(84) ]			//  43 ~  85
+	//SET_3:[B9:0x55(85) ] ~ [B9 : 0x7F(127)]			//  86 ~ 128
+	//SET_4:[B9:0x80(128)] ~ [B9 : 0xAA(170)]			// 129 ~ 128
+	//SET_5:[B9:0xAB(171)] ~ [B9 : 0xD5(213)]			// 172 ~ 214
+	//SET_6:[B9:0xD6(214)~0xEC(236)](23)+[BA:0x0~0x13(19)](20)	// 215 ~ 257
+	//===========================================================================
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB8;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 1;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 230; // 0xE6
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[0], LEVEL1_KEY);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB9;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 42;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 0x0;	// 0x0
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[1], LEVEL1_KEY);
+	memcpy(&G_offset_120_MTP_READ[GAMMA_SET_1][0], readbuf, GAMMA_SET_SIZE);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB9;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 43;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 42;	// 0x2A
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[0], LEVEL1_KEY);
+	memcpy(&G_offset_120_MTP_READ[GAMMA_SET_2][0], readbuf, GAMMA_SET_SIZE);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB9;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 43;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 85;	// 0x55
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[0], LEVEL1_KEY);
+	memcpy(&G_offset_120_MTP_READ[GAMMA_SET_3][0], readbuf, GAMMA_SET_SIZE);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB9;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 43;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 128;	// 0x80
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[0], LEVEL1_KEY);
+	memcpy(&G_offset_120_MTP_READ[GAMMA_SET_4][0], readbuf, GAMMA_SET_SIZE);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB9;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 43;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 171; // 0xAB
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[0], LEVEL1_KEY);
+	memcpy(&G_offset_120_MTP_READ[GAMMA_SET_5][0], readbuf, GAMMA_SET_SIZE);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xB9;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 23;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 214;
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[0], LEVEL1_KEY);
+
+	rx_cmds->cmds->msg.tx_buf[0] = 0xBA;
+	rx_cmds->cmds->msg.tx_buf[1] = rx_cmds->cmds[0].msg.rx_len = 20;
+	rx_cmds->cmds->msg.tx_buf[2] = rx_cmds->read_startoffset = 0x0;
+	ss_panel_data_read(vdd, RX_SMART_DIM_MTP, &readbuf[23], LEVEL1_KEY);
+	memcpy(&G_offset_120_MTP_READ[GAMMA_SET_6][0], readbuf, GAMMA_SET_SIZE);
+
+	for (i_mode = GAMMA_SET_1; i_mode < GAMMA_SET_MAX; i_mode++)
+		for (k = 0; k < GAMMA_SET_SIZE; k++)
+			LCD_DEBUG("G_offset_120_MTP_READ [SET_%d][%d] = %02x\n", i_mode+1, k, G_offset_120_MTP_READ[i_mode][k]);
+
+	// ===============================================
+	// 120HS MTP_READ => MTP_READ_10Bit (MTP_READ_33)
+	// ===============================================
+	for (i_mode = GAMMA_SET_1; i_mode < GAMMA_SET_MAX; i_mode++) {
+		m = 0;
+		for (k = 0; k < 40; k++) {
+			k = k+3; // 3, 7, 11, ...42
+			m = m+3; // 3, 6, 9, ...32
+			G_offset_120_MTP_READ_10[i_mode][m]   = (GET_BITS(G_offset_120_MTP_READ[i_mode][k],   0, 5)<<4) | (GET_BITS(G_offset_120_MTP_READ[i_mode][k+1], 4, 7));
+			G_offset_120_MTP_READ_10[i_mode][m+1] = (GET_BITS(G_offset_120_MTP_READ[i_mode][k+1], 0, 3)<<6) | (GET_BITS(G_offset_120_MTP_READ[i_mode][k+2], 2, 7));
+			G_offset_120_MTP_READ_10[i_mode][m+2] = (GET_BITS(G_offset_120_MTP_READ[i_mode][k+2], 0, 1)<<8) | (GET_BITS(G_offset_120_MTP_READ[i_mode][k+3], 0, 7));
+		}
+	}
+
+	// ===============================================
+	// BRIGHT_STEP1 : Platform Brightness (0 ~ 63)
+	// ===============================================
+	for (i_mode = GAMMA_SET_1; i_mode < GAMMA_SET_MAX; i_mode++)
+		for (k = 0; k < GAMMA_V_COMP_SIZE; k++)
+			G_offset_Bright1_10Bit[i_mode][k] = G_offset_120_MTP_READ_10[i_mode][k] + Bright1_Comp[i_mode][k];
+
+	for (i_mode = GAMMA_SET_1; i_mode < GAMMA_SET_MAX; i_mode++) {
+		m = 0;
+		for (k = 0; k < 40; k++) {
+			k = k+3; // 3, 7, 11, ...42
+			m = m+3; // 3, 6, 9, ...32
+			G_offset_Bright1_8Bit[i_mode][k]   = (GET_BITS(G_offset_Bright1_10Bit[i_mode][m],   4, 9));
+			G_offset_Bright1_8Bit[i_mode][k+1] = (GET_BITS(G_offset_Bright1_10Bit[i_mode][m],   0, 3)<<4) | (GET_BITS(G_offset_Bright1_10Bit[i_mode][m+1], 6, 9));
+			G_offset_Bright1_8Bit[i_mode][k+2] = (GET_BITS(G_offset_Bright1_10Bit[i_mode][m+1], 0, 5)<<2) | (GET_BITS(G_offset_Bright1_10Bit[i_mode][m+2], 8, 9));
+			G_offset_Bright1_8Bit[i_mode][k+3] = (GET_BITS(G_offset_Bright1_10Bit[i_mode][m+2], 0, 7));
+		}
+	}
+	// ===============================================
+	// BRIGHT_STEP2 : Platform Brightness (64 ~ 68)
+	// ===============================================
+	for (i_mode = GAMMA_SET_1; i_mode < GAMMA_SET_MAX; i_mode++)
+		for (k = 0; k < GAMMA_V_COMP_SIZE; k++)
+			G_offset_Bright2_10Bit[i_mode][k] = G_offset_120_MTP_READ_10[i_mode][k] + Bright2_Comp[i_mode][k];
+
+	for (i_mode = GAMMA_SET_1; i_mode < GAMMA_SET_MAX; i_mode++) {
+		m = 0;
+		for (k = 0; k < 40; k++) {
+			k = k+3; // 3, 7, 11, ...42
+			m = m+3; // 3, 6, 9, ...32
+			G_offset_Bright2_8Bit[i_mode][k]   = (GET_BITS(G_offset_Bright2_10Bit[i_mode][m],   4, 9));
+			G_offset_Bright2_8Bit[i_mode][k+1] = (GET_BITS(G_offset_Bright2_10Bit[i_mode][m],   0, 3)<<4) | (GET_BITS(G_offset_Bright2_10Bit[i_mode][m+1], 6, 9));
+			G_offset_Bright2_8Bit[i_mode][k+2] = (GET_BITS(G_offset_Bright2_10Bit[i_mode][m+1], 0, 5)<<2) | (GET_BITS(G_offset_Bright2_10Bit[i_mode][m+2], 8, 9));
+			G_offset_Bright2_8Bit[i_mode][k+3] = (GET_BITS(G_offset_Bright2_10Bit[i_mode][m+2], 0, 7));
+		}
+	}
+	// ===============================================
+	// BRIGHT_STEP3 : Platform Brightness (69 ~ 184)
+	// ===============================================
+	for (i_mode = GAMMA_SET_1; i_mode < GAMMA_SET_MAX; i_mode++)
+		for (k = 0; k < GAMMA_V_COMP_SIZE; k++)
+			G_offset_Bright3_10Bit[i_mode][k] = G_offset_120_MTP_READ_10[i_mode][k] + Bright3_Comp[i_mode][k];
+
+	for (i_mode = GAMMA_SET_1; i_mode < GAMMA_SET_MAX; i_mode++) {
+		m = 0;
+		for (k = 0; k < 40; k++) {
+			k = k+3; // 3, 7, 11, ...42
+			m = m+3; // 3, 6, 9, ...32
+			G_offset_Bright3_8Bit[i_mode][k]   = (GET_BITS(G_offset_Bright3_10Bit[i_mode][m],   4, 9));
+			G_offset_Bright3_8Bit[i_mode][k+1] = (GET_BITS(G_offset_Bright3_10Bit[i_mode][m],   0, 3)<<4) | (GET_BITS(G_offset_Bright3_10Bit[i_mode][m+1], 6, 9));
+			G_offset_Bright3_8Bit[i_mode][k+2] = (GET_BITS(G_offset_Bright3_10Bit[i_mode][m+1], 0, 5)<<2) | (GET_BITS(G_offset_Bright3_10Bit[i_mode][m+2], 8, 9));
+			G_offset_Bright3_8Bit[i_mode][k+3] = (GET_BITS(G_offset_Bright3_10Bit[i_mode][m+2], 0, 7));
+		}
+	}
+	// ===============================================
+	// BRIGHT_STEP4 : Platform Brightness (185 ~ 255)
+	// ===============================================
+	for (i_mode = GAMMA_SET_1; i_mode < GAMMA_SET_MAX; i_mode++)
+		for (k = 0; k < GAMMA_V_COMP_SIZE; k++)
+			G_offset_Bright4_10Bit[i_mode][k] = G_offset_120_MTP_READ_10[i_mode][k] + Bright4_Comp[i_mode][k];
+
+	for (i_mode = GAMMA_SET_1; i_mode < GAMMA_SET_MAX; i_mode++) {
+		m = 0;
+		for (k = 0; k < 40; k++) {
+			k = k+3; // 3, 7, 11, ...42
+			m = m+3; // 3, 6, 9, ...32
+			G_offset_Bright4_8Bit[i_mode][k]   = (GET_BITS(G_offset_Bright4_10Bit[i_mode][m],   4, 9));
+			G_offset_Bright4_8Bit[i_mode][k+1] = (GET_BITS(G_offset_Bright4_10Bit[i_mode][m],   0, 3)<<4) | (GET_BITS(G_offset_Bright4_10Bit[i_mode][m+1], 6, 9));
+			G_offset_Bright4_8Bit[i_mode][k+2] = (GET_BITS(G_offset_Bright4_10Bit[i_mode][m+1], 0, 5)<<2) | (GET_BITS(G_offset_Bright4_10Bit[i_mode][m+2], 8, 9));
+			G_offset_Bright4_8Bit[i_mode][k+3] = (GET_BITS(G_offset_Bright4_10Bit[i_mode][m+2], 0, 7));
+		}
+	}
+
+	vrr->gm2_gamma = VRR_GM2_GAMMA_COMPENSATE;
+	return 0;
+}
+
+struct dsi_panel_cmd_set *ss_brightness_gm2_gamma_comp(struct samsung_display_driver_data *vdd, int *level_key)
+{
+	struct dsi_panel_cmd_set *pcmds = NULL;
+	int k = 0;
+
+	pcmds = ss_get_cmds(vdd, TX_VRR_GM2_GAMMA_COMP);
+
+	if (vdd->vrr.adjusted_refresh_rate == 96) {
+		// ===============================================
+		// BRIGHT_STEP1 : Platform Brightness (0 ~ 63)
+		// ===============================================
+		if (vdd->br_info.common_br.cd_idx < 64) {
+			for (k = 0; k < GAMMA_SET_SIZE; k++) {
+				pcmds->cmds[1].msg.tx_buf[k+1]				= G_offset_Bright1_8Bit[0][k]; // 0x81 ~ 0xAB
+				pcmds->cmds[1].msg.tx_buf[k+1+GAMMA_SET_SIZE]		= G_offset_Bright1_8Bit[1][k]; // 0xAC ~ 0xD6
+				if (k < 28)
+					pcmds->cmds[1].msg.tx_buf[k+1+(GAMMA_SET_SIZE*2)] = G_offset_Bright1_8Bit[2][k]; // 0xD7 ~ 0xF2 : 28 (0~27)
+				else
+					pcmds->cmds[2].msg.tx_buf[k-27]			= G_offset_Bright1_8Bit[2][k]; // 0x00 ~ 0x0E : 15 (1~15)
+				pcmds->cmds[2].msg.tx_buf[k+16]				= G_offset_Bright1_8Bit[3][k]; // 0x0F ~ 0x39
+				pcmds->cmds[2].msg.tx_buf[k+16+GAMMA_SET_SIZE]		= G_offset_Bright1_8Bit[4][k]; // 0x3A ~ 0x64
+				pcmds->cmds[2].msg.tx_buf[k+16+(GAMMA_SET_SIZE*2)]	= G_offset_Bright1_8Bit[5][k]; // 0x65 ~ 0x8F
+			}
+		}
+		// ===============================================
+		// BRIGHT_STEP2 : Platform Brightness (64 ~ 68)
+		// ===============================================
+		else if (vdd->br_info.common_br.cd_idx < 69) {
+			for (k = 0; k < GAMMA_SET_SIZE; k++) {
+				pcmds->cmds[1].msg.tx_buf[k+1]				= G_offset_Bright2_8Bit[0][k];
+				pcmds->cmds[1].msg.tx_buf[k+1+GAMMA_SET_SIZE]		= G_offset_Bright2_8Bit[1][k];
+				if (k < 28)
+					pcmds->cmds[1].msg.tx_buf[k+1+(GAMMA_SET_SIZE*2)] = G_offset_Bright2_8Bit[2][k];
+				else
+					pcmds->cmds[2].msg.tx_buf[k-27]			= G_offset_Bright2_8Bit[2][k];
+				pcmds->cmds[2].msg.tx_buf[k+16]				= G_offset_Bright2_8Bit[3][k];
+				pcmds->cmds[2].msg.tx_buf[k+16+GAMMA_SET_SIZE]		= G_offset_Bright2_8Bit[4][k];
+				pcmds->cmds[2].msg.tx_buf[k+16+(GAMMA_SET_SIZE*2)]	= G_offset_Bright2_8Bit[5][k];
+			}
+		}
+		// ===============================================
+		// BRIGHT_STEP3 : Platform Brightness (69 ~ 184)
+		// ===============================================
+		else if (vdd->br_info.common_br.cd_idx < 185) {
+			for (k = 0; k < GAMMA_SET_SIZE; k++) {
+				pcmds->cmds[1].msg.tx_buf[k+1]				= G_offset_Bright3_8Bit[0][k];
+				pcmds->cmds[1].msg.tx_buf[k+1+GAMMA_SET_SIZE]		= G_offset_Bright3_8Bit[1][k];
+				if (k < 28)
+					pcmds->cmds[1].msg.tx_buf[k+1+(GAMMA_SET_SIZE*2)] = G_offset_Bright3_8Bit[2][k];
+				else
+					pcmds->cmds[2].msg.tx_buf[k-27]			= G_offset_Bright3_8Bit[2][k];
+				pcmds->cmds[2].msg.tx_buf[k+16]				= G_offset_Bright3_8Bit[3][k];
+				pcmds->cmds[2].msg.tx_buf[k+16+GAMMA_SET_SIZE]		= G_offset_Bright3_8Bit[4][k];
+				pcmds->cmds[2].msg.tx_buf[k+16+(GAMMA_SET_SIZE*2)]	= G_offset_Bright3_8Bit[5][k];
+			}
+		}
+		// ===============================================
+		// BRIGHT_STEP4 : Platform Brightness (185 ~ 255)
+		// ===============================================
+		else {
+			for (k = 0; k < GAMMA_SET_SIZE; k++) {
+				pcmds->cmds[1].msg.tx_buf[k+1]				= G_offset_Bright4_8Bit[0][k];
+				pcmds->cmds[1].msg.tx_buf[k+1+GAMMA_SET_SIZE]		= G_offset_Bright4_8Bit[1][k];
+				if (k < 28)
+					pcmds->cmds[1].msg.tx_buf[k+1+(GAMMA_SET_SIZE*2)] = G_offset_Bright4_8Bit[2][k];
+				else
+					pcmds->cmds[2].msg.tx_buf[k-27]			= G_offset_Bright4_8Bit[2][k];
+				pcmds->cmds[2].msg.tx_buf[k+16]				= G_offset_Bright4_8Bit[3][k];
+				pcmds->cmds[2].msg.tx_buf[k+16+GAMMA_SET_SIZE]		= G_offset_Bright4_8Bit[4][k];
+				pcmds->cmds[2].msg.tx_buf[k+16+(GAMMA_SET_SIZE*2)]	= G_offset_Bright4_8Bit[5][k];
+			}
+		}
+	}
+	// ======================
+	// 60 & 120 Hz
+	// ======================
+	else {
+		for (k = 0; k < GAMMA_SET_SIZE; k++) {
+			pcmds->cmds[1].msg.tx_buf[k+1]				= G_offset_60_MTP_READ[0][k];
+			pcmds->cmds[1].msg.tx_buf[k+1+GAMMA_SET_SIZE]		= G_offset_60_MTP_READ[1][k];
+			if (k < 28)
+				pcmds->cmds[1].msg.tx_buf[k+1+(GAMMA_SET_SIZE*2)] = G_offset_60_MTP_READ[2][k];
+			else
+				pcmds->cmds[2].msg.tx_buf[k-27]			= G_offset_60_MTP_READ[2][k];
+			pcmds->cmds[2].msg.tx_buf[k+16]				= G_offset_60_MTP_READ[3][k];
+			pcmds->cmds[2].msg.tx_buf[k+16+GAMMA_SET_SIZE]		= G_offset_60_MTP_READ[4][k];
+			pcmds->cmds[2].msg.tx_buf[k+16+(GAMMA_SET_SIZE*2)]	= G_offset_60_MTP_READ[5][k];
+		}
+	}
+
+	*level_key = LEVEL1_KEY;
+	return pcmds;
+}
 
 static struct dsi_panel_cmd_set *__ss_vrr(struct samsung_display_driver_data *vdd,
 					int *level_key, bool is_hbm, bool is_hmt)
 {
 	struct dsi_panel *panel = GET_DSI_PANEL(vdd);
-	struct dsi_panel_cmd_set  *vrr_cmds = ss_get_cmds(vdd, DSI_CMD_SET_TIMING_SWITCH); // JUN_TEMP
+	struct dsi_panel_cmd_set  *vrr_cmds = ss_get_cmds(vdd, TX_VRR);
 
 	struct vrr_info *vrr = &vdd->vrr;
 	enum SS_BRR_MODE brr_mode = vrr->brr_mode;
 
 	int cur_rr;
 	bool cur_hs;
-	//char vbias_cmd[14];
-	//char vaint_cmd[14];
 
 	if (SS_IS_CMDS_NULL(vrr_cmds)) {
 		LCD_INFO("no vrr cmds\n");
@@ -81,6 +387,75 @@ static struct dsi_panel_cmd_set *__ss_vrr(struct samsung_display_driver_data *vd
 	cur_rr = vrr->cur_refresh_rate;
 	cur_hs = vrr->cur_sot_hs_mode;
 
+	// Freq Setting
+	if (vdd->vrr.adjusted_refresh_rate == 120)
+		vrr_cmds->cmds[1].msg.tx_buf[1] = 0x10;
+	else
+		vrr_cmds->cmds[1].msg.tx_buf[1] = 0x00;
+
+	if (vdd->vrr.adjusted_refresh_rate == 96) {
+		vrr_cmds->cmds[3].msg.tx_buf[1] = 0xA2;
+		vrr_cmds->cmds[3].msg.tx_buf[2] = 0x5C;
+
+		vrr_cmds->cmds[5].msg.tx_buf[1]  = 0x0B;
+		vrr_cmds->cmds[5].msg.tx_buf[2]  = 0xCC;
+		vrr_cmds->cmds[5].msg.tx_buf[3]  = 0x09;
+		vrr_cmds->cmds[5].msg.tx_buf[4]  = 0x2A;
+		vrr_cmds->cmds[5].msg.tx_buf[5]  = 0x09;
+		vrr_cmds->cmds[5].msg.tx_buf[6]  = 0x02;
+		vrr_cmds->cmds[5].msg.tx_buf[7]  = 0x08;
+		vrr_cmds->cmds[5].msg.tx_buf[8]  = 0x8E;
+		vrr_cmds->cmds[5].msg.tx_buf[9]  = 0x08;
+		vrr_cmds->cmds[5].msg.tx_buf[10] = 0x16;
+		vrr_cmds->cmds[5].msg.tx_buf[11] = 0x07;
+		vrr_cmds->cmds[5].msg.tx_buf[12] = 0x54;
+		vrr_cmds->cmds[5].msg.tx_buf[13] = 0x06;
+		vrr_cmds->cmds[5].msg.tx_buf[14] = 0x50;
+		vrr_cmds->cmds[5].msg.tx_buf[15] = 0x05;
+		vrr_cmds->cmds[5].msg.tx_buf[16] = 0x40;
+		vrr_cmds->cmds[5].msg.tx_buf[17] = 0x03;
+		vrr_cmds->cmds[5].msg.tx_buf[18] = 0xF2;
+		vrr_cmds->cmds[5].msg.tx_buf[19] = 0x02;
+		vrr_cmds->cmds[5].msg.tx_buf[29] = 0xA2;
+		vrr_cmds->cmds[5].msg.tx_buf[21] = 0x00;
+		vrr_cmds->cmds[5].msg.tx_buf[22] = 0xFC;
+		vrr_cmds->cmds[5].msg.tx_buf[23] = 0x00;
+		vrr_cmds->cmds[5].msg.tx_buf[24] = 0x44;
+
+		vrr_cmds->cmds[6].msg.tx_buf[6] = 0x40;
+	}
+	else { // 60/120 Hz
+		vrr_cmds->cmds[3].msg.tx_buf[1] = 0xA9;
+		vrr_cmds->cmds[3].msg.tx_buf[2] = 0x70;
+
+		vrr_cmds->cmds[5].msg.tx_buf[1]  = 0x12;
+		vrr_cmds->cmds[5].msg.tx_buf[2]  = 0xE0;
+		vrr_cmds->cmds[5].msg.tx_buf[3]  = 0x09;
+		vrr_cmds->cmds[5].msg.tx_buf[4]  = 0x2E;
+		vrr_cmds->cmds[5].msg.tx_buf[5]  = 0x09;
+		vrr_cmds->cmds[5].msg.tx_buf[6]  = 0x03;
+		vrr_cmds->cmds[5].msg.tx_buf[7]  = 0x08;
+		vrr_cmds->cmds[5].msg.tx_buf[8]  = 0x96;
+		vrr_cmds->cmds[5].msg.tx_buf[9]  = 0x08;
+		vrr_cmds->cmds[5].msg.tx_buf[10] = 0x2C;
+		vrr_cmds->cmds[5].msg.tx_buf[11] = 0x07;
+		vrr_cmds->cmds[5].msg.tx_buf[12] = 0x52;
+		vrr_cmds->cmds[5].msg.tx_buf[13] = 0x06;
+		vrr_cmds->cmds[5].msg.tx_buf[14] = 0x42;
+		vrr_cmds->cmds[5].msg.tx_buf[15] = 0x05;
+		vrr_cmds->cmds[5].msg.tx_buf[16] = 0x2A;
+		vrr_cmds->cmds[5].msg.tx_buf[17] = 0x03;
+		vrr_cmds->cmds[5].msg.tx_buf[18] = 0xDA;
+		vrr_cmds->cmds[5].msg.tx_buf[19] = 0x02;
+		vrr_cmds->cmds[5].msg.tx_buf[29] = 0x82;
+		vrr_cmds->cmds[5].msg.tx_buf[21] = 0x01;
+		vrr_cmds->cmds[5].msg.tx_buf[22] = 0x2C;
+		vrr_cmds->cmds[5].msg.tx_buf[23] = 0x00;
+		vrr_cmds->cmds[5].msg.tx_buf[24] = 0x14;
+
+		vrr_cmds->cmds[6].msg.tx_buf[6] = 0x20;
+	}
+
 	LCD_INFO("VRR: %s, FPS: %dHz%s (cur: %d%s, target: %d%s)\n",
 			ss_get_brr_mode_name(brr_mode),
 			cur_rr,
@@ -96,6 +471,14 @@ static struct dsi_panel_cmd_set *__ss_vrr(struct samsung_display_driver_data *vd
 static struct dsi_panel_cmd_set *ss_vrr(struct samsung_display_driver_data *vdd, int *level_key)
 {
 	bool is_hbm = false;
+	bool is_hmt = false;
+
+	return __ss_vrr(vdd, level_key, is_hbm, is_hmt);
+}
+
+static struct dsi_panel_cmd_set *ss_vrr_hbm(struct samsung_display_driver_data *vdd, int *level_key)
+{
+	bool is_hbm = true;
 	bool is_hmt = false;
 
 	return __ss_vrr(vdd, level_key, is_hbm, is_hmt);
@@ -153,27 +536,20 @@ static struct dsi_panel_cmd_set * ss_brightness_gamma_mode2_normal(struct samsun
 	}
 
 	pcmds = ss_get_cmds(vdd, TX_GAMMA_MODE2_NORMAL);
-
-	if (vdd->vrr.adjusted_refresh_rate == 60) {
-		LCD_INFO("Normal : 60 Hz \n");
-		pcmds->cmds[0].msg.tx_buf[1] = 0x00;
-	}
-	else {
-		LCD_INFO("Normal : 120 Hz \n");
-		pcmds->cmds[0].msg.tx_buf[1] = 0x10;
-	}
-
-	/* ELVSS Read Value */
-	pcmds->cmds[2].msg.tx_buf[8] = vdd->br_info.common_br.elvss_value[0];
-	pcmds->cmds[2].msg.tx_buf[9] = vdd->br_info.common_br.elvss_value[1];
-	/* ELVSS TSET */
-	pcmds->cmds[1].msg.tx_buf[46] = vdd->br_info.temperature > 0 ? vdd->br_info.temperature : (char)(BIT(7) | (-1*vdd->br_info.temperature));
-
 	LCD_INFO("Normal : cd_idx [%d] \n", vdd->br_info.common_br.cd_idx);
-	pcmds->cmds[1].msg.tx_buf[1] = vdd->finger_mask_updated? 0x20 : 0x28;	/* Normal Smooth transition : 0x28 */
+
+	if (vdd->vrr.adjusted_refresh_rate == 60)
+		pcmds->cmds[0].msg.tx_buf[1] = 0x00;
+	else
+		pcmds->cmds[0].msg.tx_buf[1] = 0x10;
+
+	pcmds->cmds[1].msg.tx_buf[1] = vdd->finger_mask_updated? 0x20 : 0x28;	/* Normal (0x20) / Smooth (0x28) */
 	pcmds->cmds[2].msg.tx_buf[6] = 0x16;
-	pcmds->cmds[3].msg.tx_buf[1] = 0x03; //get_bit(vdd->br_info.common_br.gm2_wrdisbv, 8, 2); // JUN_TEMP
-	pcmds->cmds[3].msg.tx_buf[2] = 0xFF; //get_bit(vdd->br_info.common_br.gm2_wrdisbv, 0, 8); // JUN_TEMP
+	pcmds->cmds[3].msg.tx_buf[1] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 8, 2);
+	pcmds->cmds[3].msg.tx_buf[2] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 0, 8);
+
+	/* ELVSS TSET */
+	pcmds->cmds[5].msg.tx_buf[1] = vdd->br_info.temperature > 0 ? vdd->br_info.temperature : (char)(BIT(7) | (-1*vdd->br_info.temperature));
 
 	*level_key = LEVEL1_KEY;
 	return pcmds;
@@ -189,13 +565,21 @@ static struct dsi_panel_cmd_set * ss_brightness_gamma_mode2_hbm(struct samsung_d
 	}
 
 	pcmds = ss_get_cmds(vdd, TX_GAMMA_MODE2_HBM);
-	pcmds->cmds[0].msg.tx_buf[1] = vdd->finger_mask_updated? 0xE0 : 0xE8;	/* HBM Smooth transition : 0xE8 */
-	pcmds->cmds[1].msg.tx_buf[6] = elvss_table[vdd->br_info.common_br.gm2_wrdisbv];	/* ELVSS Value for HBM brgihtness */
-	pcmds->cmds[2].msg.tx_buf[1] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 8, 2);
-	pcmds->cmds[2].msg.tx_buf[2] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 0, 8);
+	LCD_INFO("HBM : cd_idx [%d]\n", vdd->br_info.common_br.cd_idx);
+
+	if (vdd->vrr.adjusted_refresh_rate == 60)
+		pcmds->cmds[0].msg.tx_buf[1] = 0x00;
+	else
+		pcmds->cmds[0].msg.tx_buf[1] = 0x10;
+
+	pcmds->cmds[3].msg.tx_buf[6] = elvss_table_hbm[vdd->br_info.common_br.cd_idx];	/* ELVSS Value for HBM brgihtness */
+	pcmds->cmds[4].msg.tx_buf[1] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 8, 2);
+	pcmds->cmds[4].msg.tx_buf[2] = get_bit(vdd->br_info.common_br.gm2_wrdisbv, 0, 8);
+
+	/* ELVSS TSET */
+	pcmds->cmds[6].msg.tx_buf[1] = vdd->br_info.temperature > 0 ? vdd->br_info.temperature : (char)(BIT(7) | (-1*vdd->br_info.temperature));
 
 	*level_key = LEVEL1_KEY;
-
 	return pcmds;
 }
 
@@ -248,7 +632,7 @@ static int ss_manufacture_date_read(struct samsung_display_driver_data *vdd)
 
 static int ss_ddi_id_read(struct samsung_display_driver_data *vdd)
 {
-	char ddi_id[5];
+	char ddi_id[6];
 	int loop;
 
 	if (IS_ERR_OR_NULL(vdd)) {
@@ -256,17 +640,17 @@ static int ss_ddi_id_read(struct samsung_display_driver_data *vdd)
 		return false;
 	}
 
-	/* Read mtp (D1h 56th~61st) for CHIP ID */
+	/* Read mtp (D1h 96th~101st) for CHIP ID */
 	if (ss_get_cmds(vdd, RX_DDI_ID)->count) {
 		ss_panel_data_read(vdd, RX_DDI_ID, ddi_id, LEVEL1_KEY);
 
-		for (loop = 0; loop < 5; loop++)
+		for (loop = 0; loop < MAX_CHIP_ID; loop++)
 			vdd->ddi_id_dsi[loop] = ddi_id[loop];
 
 		LCD_INFO("DSI%d : %02x %02x %02x %02x %02x %02x\n", vdd->ndx,
 			vdd->ddi_id_dsi[0], vdd->ddi_id_dsi[1],
 			vdd->ddi_id_dsi[2], vdd->ddi_id_dsi[3],
-			vdd->ddi_id_dsi[4]);
+			vdd->ddi_id_dsi[4], vdd->ddi_id_dsi[5]);
 	} else {
 		LCD_ERR("DSI%d no ddi_id_rx_cmds cmds", vdd->ndx);
 		return false;
@@ -314,23 +698,17 @@ static int ss_cell_id_read(struct samsung_display_driver_data *vdd)
 
 static int ss_octa_id_read(struct samsung_display_driver_data *vdd)
 {
-	int loop = 0;
 	if (IS_ERR_OR_NULL(vdd)) {
 		LCD_ERR("Invalid data vdd : 0x%zx", (size_t)vdd);
 		return false;
 	}
 
-	/* Read Panel Unique OCTA ID (C9h 2nd~21th) */
+	/* Read Panel Unique OCTA ID (EAh 15th ~ 34th) */
 	if (ss_get_cmds(vdd, RX_OCTA_ID)->count) {
 		memset(vdd->octa_id_dsi, 0x00, MAX_OCTA_ID);
 
-		/* 1st ~ 4th Read */
 		ss_panel_data_read(vdd, RX_OCTA_ID,
 				vdd->octa_id_dsi, LEVEL1_KEY);
-
-		/* 5th ~ 20th is Cell ID's information */
-		for (loop = 0; loop < MAX_CELL_ID; loop++)
-			vdd->octa_id_dsi[loop+4] = vdd->cell_id_dsi[loop];
 
 		LCD_INFO("octa id: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",
 			vdd->octa_id_dsi[0], vdd->octa_id_dsi[1],
@@ -622,6 +1000,31 @@ static int dsi_update_mdnie_data(struct samsung_display_driver_data *vdd)
 	return 0;
 }
 
+static struct dsi_panel_cmd_set *ss_acl_on_hbm(struct samsung_display_driver_data *vdd, int *level_key)
+{
+	struct dsi_panel_cmd_set *pcmds;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("Invalid data vdd : 0x%zx", (size_t)vdd);
+		return NULL;
+	}
+
+	*level_key = LEVEL1_KEY;
+
+	pcmds = ss_get_cmds(vdd, TX_ACL_ON);
+	if (SS_IS_CMDS_NULL(pcmds)) {
+		LCD_ERR("No cmds for TX_ACL_ON..\n");
+		return NULL;
+	}
+
+	pcmds->cmds[0].msg.tx_buf[1] = 0x01;	/* 55h 0x01 ACL 8% */
+
+	LCD_INFO("HBM: gradual_acl: %d, acl per: 0x%x",
+			vdd->br_info.gradual_acl_val, pcmds->cmds[0].msg.tx_buf[1]);
+
+	return pcmds;
+}
+
 static struct dsi_panel_cmd_set *ss_acl_on(struct samsung_display_driver_data *vdd, int *level_key)
 {
 	struct dsi_panel_cmd_set *pcmds;
@@ -640,7 +1043,7 @@ static struct dsi_panel_cmd_set *ss_acl_on(struct samsung_display_driver_data *v
 	}
 
 	if(vdd->br_info.common_br.cd_idx <= MAX_BL_PF_LEVEL)
-		pcmds->cmds[0].msg.tx_buf[1] = 0x03;	/* ACL 15% */
+		pcmds->cmds[0].msg.tx_buf[1] = 0x02;	/* ACL 15% */
 	else
 		pcmds->cmds[0].msg.tx_buf[1] = 0x01;	/* ACL 8% */
 
@@ -680,8 +1083,8 @@ static void ss_set_panel_lpm_brightness(struct samsung_display_driver_data *vdd)
 	 * cmd_list is the target cmds for searching reg value
 	 */
 	static int reg_list[2][2] = {
-		{ALPM_REG, -EINVAL},
-		{ALPM_CTRL_REG, -EINVAL}
+		{ALPM_REG, -EINVAL},		// 0x53
+		{ALPM_CTRL_REG, -EINVAL}	// 0xBB
 	};
 
 	LCD_INFO("%s++\n", __func__);
@@ -807,8 +1210,8 @@ static void ss_update_panel_lpm_ctrl_cmd(struct samsung_display_driver_data *vdd
 	 * cmd_list is the target cmds for searching reg value
 	 */
 	static int reg_list[2][2] = {
-		{ALPM_REG, -EINVAL},
-		{ALPM_CTRL_REG, -EINVAL}
+		{ALPM_REG, -EINVAL},		// 0x53
+		{ALPM_CTRL_REG, -EINVAL}	// 0xBB
 	};
 
 	static int off_reg_list[1][2] = { {ALPM_CTRL_REG, -EINVAL} };
@@ -849,13 +1252,6 @@ static void ss_update_panel_lpm_ctrl_cmd(struct samsung_display_driver_data *vdd
 		return;
 	}
 
-/*
-	alpm_off_ctrl[HLPM_MODE_ON] = ss_get_cmds(vdd, TX_HLPM_OFF);
-	if (SS_IS_CMDS_NULL(alpm_off_ctrl[HLPM_MODE_ON])) {
-		LCD_ERR("No cmds for TX_HLPM_OFF..\n");
-		return;
-	}
-*/
 	mode = vdd->panel_lpm.mode;
 
 	switch (vdd->panel_lpm.lpm_bl_level) {
@@ -940,6 +1336,52 @@ static int samsung_panel_off_post(struct samsung_display_driver_data *vdd)
 	return rc;
 }
 
+static int ss_dyn_mipi_pre(struct samsung_display_driver_data *vdd)
+{
+	int rc = 0;
+
+	ss_send_cmd(vdd, TX_FFC_OFF);
+	LCD_INFO("[DISPLAY_%d] tx FFC OFF\n", vdd->ndx);
+
+	return rc;
+}
+
+static int ss_dyn_mipi_post(struct samsung_display_driver_data *vdd)
+{
+	struct dsi_panel_cmd_set *ffc_set;
+	struct dsi_panel_cmd_set *dyn_ffc_pre_set;
+	struct dsi_panel_cmd_set *dyn_ffc_set;
+	int idx;
+	int rc = 0;
+
+	mutex_lock(&vdd->dyn_mipi_clk.dyn_mipi_lock);
+	idx = ss_find_dyn_mipi_clk_timing_idx(vdd);
+	mutex_unlock(&vdd->dyn_mipi_clk.dyn_mipi_lock);
+
+	if (idx < 0) {
+		LCD_ERR("[EA8079B] Failed to find MIPI clock timing (%d)\n", idx);
+		goto err;
+	}
+
+	LCD_INFO("[DISPLAY_%d] +++ clk idx: [%d], tx FFC\n", vdd->ndx, idx);
+	ffc_set = ss_get_cmds(vdd, TX_FFC);
+	dyn_ffc_set = ss_get_cmds(vdd, TX_DYNAMIC_FFC_SET);
+	dyn_ffc_pre_set = ss_get_cmds(vdd, TX_DYNAMIC_FFC_PRE_SET);
+
+	if (SS_IS_CMDS_NULL(ffc_set) || SS_IS_CMDS_NULL(dyn_ffc_set) || SS_IS_CMDS_NULL(dyn_ffc_set) ) {
+		LCD_ERR("No cmds for TX_FFC..\n");
+		return -EINVAL;
+	}
+
+	memcpy(ffc_set->cmds[3].msg.tx_buf, dyn_ffc_pre_set->cmds[idx].msg.tx_buf, ffc_set->cmds[3].msg.tx_len);
+	memcpy(ffc_set->cmds[4].msg.tx_buf, dyn_ffc_set->cmds[idx].msg.tx_buf, ffc_set->cmds[4].msg.tx_len);
+
+	ss_send_cmd(vdd, TX_FFC);
+err:
+	LCD_INFO("[DISPLAY_%d] --- clk idx: [%d], tx FFC\n", vdd->ndx, idx);
+	return rc;
+}
+
 static int ss_vrr_init(struct vrr_info *vrr)
 {
 	LCD_INFO("EA8079B_AMS646YB01 +++\n");
@@ -1003,9 +1445,13 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_brightness_elvss = NULL;
 	vdd->panel_func.samsung_brightness_vint = NULL;
 	vdd->panel_func.samsung_brightness_vrr = ss_vrr;
+	vdd->panel_func.samsung_brightness_gm2_gamma_comp = ss_brightness_gm2_gamma_comp;
 
 	/* HBM */
 	vdd->panel_func.samsung_hbm_gamma = ss_brightness_gamma_mode2_hbm;
+	vdd->panel_func.samsung_hbm_acl_on = ss_acl_on_hbm;
+	vdd->panel_func.samsung_hbm_acl_off = ss_acl_off;
+	vdd->panel_func.samsung_brightness_vrr_hbm = ss_vrr_hbm;
 
 	/* Event */
 	vdd->panel_func.samsung_change_ldi_fps = NULL;
@@ -1027,14 +1473,14 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_gray_spot = ss_gray_spot;
 
 	/* Dynamic(Adaptive) MIPI Clock */
-	//vdd->panel_func.samsung_dyn_mipi_pre = ss_dyn_mipi_pre;
-	//vdd->panel_func.samsung_dyn_mipi_post = ss_dyn_mipi_post;
+	vdd->panel_func.samsung_dyn_mipi_pre = ss_dyn_mipi_pre;
+	vdd->panel_func.samsung_dyn_mipi_post = ss_dyn_mipi_post;
 
 	/* default brightness */
 	vdd->br_info.common_br.bl_level = 25500;
 
 	/* mdnie */
-	vdd->mdnie.support_mdnie = false;
+	vdd->mdnie.support_mdnie = true;
 	vdd->no_qcom_pps = true;
 
 	vdd->mdnie.support_trans_dimming = false;
@@ -1077,12 +1523,15 @@ static void samsung_panel_init(struct samsung_display_driver_data *vdd)
 	vdd->panel_func.samsung_gct_read = NULL;
 
 	/* SAMSUNG_FINGERPRINT */
-	vdd->panel_hbm_entry_delay = 2;
+	vdd->panel_hbm_entry_delay = 1;
+	vdd->panel_hbm_entry_after_te = 0;
+	vdd->panel_hbm_exit_delay = 1;
+
+	/* Gamma compensation (Gamma Offset) */
+	vdd->panel_func.samsung_gm2_gamma_comp_init = ss_gm2_gamma_comp_init;
 
 	/* VRR */
-	ss_vrr_init(&vdd->vrr); // JUN_TEMP
-
-	vdd->debug_data->print_cmds = true; // JUN_TEMP
+	ss_vrr_init(&vdd->vrr);
 
 	LCD_INFO("EA8079B_AMS646YB01 : --- \n");
 }

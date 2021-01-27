@@ -181,6 +181,7 @@ struct vl53l5_k_module_t {
 	int32_t data[64];
 	int8_t enabled;
 	int8_t test_mode;
+	int8_t failed_count;
 	struct vl53l5_range_data_t range_data;
 #ifdef CONFIG_SENSORS_VL53L5_SUPPORT_UAPI
 	struct range_sensor_data_t 	af_range_data;
@@ -189,11 +190,15 @@ struct vl53l5_k_module_t {
 	bool load_calibration;
 	bool read_p2p_cal_data;
 	bool read_data_valid;
+	bool suspend_state;
 
 	int32_t max_targets_per_zone;
 	int32_t number_of_zones;
 	int32_t print_counter;
+	uint32_t force_suspend_count;
 	struct notifier_block dump_nb;  //for sec dump
+	struct pinctrl_state *pinctrl_vddoff;
+	struct pinctrl *pinctrl;
 #endif
 };
 

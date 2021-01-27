@@ -200,6 +200,8 @@ void max77705_response_apdo_request(struct max77705_usbc_platform_data *usbc_dat
 		unsigned char *data)
 {
 	u8 result = data[1];
+	u8 status[5];
+	u8 vbvolt;
 
 	pr_info("%s: %s (0x%02X)\n", __func__, result ? "Error," : "Sent,", result);
 
@@ -232,8 +234,13 @@ void max77705_response_apdo_request(struct max77705_usbc_platform_data *usbc_dat
 		break;
 	}
 
+	max77705_bulk_read(usbc_data->muic, MAX77705_USBC_REG_USBC_STATUS1, 5, status);
+	vbvolt = (status[2] & BC_STATUS_VBUSDET_MASK) >> BC_STATUS_VBUSDET_SHIFT;
+	if (vbvolt != 0x01)
+		pr_info("%s: Error, VBUS isn't above 5V(0x%02X)\n", __func__, vbvolt);
+
 	/* retry if the state of sink is not stable yet */
-	if (result == 0x05 || result == 0x07) {
+	if ((result == 0x05 || result == 0x07) && vbvolt == 0x1) {
 		cancel_delayed_work(&usbc_data->pd_data->retry_work);
 		queue_delayed_work(usbc_data->pd_data->wqueue, &usbc_data->pd_data->retry_work, 0);
 	}
@@ -360,9 +367,16 @@ void max77705_pd_retry_work(struct work_struct *work)
 {
 	struct max77705_usbc_platform_data *pusbpd = pd_noti.pusbpd;
 	usbc_cmd_data value;
+	u8 status[5];
+	u8 vbvolt;
 	u8 num;
 
-	if (pd_noti.event == PDIC_NOTIFY_EVENT_DETACH)
+	max77705_bulk_read(pusbpd->muic, MAX77705_USBC_REG_USBC_STATUS1, 5, status);
+	vbvolt = (status[2] & BC_STATUS_VBUSDET_MASK) >> BC_STATUS_VBUSDET_SHIFT;
+	if (vbvolt != 0x01)
+		pr_info("%s: Error, VBUS isn't above 5V(0x%02X)\n", __func__, vbvolt);
+
+	if (pd_noti.event == PDIC_NOTIFY_EVENT_DETACH || vbvolt != 0x01)
 		return;
 
 	init_usbc_cmd_data(&value);
@@ -1248,9 +1262,6 @@ static irqreturn_t max77705_psrdy_irq(int irq, void *data)
 #if defined(CONFIG_TYPEC)
 	enum typec_pwr_opmode mode = TYPEC_PWR_MODE_USB;
 #endif
-#ifdef CONFIG_USB_NOTIFY_PROC_LOG
-	int pd_state = 0;
-#endif
 
 	msg_maxim("IN");
 	max77705_read_reg(usbc_data->muic, REG_PD_STATUS1, &usbc_data->pd_status1);
@@ -1282,10 +1293,6 @@ static irqreturn_t max77705_psrdy_irq(int irq, void *data)
 	if (usbc_data->pd_data->cc_status == CC_SNK && psrdy_received) {
 		max77705_check_pdo(usbc_data);
 		usbc_data->pd_data->psrdy_received = true;
-#ifdef CONFIG_USB_NOTIFY_PROC_LOG
-		pd_state = max77705_State_PE_SNK_Ready;
-		store_usblog_notify(NOTIFY_FUNCSTATE, (void *)&pd_state, NULL);
-#endif
 	}
 
 	if (psrdy_received && usbc_data->pd_data->cc_status != CC_NO_CONN) {

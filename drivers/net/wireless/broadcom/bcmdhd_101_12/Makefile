@@ -331,27 +331,15 @@ endif
 DHDCFLAGS += -DSET_SSID_FAIL_CUSTOM_RC=100
 
 # Android Version Check from Platform source
-ifneq ($(ANDROID_VERSION),)
-MAJOR_VERSION := $(shell echo $(ANDROID_VERSION) | rev | cut -c 5- | rev)
-DHDCFLAGS += -DANDROID_PLATFORM_VERSION=$(MAJOR_VERSION)
-else
-ifneq ($(PLATFORM_VERSION),)
-MAJOR_VERSION := $(shell echo $(PLATFORM_VERSION) | cut -d "." -f 1)
-DHDCFLAGS += -DANDROID_PLATFORM_VERSION=$(MAJOR_VERSION)
-endif
-endif
+DHDCFLAGS += -DANDROID_PLATFORM_VERSION=11
 
-ifneq ($(PLATFORM_VERSION),)
-# Android O-OS (version 8) support
-ifeq ($(shell expr $(PLATFORM_VERSION) \>= 8.0),1)
 DHDCFLAGS += -DCUSTOM_ASSOC_TIMEOUT=20
-endif
-endif
 
 # Change Dump path by Android Global DE Policy
 ifeq ($(CONFIG_WLAN_VENDOR_DUMP_ENABLE),y)
        DHDCFLAGS += -DDHD_COMMON_DUMP_PATH="\"/data/vendor/log/wifi/\""
        DHDCFLAGS += -DDHD_FILE_DUMP_EVENT
+       DHDCFLAGS += -DDHD_SUPPORT_COMPRESS_DEBUG_DUMP
        DHDCFLAGS := $(filter-out -DDHD_DUMP_FILE_WRITE_FROM_KERNEL ,$(DHDCFLAGS))
 endif
 
@@ -403,6 +391,9 @@ DHDCFLAGS += -DWL_STA_ASSOC_RAND
 #DHDCFLAGS += -DWL_SOFTAP_RAND
 #p2p MAC randomization
 #DHDCFLAGS += -DWL_P2P_RAND
+
+# Set initial country code to World Wide Safe
+DHDCFLAGS += -DCUSTOM_COUNTRY_CODE_XZ
 
 # GN4 platform still disabled Lollipop features
 ifeq ($(filter y,$(CONFIG_MACH_UNIVERSAL5433) $(CONFIG_ARCH_APQ8084)),y)
@@ -642,7 +633,7 @@ ifeq ($(CONFIG_SEC_FACTORY),y)
 # Detect FW Memory Corruption
   DHDCFLAGS += -DDHD_FW_MEM_CORRUPTION
 # Detect turn on failure
-  DHDCFLAGS += -DBCM_DETECT_TURN_ON_FAILURE
+#  DHDCFLAGS += -DBCM_DETECT_TURN_ON_FAILURE
 endif # CONFIG_SEC_FACTORY
 
 ifeq ($(CONFIG_BCM4389),y)
@@ -902,7 +893,7 @@ ifeq ($(CONFIG_SEC_FACTORY),y)
 # Detect FW Memory Corruption
   DHDCFLAGS += -DDHD_FW_MEM_CORRUPTION
 # Detect turn on failure
-  DHDCFLAGS += -DBCM_DETECT_TURN_ON_FAILURE
+#  DHDCFLAGS += -DBCM_DETECT_TURN_ON_FAILURE
 endif # CONFIG_SEC_FACTORY
 
 ifeq ($(CONFIG_BCM4375),y)
@@ -930,8 +921,9 @@ ifeq ($(CONFIG_WLAN_BCM4375_ADVANCED_FEATURES),y)
  DHDCFLAGS += -DTCP_DEFAULT_LIMIT_OUTPUT=262144
  DHDCFLAGS += -DDHD_TCP_PACING_SHIFT
  DHDCFLAGS += -DDHD_DEFAULT_TCP_PACING_SHIFT=7
+ DHDCFLAGS += -DCUSTOM_MULTIPLE_PKTLOG_BUF=4
 endif # CONFIG_WLAN_BCM4375_ADVANCED_FEATURES
-endif
+endif # CONFIG_BCM4375
 
 # Chipsets supported both SDIO and PCIE
 ifneq ($(CONFIG_BCM4361),)
@@ -1723,6 +1715,7 @@ ifeq ($(CONFIG_ARCH_SM8150),y)
 endif
 ifeq ($(CONFIG_ARCH_KONA),y)
   DHDCFLAGS += -Wno-date-time
+  DHDCFLAGS += -Wno-pointer-compare
   DHDCFLAGS += -Wno-sometimes-uninitialized
 endif
 

@@ -112,6 +112,7 @@ static void run_prox_intensity_read_all(void *device_data);
 static void set_low_power_sensitivity(void *device_data);
 static void set_sip_mode(void *device_data);
 static void set_note_mode(void *device_data);
+static void set_game_mode(void *device_data);
 static void sync_changed(void *device_data);
 static void not_support_cmd(void *device_data);
 static void run_elvss_test(void *device_data);
@@ -225,6 +226,7 @@ static struct sec_cmd sec_cmds[] = {
 	{SEC_CMD_H("set_low_power_sensitivity", set_low_power_sensitivity),},	
 	{SEC_CMD("set_sip_mode", set_sip_mode),},
 	{SEC_CMD_H("set_note_mode", set_note_mode),},
+	{SEC_CMD_H("set_game_mode", set_game_mode),},
 	{SEC_CMD_H("sync_changed", sync_changed),},
 	{SEC_CMD("not_support_cmd", not_support_cmd),},
 };
@@ -255,6 +257,97 @@ static ssize_t scrub_position_show(struct device *dev,
 static DEVICE_ATTR(scrub_pos, 0444, scrub_position_show, NULL);
 
 /* read param */
+#if defined(CONFIG_TOUCHSCREEN_SEC_TS_Y771_SUB)
+static ssize_t hardware_param_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct sec_cmd_data *sec = dev_get_drvdata(dev);
+	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
+	char buff[516];
+	char tbuff[128];
+	char temp[128];
+
+	memset(buff, 0x00, sizeof(buff));
+
+	/* ito_check */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TITO2\":\"%02X%02X%02X%02X\",",
+			ts->ito_test[0], ts->ito_test[1],
+			ts->ito_test[2], ts->ito_test[3]);
+	strlcat(buff, tbuff, sizeof(buff));
+
+	/* muli_count */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TMUL2\":\"%d\",", ts->multi_count);
+	strlcat(buff, tbuff, sizeof(buff));
+
+	/* wet_mode */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TWET2\":\"%d\",", ts->wet_count);
+	strlcat(buff, tbuff, sizeof(buff));
+
+	/* noise_mode */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TNOI2\":\"%d\",", ts->noise_count);
+	strlcat(buff, tbuff, sizeof(buff));
+
+	/* comm_err_count */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TCOM2\":\"%d\",", ts->comm_err_count);
+	strlcat(buff, tbuff, sizeof(buff));
+
+	/* module_id */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TMOD2\":\"SE%02X%02X%02X%02X%c%01X\",",
+			ts->plat_data->img_version_of_bin[1], ts->plat_data->img_version_of_bin[2],
+			ts->plat_data->img_version_of_bin[3], ts->nv,
+#ifdef TCLM_CONCEPT
+			ts->tdata->tclm_string[ts->tdata->nvdata.cal_position].s_name,
+			ts->tdata->nvdata.cal_count & 0xF);
+#else
+			"0",0);
+#endif
+	strlcat(buff, tbuff, sizeof(buff));
+
+	/* vendor_id */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	if (ts->plat_data->firmware_name) {
+		memset(temp, 0x00, sizeof(temp));
+		snprintf(temp, 4, "%s", ts->plat_data->firmware_name);
+
+		snprintf(tbuff, sizeof(tbuff), "\"TVEN2\":\"LSI_%s\",", temp);
+	} else {
+		snprintf(tbuff, sizeof(tbuff), "\"TVEN2\":\"LSI\",");
+	}
+	strlcat(buff, tbuff, sizeof(buff));
+
+	/* checksum */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TCHK2\":\"%d\",", ts->checksum_result);
+	strlcat(buff, tbuff, sizeof(buff));
+
+	/* all_touch_count */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TTCN2\":\"%d\",\"TACN\":\"%d\",\"TSCN\":\"%d\",",
+			ts->all_finger_count, ts->all_aod_tap_count,
+			ts->all_spay_count);
+	strlcat(buff, tbuff, sizeof(buff));
+
+	/* mode_change_failed_count */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TMCF2\":\"%d\",", ts->mode_change_failed_count);
+	strlcat(buff, tbuff, sizeof(buff));
+
+	/* ic_reset_count */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TRIC2\":\"%d\"", ts->ic_reset_count);
+	strlcat(buff, tbuff, sizeof(buff));
+
+	input_info(true, &ts->client->dev, "%s: %s\n", __func__, buff);
+
+	return snprintf(buf, SEC_CMD_BUF_SIZE, "%s", buff);
+}
+#else
 static ssize_t hardware_param_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -275,22 +368,22 @@ static ssize_t hardware_param_show(struct device *dev,
 
 	/* muli_count */
 	memset(tbuff, 0x00, sizeof(tbuff));
-	snprintf(tbuff, sizeof(tbuff), "\"TMUL\":\"%d\",",	ts->multi_count);
+	snprintf(tbuff, sizeof(tbuff), "\"TMUL\":\"%d\",", ts->multi_count);
 	strlcat(buff, tbuff, sizeof(buff));
 
 	/* wet_mode */
 	memset(tbuff, 0x00, sizeof(tbuff));
-	snprintf(tbuff, sizeof(tbuff), "\"TWET\":\"%d\",",	ts->wet_count);
+	snprintf(tbuff, sizeof(tbuff), "\"TWET\":\"%d\",", ts->wet_count);
 	strlcat(buff, tbuff, sizeof(buff));
 
 	/* noise_mode */
 	memset(tbuff, 0x00, sizeof(tbuff));
-	snprintf(tbuff, sizeof(tbuff), "\"TNOI\":\"%d\",",	ts->noise_count);
+	snprintf(tbuff, sizeof(tbuff), "\"TNOI\":\"%d\",", ts->noise_count);
 	strlcat(buff, tbuff, sizeof(buff));
 
 	/* comm_err_count */
 	memset(tbuff, 0x00, sizeof(tbuff));
-	snprintf(tbuff, sizeof(tbuff), "\"TCOM\":\"%d\",",	ts->comm_err_count);
+	snprintf(tbuff, sizeof(tbuff), "\"TCOM\":\"%d\",", ts->comm_err_count);
 	strlcat(buff, tbuff, sizeof(buff));
 
 	/* module_id */
@@ -344,6 +437,7 @@ static ssize_t hardware_param_show(struct device *dev,
 
 	return snprintf(buf, SEC_CMD_BUF_SIZE, "%s", buff);
 }
+#endif
 
 /* clear param */
 static ssize_t hardware_param_store(struct device *dev,
@@ -5972,6 +6066,13 @@ static void set_wirelesscharger_mode(void *device_data)
 	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
 	char buff[SEC_CMD_STR_LEN] = { 0 };
 	int ret;
+	struct sec_input_notify_data data;
+
+#if defined(CONFIG_TOUCHSCREEN_DUAL_FOLDABLE)
+	data.dual_policy = SUB_TOUCHSCREEN;
+#else
+	data.dual_policy = MAIN_TOUCHSCREEN;
+#endif
 
 	sec_cmd_set_default_result(sec);
 
@@ -6004,6 +6105,11 @@ static void set_wirelesscharger_mode(void *device_data)
 				"%s: invalid param %d\n", __func__, sec->cmd_param[0]);
 		goto NG;
 	}
+
+	if (sec->cmd_param[0])
+		sec_input_notify(&ts->sec_input_nb, NOTIFIER_LCD_VRR_LFD_OFF_REQUEST, &data);
+	else
+		sec_input_notify(&ts->sec_input_nb, NOTIFIER_LCD_VRR_LFD_OFF_RELEASE, &data);
 
 	ret = ts->sec_ts_i2c_write(ts, SET_TS_CMD_SET_CHARGER_MODE, &ts->charger_mode, 1);
 	if (ret < 0) {
@@ -6633,9 +6739,12 @@ void set_grip_data_to_ic(struct sec_ts_data *ts, u8 flag)
 		data[1] = ts->grip_deadzone_dn_x & 0xFF;
 		data[2] = (ts->grip_deadzone_y >> 8) & 0xFF;
 		data[3] = ts->grip_deadzone_y & 0xFF;
-		ts->sec_ts_i2c_write(ts, SEC_TS_CMD_DEAD_ZONE, data, 4);
-		input_info(true, &ts->client->dev, "%s: 0x%02X %02X,%02X,%02X,%02X\n",
-				__func__, SEC_TS_CMD_DEAD_ZONE, data[0], data[1], data[2], data[3]);
+		data[4] = ts->grip_deadzone_dn2_x & 0xFF;
+		data[5] = (ts->grip_deadzone_dn_y >> 8) & 0xFF;
+		data[6] = ts->grip_deadzone_dn_y & 0xFF;
+		ts->sec_ts_i2c_write(ts, SEC_TS_CMD_DEAD_ZONE, data, 7);
+		input_info(true, &ts->client->dev, "%s: 0x%02X %02X,%02X,%02X,%02X,%02X,%02X,%02X\n",
+				__func__, SEC_TS_CMD_DEAD_ZONE, data[0], data[1], data[2], data[3], data[4], data[5], data[6]);
 	}
 
 	if (flag & G_SET_LANDSCAPE_MODE) {
@@ -6717,6 +6826,9 @@ static void set_grip_data(void *device_data)
 		ts->grip_deadzone_up_x = sec->cmd_param[2];
 		ts->grip_deadzone_dn_x = sec->cmd_param[3];
 		ts->grip_deadzone_y = sec->cmd_param[4];
+		/* add 3state reject zone */
+		ts->grip_deadzone_dn2_x = sec->cmd_param[5];
+		ts->grip_deadzone_dn_y = sec->cmd_param[6];
 		mode = mode | G_SET_NORMAL_MODE;
 
 		if (ts->grip_landscape_mode == 1) {
@@ -7516,6 +7628,44 @@ static void set_note_mode(void *device_data)
 	ret = ts->sec_ts_i2c_write(ts, SEC_TS_CMD_NOTE_MODE, &data, 1);
 	if (ret < 0) {
 		input_err(true, &ts->client->dev, "%s: Failed to send  note mode cmd\n", __func__);
+		goto NG;
+	}
+
+	snprintf(buff, sizeof(buff), "OK");
+	sec->cmd_state = SEC_CMD_STATUS_OK;
+	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	sec_cmd_set_cmd_exit(sec);
+	return;
+
+NG:
+	snprintf(buff, sizeof(buff), "NG");
+	sec->cmd_state = SEC_CMD_STATUS_FAIL;
+	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	sec_cmd_set_cmd_exit(sec);
+}
+
+static void set_game_mode(void *device_data)
+{
+	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+	struct sec_ts_data *ts = container_of(sec, struct sec_ts_data, sec);
+	char buff[SEC_CMD_STR_LEN] = { 0 };
+	int ret;
+	unsigned char data;
+
+	sec_cmd_set_default_result(sec);
+
+	input_info(true, &ts->client->dev, "%s: %d\n", __func__, sec->cmd_param[0]);
+
+	if (sec->cmd_param[0] < 0 || sec->cmd_param[0] > 1) {
+		input_err(true, &ts->client->dev, "%s: parm err(%d)\n", __func__, sec->cmd_param[0]);
+		goto NG;
+	}
+
+	data = sec->cmd_param[0];
+
+	ret = ts->sec_ts_i2c_write(ts, SEC_TS_CMD_GAME_MODE, &data, 1);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev, "%s: Failed to send game mode cmd\n", __func__);
 		goto NG;
 	}
 

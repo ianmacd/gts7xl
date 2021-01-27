@@ -165,6 +165,7 @@ static void run_sram_test(void *device_data);
 static void set_rear_selfie_mode(void *device_data);
 static void ear_detect_enable(void *device_data);
 static void set_sip_mode(void *device_data);
+static void set_game_mode(void *device_data);
 static void not_support_cmd(void *device_data);
 
 static ssize_t fts_scrub_position(struct device *dev,
@@ -269,68 +270,102 @@ struct sec_cmd ft_commands[] = {
 	{SEC_CMD_H("set_rear_selfie_mode", set_rear_selfie_mode),},
 	{SEC_CMD_H("ear_detect_enable", ear_detect_enable),},
 	{SEC_CMD("set_sip_mode", set_sip_mode),},
+	{SEC_CMD("set_game_mode", set_game_mode),},
 	{SEC_CMD("not_support_cmd", not_support_cmd),},
 };
 
-static ssize_t read_ito_check_show(struct device *dev,
+/* read param */
+static ssize_t hardware_param_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct sec_cmd_data *sec = dev_get_drvdata(dev);
 	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-	int ret;
+	char buff[516];
+	char tbuff[128];
+	char temp[128];
 
-	ret = snprintf(buf, SEC_CMD_BUF_SIZE, "%02X%02X%02X%02X",
+	memset(buff, 0x00, sizeof(buff));
+
+	/* ito_check */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TITO\":\"%02X%02X%02X%02X\",",
 			info->ito_test[0], info->ito_test[1],
 			info->ito_test[2], info->ito_test[3]);
+	strlcat(buff, tbuff, sizeof(buff));
 
-	input_info(true, &info->client->dev, "%s: %s\n", __func__, buf);
+	/* muli_count */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TMUL\":\"%d\",", info->multi_count);
+	strlcat(buff, tbuff, sizeof(buff));
 
-	info->read_ito = true;
+	/* wet_mode */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TWET\":\"%d\",", info->wet_count);
+	strlcat(buff, tbuff, sizeof(buff));
 
-	return ret;
-}
+	/* noise_mode */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TNOI\":\"%d\",", info->noise_count);
+	strlcat(buff, tbuff, sizeof(buff));
 
-static ssize_t read_raw_check_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-	int ii, ret = 0;
-	char *buffer = NULL;
-	char temp[10] = { 0 };
+	/* comm_err_count */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TCOM\":\"%d\",", info->comm_err_count);
+	strlcat(buff, tbuff, sizeof(buff));
 
-	buffer = vzalloc(info->SenseChannelLength * info->ForceChannelLength * 6);
-	if (!buffer)
-		return -ENOMEM;
+	/* module_id */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TMOD\":\"ST%02X%04X%02X%c%01X\",",
+			info->panel_revision, info->fw_main_version_of_ic,
+			info->test_result.data[0],
+#ifdef TCLM_CONCEPT
+			info->tdata->tclm_string[info->tdata->nvdata.cal_position].s_name,
+			info->tdata->nvdata.cal_count & 0xF);
+#else
+			"0",0);
+#endif
+	strlcat(buff, tbuff, sizeof(buff));
 
-	for (ii = 0; ii < (info->SenseChannelLength * info->ForceChannelLength - 1); ii++) {
-		snprintf(temp, 6, "%d ", info->pFrame[ii]);
-		strlcat(buffer, temp, info->SenseChannelLength * info->ForceChannelLength * 6);
+	/* vendor_id */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	if (info->board->firmware_name) {
+		memset(temp, 0x00, sizeof(temp));
+		snprintf(temp, 9, "%s", info->board->firmware_name + 8);
 
-		memset(temp, 0x00, 10);
+		snprintf(tbuff, sizeof(tbuff), "\"TVEN\":\"STM_%s\",", temp);
+	} else {
+		snprintf(tbuff, sizeof(tbuff), "\"TVEN\":\"STM\",");
 	}
+	strlcat(buff, tbuff, sizeof(buff));
 
-	snprintf(temp, 6, "%d", info->pFrame[ii]);
-	strlcat(buffer, temp, info->SenseChannelLength * info->ForceChannelLength * 6);
+	/* checksum */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TCHK\":\"%d\",", info->checksum_result);
+	strlcat(buff, tbuff, sizeof(buff));
 
-	ret = snprintf(buf, info->SenseChannelLength * info->ForceChannelLength * 6, "%s", buffer);
-	vfree(buffer);
+	/* all_touch_count */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TTCN\":\"%d\",\"TACN\":\"%d\",\"TSCN\":\"%d\",",
+			info->all_finger_count, info->all_aod_tap_count,
+			info->all_spay_count);
+	strlcat(buff, tbuff, sizeof(buff));
 
-	return ret;
+	/* xenosensor_detect_count */
+	memset(tbuff, 0x00, sizeof(tbuff));
+	snprintf(tbuff, sizeof(tbuff), "\"TXEN\":\"%02d/%02d_%02d:%02d:%02d_%d,%d_%d\",",
+			(info->xenosensor_detect_count > 0) ? info->xenosensor_time.tm_mon + 1 : info->xenosensor_time.tm_mon,
+	                info->xenosensor_time.tm_mday, info->xenosensor_time.tm_hour, info->xenosensor_time.tm_min,
+	                info->xenosensor_time.tm_sec, info->xenosensor_detect_x, info->xenosensor_detect_y,
+	                info->xenosensor_detect_count);
+	strlcat(buff, tbuff, sizeof(buff));
+
+	input_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+
+	return snprintf(buf, SEC_CMD_BUF_SIZE, "%s", buff);
 }
 
-static ssize_t read_multi_count_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-
-	input_info(true, &info->client->dev, "%s: %d\n", __func__, info->multi_count);
-
-	return snprintf(buf, SEC_CMD_BUF_SIZE, "%d", info->multi_count);
-}
-
-static ssize_t clear_multi_count_store(struct device *dev,
+/* clear param */
+static ssize_t hardware_param_store(struct device *dev,
 		struct device_attribute *attr,
 		const char *buf, size_t count)
 {
@@ -338,173 +373,17 @@ static ssize_t clear_multi_count_store(struct device *dev,
 	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
 
 	info->multi_count = 0;
-	input_info(true, &info->client->dev, "%s: clear\n", __func__);
-
-	return count;
-}
-
-static ssize_t read_wet_mode_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-
-	input_info(true, &info->client->dev, "%s: %d\n", __func__, info->wet_count);
-
-	return snprintf(buf, SEC_CMD_BUF_SIZE, "%d", info->wet_count);
-}
-
-static ssize_t clear_wet_mode_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-
 	info->wet_count = 0;
-	info->dive_count = 0;
-
-	input_info(true, &info->client->dev, "%s: clear\n", __func__);
-
-	return count;
-}
-
-static ssize_t read_noise_mode_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-
-	input_info(true, &info->client->dev, "%s: %d\n", __func__, info->noise_count);
-
-	return snprintf(buf, SEC_CMD_BUF_SIZE, "%d", info->noise_count);
-}
-
-static ssize_t clear_noise_mode_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-
 	info->noise_count = 0;
-
-	input_info(true, &info->client->dev, "%s: clear\n", __func__);
-
-	return count;
-}
-
-static ssize_t read_comm_err_count_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-
-	input_info(true, &info->client->dev, "%s: %d\n", __func__, info->comm_err_count);
-
-	return snprintf(buf, SEC_CMD_BUF_SIZE, "%d", info->comm_err_count);
-}
-
-
-static ssize_t clear_comm_err_count_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-
 	info->comm_err_count = 0;
-
-	input_info(true, &info->client->dev, "%s: clear\n", __func__);
-
-	return count;
-}
-
-static ssize_t read_module_id_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-
-#ifdef TCLM_CONCEPT
-	return snprintf(buf, SEC_CMD_BUF_SIZE, "ST%02X%04X%02X%c%01X",
-			info->panel_revision, info->fw_main_version_of_ic,
-			info->test_result.data[0],
-			info->tdata->tclm_string[info->tdata->nvdata.cal_position].s_name,
-			info->tdata->nvdata.cal_count & 0xF);
-#else
-	return snprintf(buf, SEC_CMD_BUF_SIZE, "ST%02X%04X%02X",
-			info->panel_revision, info->fw_main_version_of_ic,
-			info->test_result.data[0]);
-#endif
-}
-
-static ssize_t read_vendor_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-	u8 buffer[10] = { 0 };
-
-	if (info->board->firmware_name)
-		snprintf(buffer, 9, "%s", info->board->firmware_name + 8);
-	else
-		snprintf(buffer, 9, "%s", "FTS");
-
-	return snprintf(buf, SEC_CMD_BUF_SIZE, "STM_%s", buffer);
-}
-
-static ssize_t read_checksum_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-
-	input_info(true, &info->client->dev, "%s: %d\n", __func__, info->checksum_result);
-
-	return snprintf(buf, SEC_CMD_BUF_SIZE, "%d", info->checksum_result);
-}
-
-
-static ssize_t clear_checksum_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-
 	info->checksum_result = 0;
-
-	input_info(true, &info->client->dev, "%s: clear\n", __func__);
-
-	return count;
-}
-
-static ssize_t read_all_touch_count_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-
-	input_info(true, &info->client->dev, "%s: touch:%d, aod:%d, spay:%d\n", __func__,
-			info->all_finger_count, info->all_aod_tap_count, info->all_spay_count);
-
-	return snprintf(buf, SEC_CMD_BUF_SIZE,
-			"\"TTCN\":\"%d\",\"TACN\":\"%d\",\"TSCN\":\"%d\"",
-			info->all_finger_count, info->all_aod_tap_count, info->all_spay_count);
-}
-
-static ssize_t clear_all_touch_count_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	struct sec_cmd_data *sec = dev_get_drvdata(dev);
-	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
-
+	info->all_finger_count = 0;
 	info->all_aod_tap_count = 0;
 	info->all_spay_count = 0;
-
-	input_info(true, &info->client->dev, "%s: clear\n", __func__);
+	info->xenosensor_detect_count = 0;
+	memset(&info->xenosensor_time, 0, sizeof(info->xenosensor_time));
+	info->xenosensor_detect_x = 0;
+	info->xenosensor_detect_y = 0;
 
 	return count;
 }
@@ -1020,6 +899,32 @@ static ssize_t ear_detect_enable_store(struct device *dev,
 	return count;
 }
 
+static ssize_t dualscreen_policy_store(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct sec_cmd_data *sec = dev_get_drvdata(dev);
+	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
+	int ret, value;
+
+	if (!info->board->support_flex_mode)
+		return count;
+
+	ret = kstrtoint(buf, 10, &value);
+	if (ret < 0)
+		return ret;
+
+	input_info(true, &info->client->dev, "%s: power_state[%d] %sfolding\n",
+					__func__, info->fts_power_state, info->flip_status_current ? "": "un");
+
+	if (info->fts_power_state == FTS_POWER_STATE_POWERDOWN && info->flip_status_current == FTS_STATUS_UNFOLDING) {
+		cancel_delayed_work(&info->switching_work);
+		schedule_work(&info->switching_work.work);
+	}
+
+	return count;
+}
+
 /* SELFTEST FAIL HISTORY : 34 byte * 6 EA */
 static int get_selftest_fail_hist_dump(struct fts_ts_info *info, char *buf, u8 position)
 {
@@ -1257,16 +1162,7 @@ err_out:
 	return 0;
 }
 
-static DEVICE_ATTR(ito_check, 0444, read_ito_check_show, NULL);
-static DEVICE_ATTR(raw_check, 0444, read_raw_check_show, NULL);
-static DEVICE_ATTR(multi_count, 0644, read_multi_count_show, clear_multi_count_store);
-static DEVICE_ATTR(wet_mode, 0644, read_wet_mode_show, clear_wet_mode_store);
-static DEVICE_ATTR(noise_mode, 0644, read_noise_mode_show, clear_noise_mode_store);
-static DEVICE_ATTR(comm_err_count, 0644, read_comm_err_count_show, clear_comm_err_count_store);
-static DEVICE_ATTR(module_id, 0444, read_module_id_show, NULL);
-static DEVICE_ATTR(vendor, 0444, read_vendor_show, NULL);
-static DEVICE_ATTR(checksum, 0644, read_checksum_show, clear_checksum_store);
-static DEVICE_ATTR(all_touch_count, 0644, read_all_touch_count_show, clear_all_touch_count_store);
+static DEVICE_ATTR(hw_param, 0664, hardware_param_show, hardware_param_store);
 static DEVICE_ATTR(read_ambient_info, 0444, read_ambient_info_show, NULL);
 static DEVICE_ATTR(sensitivity_mode, 0664, sensitivity_mode_show, sensitivity_mode_store);
 static DEVICE_ATTR(scrub_pos, 0444, fts_scrub_position, NULL);
@@ -1276,19 +1172,11 @@ static DEVICE_ATTR(get_lp_dump, 0444, get_lp_dump, NULL);
 #endif
 static DEVICE_ATTR(prox_power_off, 0664, prox_power_off_show, prox_power_off_store);
 static DEVICE_ATTR(ear_detect_enable, 0664, ear_detect_enable_show, ear_detect_enable_store);
+static DEVICE_ATTR(dualscreen_policy, 0664, NULL, dualscreen_policy_store);
 
 static struct attribute *sec_touch_facotry_attributes[] = {
 	&dev_attr_scrub_pos.attr,
-	&dev_attr_ito_check.attr,
-	&dev_attr_raw_check.attr,
-	&dev_attr_multi_count.attr,
-	&dev_attr_wet_mode.attr,
-	&dev_attr_noise_mode.attr,
-	&dev_attr_comm_err_count.attr,
-	&dev_attr_module_id.attr,
-	&dev_attr_vendor.attr,
-	&dev_attr_checksum.attr,
-	&dev_attr_all_touch_count.attr,
+	&dev_attr_hw_param.attr,
 	&dev_attr_read_ambient_info.attr,
 	&dev_attr_sensitivity_mode.attr,
 	&dev_attr_support_feature.attr,
@@ -1297,6 +1185,7 @@ static struct attribute *sec_touch_facotry_attributes[] = {
 #endif
 	&dev_attr_prox_power_off.attr,
 	&dev_attr_ear_detect_enable.attr,
+	&dev_attr_dualscreen_policy.attr,
 	NULL,
 };
 
@@ -1594,7 +1483,7 @@ static int fts_get_channel_info(struct fts_ts_info *info)
 {
 	int rc = -1;
 	u8 regAdd[1] = { FTS_READ_PANEL_INFO };
-	u8 data[11] = { 0 };
+	u8 data[FTS_EVENT_SIZE] = { 0 };
 
 	memset(data, 0x0, FTS_EVENT_SIZE);
 
@@ -2906,7 +2795,7 @@ static void get_chip_vendor(void *device_data)
 	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
 	char buff[16] = { 0 };
 
-	snprintf(buff, PAGE_SIZE, "STM");
+	snprintf(buff, sizeof(buff), "STM");
 	sec_cmd_set_default_result(sec);
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
 	if (sec->cmd_all_factory_state == SEC_CMD_STATUS_RUNNING)
@@ -4501,7 +4390,7 @@ int fts_panel_test_result(struct fts_ts_info *info, int type)
 				}
 				snprintf(tempv, sizeof(tempv), "%c%d,", data[1] == ITO_FORCE_SHRT_GND ? 'T' : 'R', data[2]);
 				strlcat(result_buff, tempv, size);
-				result = ITO_FAIL_SHORT;
+				result = -ITO_FAIL_SHORT;
 				break;
 			case ITO_FORCE_SHRT_VDD:
 			case ITO_SENSE_SHRT_VDD:
@@ -5122,7 +5011,6 @@ static void get_cx_all_data(void *device_data)
 
 	input_info(true, &info->client->dev, "%s: start\n", __func__);
 
-	enter_factory_mode(info, true);
 	rc = read_ms_cx_data(info, NORMAL_CX2, &cx_min, &cx_max);
 
 	/* do not systemreset in COB type */
@@ -5167,15 +5055,12 @@ static void get_cx_gap_data(void *device_data)
 	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
 	char buff[SEC_CMD_STR_LEN] = { 0 };
 	int rx_max = -100, tx_max = -100, i, j;
-	int rx_min = 100, tx_min = 100;
 
 	for (i = 0; i < info->ForceChannelLength; i++) {
 		for (j = 0; j < info->SenseChannelLength - 1; j++) {
 			if (fts_rx_gap_map[i * info->SenseChannelLength + j]) {
-				rx_max = max(rx_max, info->cx_data[(i * info->SenseChannelLength) + j + 1] -
-						info->cx_data[(i * info->SenseChannelLength) + j]);
-				rx_min = min(rx_min, info->cx_data[(i * info->SenseChannelLength) + j + 1] -
-						info->cx_data[(i * info->SenseChannelLength) + j]);
+				rx_max = max(rx_max, abs(info->cx_data[(i * info->SenseChannelLength) + j + 1] -
+						info->cx_data[(i * info->SenseChannelLength) + j]));
 			}
 		}
 	}
@@ -5183,20 +5068,18 @@ static void get_cx_gap_data(void *device_data)
 	for (i = 0; i < info->ForceChannelLength - 1; i++) {
 		for (j = 0; j < info->SenseChannelLength; j++) {
 			if (fts_tx_gap_map[i * info->SenseChannelLength + j]) {
-				tx_max = max(tx_max, info->cx_data[((i + 1) * info->SenseChannelLength) + j] -
-						info->cx_data[(i * info->SenseChannelLength)+ j]);
-				tx_min = min(tx_min, info->cx_data[((i + 1) * info->SenseChannelLength) + j] -
-						info->cx_data[(i * info->SenseChannelLength)+ j]);
+				tx_max = max(tx_max, abs(info->cx_data[((i + 1) * info->SenseChannelLength) + j] -
+						info->cx_data[(i * info->SenseChannelLength)+ j]));
 			}
 		}
 	}
 
-	input_raw_info_d(true, &info->client->dev, "%s: rx:%d/%d, tx:%d/%d\n", __func__, rx_min, rx_max, tx_min, tx_max);
+	input_raw_info_d(true, &info->client->dev, "%s: max: rx:%d, tx:%d\n", __func__, rx_max, tx_max);
 
 	if (sec->cmd_all_factory_state == SEC_CMD_STATUS_RUNNING) {
-		snprintf(buff, sizeof(buff), "%d,%d", rx_min, rx_max);
+		snprintf(buff, sizeof(buff), "0,%d", rx_max);
 		sec_cmd_set_cmd_result_all(sec, buff, SEC_CMD_STR_LEN, "CX2_GAP_RX");
-		snprintf(buff, sizeof(buff), "%d,%d", tx_min, tx_max);
+		snprintf(buff, sizeof(buff), "0,%d", tx_max);
 		sec_cmd_set_cmd_result_all(sec, buff, SEC_CMD_STR_LEN, "CX2_GAP_TX");
 	}
 }
@@ -5223,8 +5106,8 @@ static void run_cx_gap_data_x_all(void *device_data)
 		for (jj = 0; jj < info->SenseChannelLength - 1; jj++) {
 			if (fts_rx_gap_map[ii * info->SenseChannelLength + jj])
 				snprintf(temp, sizeof(temp), "%d,",
-						info->cx_data[(ii * info->SenseChannelLength) + jj + 1] -
-							info->cx_data[(ii * info->SenseChannelLength) + jj]);
+						abs(info->cx_data[(ii * info->SenseChannelLength) + jj + 1] -
+							info->cx_data[(ii * info->SenseChannelLength) + jj]));
 			else
 				snprintf(temp, sizeof(temp), "0,");
 
@@ -5260,8 +5143,8 @@ static void run_cx_gap_data_y_all(void *device_data)
 		for (jj = 0; jj < info->SenseChannelLength; jj++) {
 			if (fts_tx_gap_map[ii * info->SenseChannelLength + jj])
 			snprintf(temp, sizeof(temp), "%d,",
-					info->cx_data[((ii + 1) * info->SenseChannelLength) + jj] -
-						info->cx_data[(ii * info->SenseChannelLength)+ jj]);
+					abs(info->cx_data[((ii + 1) * info->SenseChannelLength) + jj] -
+						info->cx_data[(ii * info->SenseChannelLength)+ jj]));
 			else
 				snprintf(temp, sizeof(temp), "0,");
 
@@ -5773,6 +5656,7 @@ static void run_elvss_test(void *device_data)
 		return;
 	}
 
+	info->fts_systemreset(info, 0);
 	fts_interrupt_set(info, INT_DISABLE);
 
 	memset(data, 0x00, 8);
@@ -5788,6 +5672,7 @@ static void run_elvss_test(void *device_data)
 				"%s: write failed. ret: %d\n", __func__, ret);
 		sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
 		sec->cmd_state = SEC_CMD_STATUS_FAIL;
+		fts_reinit(info, false);
 		fts_interrupt_set(info, INT_ENABLE);
 		return;
 	}
@@ -5809,10 +5694,11 @@ static void run_elvss_test(void *device_data)
 			break;
 		}
 		retry--;
-		fts_delay(20);
+		fts_delay(50);
 
 	}
 
+	fts_reinit(info, false);
 	fts_interrupt_set(info, INT_ENABLE);
 
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
@@ -6294,9 +6180,11 @@ out:
 void fts_set_grip_data_to_ic(struct fts_ts_info *info, u8 flag)
 {
 	u8 data[4] = { 0 };
-	u8 regAdd[7] = {FTS_CMD_SET_FUNCTION_ONOFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	u8 regAdd[11] = {FTS_CMD_SET_FUNCTION_ONOFF, };
 
 	input_info(true, &info->client->dev, "%s: flag: %02X (clr,lan,nor,edg,han)\n", __func__, flag);
+
+	memset(&regAdd[1], 0x00, 10); 
 
 	if (flag & G_SET_EDGE_HANDLER) {
 		if (info->grip_edgehandler_direction == 0) {
@@ -6322,76 +6210,90 @@ void fts_set_grip_data_to_ic(struct fts_ts_info *info, u8 flag)
 	}
 
 	if (flag & G_SET_EDGE_ZONE) {
-		/* set: C1 08 01(on) 64(left, 100), 64(right, 100), 0(top, 0), 0(botton, 0) */
-		data[0] = info->grip_edge_range;
-		data[1] = info->grip_edge_range;
-		data[2] = 0x00;
-		data[3] = 0x00;
-
+		/* ex) C1 07 00 3E 00 3E
+		*	- 0x003E(60) px : Grip Right zone
+		*	- 0x003E(60) px : Grip Left zone
+		*/
 		regAdd[1] = FTS_FUNCTION_EDGE_AREA;
-		regAdd[2] = 0x01;
-		regAdd[3] = data[0];
-		regAdd[4] = data[1];
-		regAdd[5] = data[2];
-		regAdd[6] = data[3];
+		regAdd[2] = (info->grip_edge_range >> 8) & 0xFF;
+		regAdd[3] = info->grip_edge_range & 0xFF;
+		regAdd[4] = (info->grip_edge_range >> 8) & 0xFF;
+		regAdd[5] = info->grip_edge_range & 0xFF;
 
-		fts_write_reg(info, regAdd, 7);
+		fts_write_reg(info, regAdd, 6);
 	}
 
 	if (flag & G_SET_NORMAL_MODE) {
-		data[0] = info->grip_deadzone_up_x & 0xFF;
-		data[1] = info->grip_deadzone_dn_x & 0xFF;
-		data[2] = info->grip_deadzone_y & 0xFF;
-		data[3] = (info->grip_deadzone_y >> 8) & 0xFF;
-
+		/* ex) C1 08 1E 1E 00 00
+		*	- 0x1E (30) px : upper X range
+		*	- 0x1E (30) px : lower X range
+		*	- 0x0000 (0) px : division Y
+		*/
 		regAdd[1] = FTS_FUNCTION_DEAD_ZONE;
-		regAdd[2] = 0x01;
-		regAdd[3] = data[0];
-		regAdd[4] = data[1];
-		regAdd[5] = data[2];
-		regAdd[6] = data[3];
+		regAdd[2] = info->grip_deadzone_up_x & 0xFF;
+		regAdd[3] = info->grip_deadzone_dn_x & 0xFF;
+		regAdd[4] = (info->grip_deadzone_y >> 8) & 0xFF;
+		regAdd[5] = info->grip_deadzone_y & 0xFF;
 
-		fts_write_reg(info, regAdd, 7);
+		fts_write_reg(info, regAdd, 6);
 	}
 
 	if (flag & G_SET_LANDSCAPE_MODE) {
-		data[0] = info->grip_landscape_mode & 0x1;
-		data[1] = (info->grip_landscape_edge >> 4) & 0xFF;
-		data[2] = (info->grip_landscape_edge << 4 & 0xF0) | ((info->grip_landscape_deadzone >> 8) & 0xF);
-		data[3] = info->grip_landscape_deadzone & 0xFF;
-
+		/* ex) C1 09 01 00 3C 00 3C 00 1E
+		*	- 0x01 : horizontal mode
+		*	- 0x03C (60) px : Grip zone range (Right)
+		*	- 0x03C (60) px : Grip zone range (Left)
+		*	- 0x01E (30) px : Reject zone range (Left/Right)
+		*/
 		regAdd[1] = FTS_FUNCTION_LANDSCAPE_MODE;
-		regAdd[2] = data[0];
-		regAdd[3] = data[1];
-		regAdd[4] = data[2];
-		regAdd[5] = data[3];
+		regAdd[2] = info->grip_landscape_mode;
+		regAdd[3] = (info->grip_landscape_edge >> 8) & 0xFF;
+		regAdd[4] = info->grip_landscape_edge & 0xFF;
+		regAdd[5] = (info->grip_landscape_edge >> 8) & 0xFF;
+		regAdd[6] = info->grip_landscape_edge & 0xFF;
+		regAdd[7] = (info->grip_landscape_deadzone >> 8) & 0xFF;
+		regAdd[8] = info->grip_landscape_deadzone & 0xFF;
 
-		fts_write_reg(info, regAdd, 6);
+		fts_write_reg(info, regAdd, 9);
 
-		regAdd[0] = FTS_CMD_SET_FUNCTION_ONOFF;
+		/*ex) C1 0A 01 00 3C 00 3C 00 1E 00 1E
+		*	- 0x01(1) : Enable function
+		*	- 0x003C (60) px : Grip Top zone range
+		*	- 0x001E (60) px : Grip Bottom zone range
+		*	- 0x001E (30) px : Reject Top zone range
+		*	- 0x001E (30) px : Reject Bottom zone range
+		*/
 		regAdd[1] = FTS_FUNCTION_LANDSCAPE_TOP_BOTTOM;
-		regAdd[2] = 0x01;
-		regAdd[3] = info->grip_landscape_top_deadzone & 0xFF;
-		regAdd[4] = info->grip_landscape_top_deadzone >> 8;
-		regAdd[5] = info->grip_landscape_bottom_deadzone & 0xFF;
-		regAdd[6] = info->grip_landscape_bottom_deadzone >> 8;
+		regAdd[2] = info->grip_landscape_mode;
+		regAdd[3] = (info->grip_landscape_top_gripzone >> 8)& 0xFF;
+		regAdd[4] = info->grip_landscape_top_gripzone & 0xFF;
+		regAdd[5] = (info->grip_landscape_bottom_gripzone >> 8)& 0xFF;
+		regAdd[6] = info->grip_landscape_bottom_gripzone & 0xFF;
+		regAdd[7] = (info->grip_landscape_top_deadzone >> 8)& 0xFF;
+		regAdd[8] = info->grip_landscape_top_deadzone & 0xFF;
+		regAdd[9] = (info->grip_landscape_bottom_deadzone >> 8)& 0xFF;
+		regAdd[10] = info->grip_landscape_bottom_deadzone & 0xFF;
 
-		fts_write_reg(info, regAdd, 7);
+		fts_write_reg(info, regAdd, 11);
 	}
 
 	if (flag & G_CLR_LANDSCAPE_MODE) {
-		data[0] = info->grip_landscape_mode;
+		memset(&regAdd[1], 0x00, 10); 
 
+		/* ex) C1 09  00 00 00 00 00 00 00
+		*	- 0x00 : Apply previous vertical mode value for grip zone and reject zone range
+		*/
 		regAdd[1] = FTS_FUNCTION_LANDSCAPE_MODE;
-		regAdd[2] = data[0];
+		regAdd[2] = info->grip_landscape_mode;
 
-		fts_write_reg(info, regAdd, 3);
+		fts_write_reg(info, regAdd, 9);
 
-		regAdd[0] = FTS_CMD_SET_FUNCTION_ONOFF;
+		/*ex) C1 0A 00 00 00 00 00 00 00 00 00
+		*	- Disable function
+		*/
 		regAdd[1] = FTS_FUNCTION_LANDSCAPE_TOP_BOTTOM;
-		regAdd[2] = 0x00;
 
-		fts_write_reg(info, regAdd, 3);
+		fts_write_reg(info, regAdd, 11);
 	}
 }
 
@@ -6469,6 +6371,8 @@ static void set_grip_data(void *device_data)
 			info->grip_landscape_deadzone = sec->cmd_param[3];
 			info->grip_landscape_top_deadzone = sec->cmd_param[4];
 			info->grip_landscape_bottom_deadzone = sec->cmd_param[5];
+			info->grip_landscape_top_gripzone = sec->cmd_param[6];
+			info->grip_landscape_bottom_gripzone = sec->cmd_param[7];
 			mode = mode | G_SET_LANDSCAPE_MODE;
 		} else {
 			input_err(true, &info->client->dev, "%s: cmd1 is abnormal, %d (%d)\n",
@@ -6564,10 +6468,6 @@ static void spay_enable(void *device_data)
 	else
 		info->lowpower_flag &= ~FTS_MODE_SPAY;
 
-	mutex_lock(&info->device_mutex);
-	fts_chk_tsp_ic_status(info, FTS_STATE_CHK_POS_SYSFS);
-	mutex_unlock(&info->device_mutex);
-
 	snprintf(buff, sizeof(buff), "OK");
 	sec->cmd_state = SEC_CMD_STATUS_OK;
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
@@ -6590,10 +6490,6 @@ static void aot_enable(void *device_data)
 	else
 		info->lowpower_flag &= ~FTS_MODE_DOUBLETAP_WAKEUP;
 
-	mutex_lock(&info->device_mutex);
-	fts_chk_tsp_ic_status(info, FTS_STATE_CHK_POS_SYSFS);
-	mutex_unlock(&info->device_mutex);
-
 	snprintf(buff, sizeof(buff), "OK");
 	sec->cmd_state = SEC_CMD_STATUS_OK;
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
@@ -6614,10 +6510,6 @@ static void aod_enable(void *device_data)
 	else
 		info->lowpower_flag &= ~FTS_MODE_AOD;
 
-	mutex_lock(&info->device_mutex);
-	fts_chk_tsp_ic_status(info, FTS_STATE_CHK_POS_SYSFS);
-	mutex_unlock(&info->device_mutex);
-
 	snprintf(buff, sizeof(buff), "OK");
 	sec->cmd_state = SEC_CMD_STATUS_OK;
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
@@ -6637,10 +6529,6 @@ static void singletap_enable(void *device_data)
 		info->lowpower_flag |= FTS_MODE_SINGLETAP;
 	else
 		info->lowpower_flag &= ~FTS_MODE_SINGLETAP;
-
-	mutex_lock(&info->device_mutex);
-	fts_chk_tsp_ic_status(info, FTS_STATE_CHK_POS_SYSFS);
-	mutex_unlock(&info->device_mutex);
 
 	snprintf(buff, sizeof(buff), "OK");
 	sec->cmd_state = SEC_CMD_STATUS_OK;
@@ -7230,12 +7118,6 @@ static void set_rear_selfie_mode(void *device_data)
 	} else {
 		info->rear_selfie_mode = sec->cmd_param[0];
 		snprintf(buff, sizeof(buff), "OK");
-
-		if (info->rear_selfie_mode) {
-			mutex_lock(&info->device_mutex);
-			fts_chk_tsp_ic_status(info, FTS_STATE_CHK_POS_SYSFS);
-			mutex_unlock(&info->device_mutex);
-		}
 	}
 
 	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
@@ -7291,6 +7173,40 @@ static void set_sip_mode(void *device_data)
 		sec->cmd_state = SEC_CMD_STATUS_FAIL;
 	} else {
 		ret = fts_set_sip_mode(info, (u8)sec->cmd_param[0]);
+		if (ret < 0) {
+			snprintf(buff, sizeof(buff), "NG");
+			sec->cmd_state = SEC_CMD_STATUS_FAIL;
+		} else {
+			snprintf(buff, sizeof(buff), "OK");
+			sec->cmd_state = SEC_CMD_STATUS_OK;
+		}
+	}
+
+	sec_cmd_set_cmd_result(sec, buff, strnlen(buff, sizeof(buff)));
+	sec->cmd_state = SEC_CMD_STATUS_WAITING;
+	sec_cmd_set_cmd_exit(sec);
+
+	input_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+
+static void set_game_mode(void *device_data)
+{
+	struct sec_cmd_data *sec = (struct sec_cmd_data *)device_data;
+	struct fts_ts_info *info = container_of(sec, struct fts_ts_info, sec);
+	char buff[SEC_CMD_STR_LEN] = { 0 };
+	int ret;
+	u8 regAdd[3] = { 0 };
+
+	sec_cmd_set_default_result(sec);
+
+	if (sec->cmd_param[0] < 0 || sec->cmd_param[0] > 1) {
+		snprintf(buff, sizeof(buff), "NG");
+		sec->cmd_state = SEC_CMD_STATUS_FAIL;
+	} else {
+		regAdd[0] = FTS_CMD_SET_FUNCTION_ONOFF;
+		regAdd[1] = FTS_FUNCTION_SET_GAME_MODE;
+		regAdd[2] = (u8) sec->cmd_param[0];
+		ret = fts_write_reg(info, regAdd, 3);
 		if (ret < 0) {
 			snprintf(buff, sizeof(buff), "NG");
 			sec->cmd_state = SEC_CMD_STATUS_FAIL;

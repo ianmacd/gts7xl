@@ -921,15 +921,10 @@ static ssize_t max77705_muic_set_afc_disable(struct device *dev,
 		pr_info("%s:%s afc_disable:%d (AFC %s)\n", MUIC_DEV_NAME, __func__,
 			pdata->afc_disable, pdata->afc_disable ? "Disabled" : "Enabled");
 
-		if (!pdata->afc_disable) {
-			if (muic_data->attached_dev == ATTACHED_DEV_AFC_CHARGER_DISABLED_MUIC) {
-				muic_data->attached_dev = ATTACHED_DEV_AFC_CHARGER_PREPARE_MUIC;
-				muic_notifier_attach_attached_dev(ATTACHED_DEV_AFC_CHARGER_PREPARE_MUIC);
-
-				cancel_delayed_work_sync(&(muic_data->afc_work));
-				schedule_delayed_work(&(muic_data->afc_work), msecs_to_jiffies(500));
-			}
-		}
+		if (pdata->afc_disabled_updated & 0x2)	
+			pdata->afc_disabled_updated |= 0x1;
+		else
+			max77705_muic_check_afc_disabled(muic_data);
 	}
 
 #if defined(CONFIG_SEC_FACTORY)
@@ -1583,6 +1578,10 @@ static u8 max77705_resolve_chgtyp(struct max77705_muic_data *muic_data, u8 chgty
 		u8 spchgtyp, u8 dcdtmo, int irq)
 {
 	u8 ret = chgtyp;
+	u8 ccistat = 0;
+
+	max77705_read_reg(muic_data->i2c, REG_CC_STATUS0, &ccistat);
+	ccistat = (ccistat & BIT_CCIStat) >> FFS(BIT_CCIStat);
 
 #if defined(CONFIG_HICCUP_CHARGER)
 	/* Check hiccup mode */
@@ -1604,10 +1603,20 @@ static u8 max77705_resolve_chgtyp(struct max77705_muic_data *muic_data, u8 chgty
 	/* Check DCD timeout */
 	if (dcdtmo && chgtyp == CHGTYP_USB &&
 			(irq == muic_data->irq_chgtyp || irq == MUIC_IRQ_INIT_DETECT)) {
-		if (irq == MUIC_IRQ_INIT_DETECT)
+		if (irq == MUIC_IRQ_INIT_DETECT) {
 			ret = CHGTYP_TIMEOUT_OPEN;
-		else
+
+			if (ccistat == CCI_500mA) {
+				ret = CHGTYP_NO_VOLTAGE;
+				muic_data->dcdtmo_retry++;
+				pr_info("%s:%s DCD_TIMEOUT retry count: %d\n",
+						MUIC_DEV_NAME, __func__,
+						muic_data->dcdtmo_retry);
+				max77705_muic_enable_chgdet(muic_data);
+			}
+		} else {
 			ret = (muic_data->dcdtmo_retry >= muic_data->bc1p2_retry_count) ? CHGTYP_TIMEOUT_OPEN : CHGTYP_NO_VOLTAGE;
+		}
 		goto out;
 	}
 
@@ -1689,6 +1698,20 @@ muic_attached_dev_t max77705_muic_check_new_dev(struct max77705_muic_data *muic_
 	return new_dev;
 }
 
+static void max77705_muic_fail_read_reg(struct max77705_muic_data *muic_data, int irq)
+{
+	int irq_index;
+	if (irq == muic_data->irq_uiadc) irq_index = MAX77705_MUIC_IRQ_UIADC;
+	else if (irq == muic_data->irq_chgtyp) irq_index = MAX77705_MUIC_IRQ_CHGTYP;
+	else if (irq == muic_data->irq_spr) irq_index = MAX77705_MUIC_IRQ_SPR;
+	else if (irq == muic_data->irq_dcdtmo) irq_index = MAX77705_MUIC_IRQ_DCDTMO;
+	else if (irq == muic_data->irq_vbadc) irq_index = MAX77705_MUIC_IRQ_VBADC;
+	else if (irq == muic_data->irq_vbusdet) irq_index = MAX77705_MUIC_IRQ_VBUSDET;
+	else irq_index = MAX77705_MUIC_IRQ_UNKNOWN;
+
+	muic_data->irq_fail_count[irq_index]++;
+}
+
 static void max77705_muic_detect_dev(struct max77705_muic_data *muic_data, int irq)
 {
 	struct i2c_client *i2c = muic_data->i2c;
@@ -1700,6 +1723,9 @@ static void max77705_muic_detect_dev(struct max77705_muic_data *muic_data, int i
 	u8 status[5];
 	u8 adc, vbvolt, chgtyp, spchgtyp, sysmsg, vbadc, dcdtmo, ccstat, fakvb;
 	int ret;
+	int retry = 0;
+	int retry_count = 3;
+
 #ifdef CONFIG_USB_NOTIFY_PROC_LOG
 	int event;
 #endif
@@ -1707,15 +1733,26 @@ static void max77705_muic_detect_dev(struct max77705_muic_data *muic_data, int i
 	int detach_attached_dev;
 #endif
 
-	ret = max77705_bulk_read(i2c, MAX77705_USBC_REG_USBC_STATUS1, 5, status);
-	if (ret) {
-		pr_err("%s:%s fail to read muic reg(%d)\n", MUIC_DEV_NAME,
-				__func__, ret);
+	while(retry < retry_count) { 
+		ret = max77705_bulk_read(i2c,
+			MAX77705_USBC_REG_USBC_STATUS1, 5, status);
+
+		/* read completed. */
+		if (!ret) break;
+	
+		retry++;
+		usleep_range(10000, 10100);
+	}
+
+	/* read failed */
+	if (retry == retry_count) {
+		pr_err("%s fail to read muic reg(%d)\n", __func__, ret);
+		max77705_muic_fail_read_reg(muic_data, irq);
 		return;
 	}
 
-	pr_info("%s:%s USBC1:0x%02x, USBC2:0x%02x, BC:0x%02x\n", MUIC_DEV_NAME,
-			__func__, status[0], status[1], status[2]);
+	pr_info("%s USBC1:0x%02x, USBC2:0x%02x, BC:0x%02x, retry:%d\n",
+			__func__, status[0], status[1], status[2], retry);
 
 	/* attached status */
 	muic_data->status1 = status[0];
@@ -1891,6 +1928,8 @@ static void max77705_muic_afc_work(struct work_struct *work)
 	pr_info("%s:%s\n", MUIC_DEV_NAME, __func__);
 
 	if (max77705_muic_check_is_enable_afc(muic_data, muic_data->attached_dev)) {
+		muic_data->pdata->afc_disabled_updated |= 0x2;
+
 		if (!muic_data->pdata->afc_disable) {
 			muic_data->is_check_hv = true;
 			muic_data->hv_voltage = 9;
@@ -2080,6 +2119,14 @@ static void max77705_muic_print_reg_log(struct work_struct *work)
 	pr_info("%s:%s CC_STATUS0:0x%x, CC_STATUS1:0x%x, PD_STATUS0:0x%x, PD_STATUS1:0x%x, WDT:%d, POR:%d\n",
 		MUIC_DEV_NAME, __func__, status[4], status[5], status[6], status[7],
 		muic_data->usbc_pdata->watchdog_count, muic_data->usbc_pdata->por_count);
+	pr_info("%s fail to read uiadc(%d), chgtyp(%d), spr(%d), dcdtmo(%d), vbadc(%d), vbusdet(%d), unknown(%d)\n",
+		__func__, muic_data->irq_fail_count[MAX77705_MUIC_IRQ_UIADC], 
+			muic_data->irq_fail_count[MAX77705_MUIC_IRQ_CHGTYP], 
+			muic_data->irq_fail_count[MAX77705_MUIC_IRQ_SPR], 
+			muic_data->irq_fail_count[MAX77705_MUIC_IRQ_DCDTMO], 
+			muic_data->irq_fail_count[MAX77705_MUIC_IRQ_VBADC], 
+			muic_data->irq_fail_count[MAX77705_MUIC_IRQ_VBUSDET],
+			muic_data->irq_fail_count[MAX77705_MUIC_IRQ_UNKNOWN]);
 
 	schedule_delayed_work(&(muic_data->debug_work), msecs_to_jiffies(60000));
 }
@@ -2497,6 +2544,8 @@ int max77705_muic_probe(struct max77705_usbc_platform_data *usbc_data)
 #endif
 
 #if defined(CONFIG_HV_MUIC_MAX77705_AFC)
+	muic_data->pdata->afc_disabled_updated = 0;
+
 	INIT_DELAYED_WORK(&(muic_data->afc_work),
 		max77705_muic_afc_work);
 	INIT_WORK(&(muic_data->afc_handle_work),

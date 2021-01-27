@@ -10575,12 +10575,22 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 	}
 #endif /* BOARD_HIKEY */
 	/* get a capabilities from firmware */
-	ret = dhd_get_fw_capabilities(dhd);
+	{
+		uint32 cap_buf_size = sizeof(dhd->fw_capabilities);
+		memset(dhd->fw_capabilities, 0, cap_buf_size);
+		ret = dhd_iovar(dhd, 0, "cap", NULL, 0, dhd->fw_capabilities, (cap_buf_size - 1),
+		FALSE);
 
-	if (ret < 0) {
-		DHD_ERROR(("%s: Get Capability failed (error=%d)\n",
+		if (ret < 0) {
+			DHD_ERROR(("%s: Get Capability failed (error=%d)\n",
 			__FUNCTION__, ret));
-		goto done;
+			return 0;
+		}
+
+		memmove(&dhd->fw_capabilities[1], dhd->fw_capabilities, (cap_buf_size - 1));
+		dhd->fw_capabilities[0] = ' ';
+		dhd->fw_capabilities[cap_buf_size - 2] = ' ';
+		dhd->fw_capabilities[cap_buf_size - 1] = '\0';
 	}
 
 	if ((!op_mode && dhd_get_fw_mode(dhd->info) == DHD_FLAG_MFG_MODE) ||
@@ -10753,6 +10763,13 @@ dhd_optimised_preinit_ioctls(dhd_pub_t * dhd)
 	else
 		dhd->info->rxthread_enabled = TRUE;
 #endif
+
+#if defined(CUSTOM_COUNTRY_CODE_XZ)
+	/* Set initial country code to XZ */
+	strlcpy(dhd->dhd_cspec.country_abbrev, "XZ", WLC_CNTRY_BUF_SZ);
+	strlcpy(dhd->dhd_cspec.ccode, "XZ", WLC_CNTRY_BUF_SZ);
+	DHD_ERROR(("%s: Set initial country code to XZ(World Wide Safe)\n", __FUNCTION__));
+#endif /* CUSTOM_COUNTRY_CODE_XZ */
 	/* Set Country code  */
 	if (dhd->dhd_cspec.ccode[0] != 0) {
 		ret = dhd_iovar(dhd, 0, "country", (char *)&dhd->dhd_cspec, sizeof(wl_country_t),
@@ -11742,6 +11759,13 @@ dhd_legacy_preinit_ioctls(dhd_pub_t *dhd)
 	else
 		dhd->info->rxthread_enabled = TRUE;
 #endif
+
+#if defined(CUSTOM_COUNTRY_CODE_XZ)
+	/* Set initial country code to XZ */
+	strlcpy(dhd->dhd_cspec.country_abbrev, "XZ", WLC_CNTRY_BUF_SZ);
+	strlcpy(dhd->dhd_cspec.ccode, "XZ", WLC_CNTRY_BUF_SZ);
+	DHD_ERROR(("%s: Set initial country code to XZ(World Wide Safe)\n", __FUNCTION__));
+#endif /* CUSTOM_COUNTRY_CODE_XZ */
 	/* Set Country code  */
 	if (dhd->dhd_cspec.ccode[0] != 0) {
 		ret = dhd_iovar(dhd, 0, "country", (char *)&dhd->dhd_cspec, sizeof(wl_country_t),
@@ -19696,10 +19720,9 @@ dhd_get_debug_dump_file_name(void *dev, dhd_pub_t *dhdp, char *dump_path, int si
 			DHD_COMMON_DUMP_PATH DHD_DEBUG_DUMP_TYPE);
 	len += ret;
 
-	/* Keep the same timestamp across different dump logs */
+#ifdef DHD_SUPPORT_COMPRESS_DEBUG_DUMP
 	if (!dhdp->logdump_periodic_flush) {
 		struct rtc_time tm;
-		clear_debug_dump_time(dhdp->debug_dump_time_str);
 		get_debug_dump_time(dhdp->debug_dump_time_str);
 		sscanf(dhdp->debug_dump_time_str, DHD_LOG_DUMP_TS_FMT_YYMMDDHHMMSS,
 			&tm.tm_year, &tm.tm_mon, &tm.tm_mday,
@@ -19709,8 +19732,8 @@ dhd_get_debug_dump_file_name(void *dev, dhd_pub_t *dhdp, char *dump_path, int si
 				tm.tm_hour, tm.tm_min, tm.tm_sec);
 		len += ret;
 	}
+#endif /* DHD_SUPPORT_COMPRESS_DEBUG_DUMP */
 
-	ret = 0;
 	switch (dhdp->debug_dump_subcmd) {
 	case CMD_UNWANTED:
 		ret = snprintf(dump_path + len, size - len, "%s", DHD_DUMP_SUBSTR_UNWANTED);
@@ -19722,6 +19745,14 @@ dhd_get_debug_dump_file_name(void *dev, dhd_pub_t *dhdp, char *dump_path, int si
 		break;
 	}
 	len += ret;
+
+#ifndef DHD_SUPPORT_COMPRESS_DEBUG_DUMP
+	if (!dhdp->logdump_periodic_flush) {
+		get_debug_dump_time(dhdp->debug_dump_time_str);
+		snprintf(dump_path + len, size - len,
+			"_%s", dhdp->debug_dump_time_str);
+	}
+#endif /* DHD_SUPPORT_COMPRESS_DEBUG_DUMP */
 
 	return BCME_OK;
 }

@@ -25,6 +25,7 @@
 #include <linux/vmalloc.h>
 #include <linux/notifier.h>
 #include <linux/reboot.h>
+#include <linux/rtc.h>
 
 #include "sec_debug_internal.h"
 
@@ -48,6 +49,21 @@ unsigned int get_sec_log_idx(void)
 {
 	return (unsigned int)s_log_buf->idx;
 }
+
+#if IS_ENABLED(CONFIG_SEC_LOG_STORE_LPM_KMSG)
+static unsigned int lpm_mode;
+
+static int check_lpm_mode(char *str)
+{
+	if (strncmp(str, "charger", 7) == 0)
+		lpm_mode = 1;
+	else
+		lpm_mode = 0;
+
+	return 0;
+}
+early_param("androidboot.mode", check_lpm_mode);
+#endif
 
 #ifdef CONFIG_SEC_LOG_LAST_KMSG
 static char *last_log_buf;
@@ -158,11 +174,76 @@ static inline int __sec_last_kmsg_init(void)
 {}
 #endif
 
+
+#if IS_ENABLED(CONFIG_SEC_LOG_STORE_LPM_KMSG)
+static void lpm_klog_store(void)
+{
+	struct sec_log_buf *lpm_klog_buf = NULL;
+	char *lpm_klog_write_buf = NULL;
+	uint32_t idx = 0, len = 0;
+
+	pr_info("booting lpm mode, store lpm_klog\n");
+	lpm_klog_buf = vmalloc(sec_log_size);
+	lpm_klog_write_buf = vmalloc(max_t(size_t, sec_log_size, SEC_DEBUG_RESET_LPM_KLOG_SIZE));
+	if (lpm_klog_buf && lpm_klog_write_buf) {
+		memcpy_fromio(lpm_klog_buf, s_log_buf, sec_log_size);
+		
+		if (lpm_klog_buf->idx > sec_log_buf_size) {
+			idx = lpm_klog_buf->idx % sec_log_buf_size; 
+			len = sec_log_buf_size - idx;
+			if (len != 0)
+				memcpy(lpm_klog_write_buf, &(lpm_klog_buf->buf[idx]), len);
+		}
+
+		memcpy(lpm_klog_write_buf + len, lpm_klog_buf->buf, idx);                
+		write_debug_partition(debug_index_reset_lpm_klog, lpm_klog_write_buf);
+	} else {
+		pr_err("fail - vmalloc\n");
+		write_debug_partition(debug_index_reset_lpm_klog, s_log_buf);
+	}
+
+	if (lpm_klog_write_buf)
+		vfree(lpm_klog_write_buf);
+	if (lpm_klog_buf)
+		vfree(lpm_klog_buf);
+}
+
+static int sec_log_store_lpm_kmsg(
+		struct notifier_block *nb, unsigned long action, void *data)
+{
+	switch (action) {
+		case DBG_PART_DRV_INIT_DONE:
+			if (lpm_mode && sec_log_buf_init_done) 
+				lpm_klog_store();
+			break;
+		default:
+			return NOTIFY_DONE;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block sec_log_store_lpm_kmsg_notifier = {
+	.notifier_call = sec_log_store_lpm_kmsg,
+};
+#endif
+
 #ifdef CONFIG_SEC_LOG_STORE_LAST_KMSG
 static int sec_log_store(struct notifier_block *nb,
 		unsigned long action, void *data)
 {
 	char cmd[256] = { 0, };
+	struct rtc_time tm;
+	struct rtc_device *rtc = rtc_class_open(CONFIG_RTC_HCTOSYS_DEVICE);
+
+	if (!rtc) {
+		pr_info("unable to open rtc device (%s)\n", CONFIG_RTC_HCTOSYS_DEVICE);
+	} else {
+		if (rtc_read_time(rtc, &tm)) 
+			dev_err(rtc->dev.parent, "hctosys: unable to read the hardware clock\n");
+		else
+			pr_info("RTC(%lld)\n", rtc_tm_to_time64(&tm));
+	}
 
 	if (!sec_log_buf_init_done)
 		return 0;
@@ -266,6 +347,10 @@ static int __init sec_log_buf_init(void)
 
 #ifdef CONFIG_SEC_LOG_STORE_LAST_KMSG
 	register_reboot_notifier(&sec_log_notifier);
+#endif
+
+#if IS_ENABLED(CONFIG_SEC_LOG_STORE_LPM_KMSG)
+	dbg_partition_notifier_register(&sec_log_store_lpm_kmsg_notifier);
 #endif
 
 	err = __sec_last_kmsg_init();

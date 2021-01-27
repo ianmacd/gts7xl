@@ -68,8 +68,10 @@ struct cs40l2x_platform_data {
 	unsigned int dig_scale_fo_ld;			/* FOLDER OPEN, LONG DURATION */
 	unsigned int dig_scale_fo_ld_low_temp;		/* FOLDER OPEN, LONG DURATION, LOW TEMP */
 	unsigned int dig_scale_fo_ld_lower_temp;	/* FOLDER OPEN, LONG DURATION, LOWER TEMP */
+	unsigned int dig_scale_high_temp;		/* For TOP model, united dig scale for HIGH TEMP */
 	int low_temp;
 	int lower_temp;
+	int high_temp;
 #endif
 };
 

@@ -569,12 +569,47 @@ static ssize_t sec_virtual_tsp_prox_power_off_store(struct device *dev,
 	return count;
 }
 
+#if defined(CONFIG_TOUCHSCREEN_FTS9CU80F_B) && defined(CONFIG_TOUCHSCREEN_SEC_TS_Y771_SUB)
+static ssize_t dualscreen_policy_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret, value;
+
+	ret = kstrtoint(buf, 10, &value);
+	if (ret != 0)
+		return ret;
+
+	if (value <= FLIP_STATUS_DEFAULT || value > FLIP_STATUS_SUB) {
+		input_info(false, dual_sec->fac_dev, "%s: value=%d %s\n", __func__, value,
+				 flip_status ? "close" : "open");
+		return count;
+	}
+
+	mutex_lock(&switching_mutex);
+	flip_status = value;
+	mutex_unlock(&switching_mutex);
+
+	if (value == FLIP_STATUS_MAIN)
+		ret = sec_virtual_tsp_write_sysfs(dual_sec, "/sys/class/sec/tsp1/dualscreen_policy", buf);
+
+	input_info(false, dual_sec->fac_dev, "%s: value=%d %s, ret:%d\n", __func__, value,
+			 flip_status ? "close" : "open", ret);
+
+	return count;
+}
+
+static DEVICE_ATTR(dualscreen_policy, 0644, NULL, dualscreen_policy_store);
+#endif
+
 static DEVICE_ATTR(support_feature, 0444, sec_virtual_tsp_support_feature_show, NULL);
 static DEVICE_ATTR(prox_power_off, 0644, sec_virtual_tsp_prox_power_off_show, sec_virtual_tsp_prox_power_off_store);
 
 static struct attribute *sec_virtual_tsp_attrs[] = {
 	&dev_attr_support_feature.attr,
 	&dev_attr_prox_power_off.attr,
+#if defined(CONFIG_TOUCHSCREEN_FTS9CU80F_B) && defined(CONFIG_TOUCHSCREEN_SEC_TS_Y771_SUB)
+	&dev_attr_dualscreen_policy.attr,
+#endif
 	NULL,
 };
 

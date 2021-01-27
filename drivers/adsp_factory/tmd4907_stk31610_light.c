@@ -49,6 +49,8 @@ int ams_save_ub_cell_id_to_efs(char *path, char *data_str, bool first_booting);
 #define LIGHT_CAL_FAIL 0
 #endif
 
+static int32_t prev_brightness_data[3] = {-1, -1, -1};
+
 /*************************************************************************/
 /* factory Sysfs							 */
 /*************************************************************************/
@@ -255,8 +257,6 @@ int light_panel_data_notify(struct notifier_block *nb,
 {
 	struct panel_bl_event_data *panel_data = v;
 	struct adsp_data *data;
-	static int32_t pre_bl_level = -1;
-	static int32_t pre_bl_idx = -1;
 	int32_t brightness_data[3] = {0, };
 
 	if (val == PANEL_EVENT_BL_CHANGED) {
@@ -268,11 +268,15 @@ int light_panel_data_notify(struct notifier_block *nb,
 		data->brightness_info[1] = brightness_data[1];
 		data->brightness_info[2] = brightness_data[2];
 
-		if (brightness_data[0] == pre_bl_level && brightness_data[2] == pre_bl_idx)
+		if (brightness_data[0] == prev_brightness_data[0] && brightness_data[2] == prev_brightness_data[2])
 			return 0;
 
-		pre_bl_level = brightness_data[0];
-		pre_bl_idx = brightness_data[2];
+		prev_brightness_data[0] = brightness_data[0];
+		prev_brightness_data[1] = brightness_data[1];
+		prev_brightness_data[2] = brightness_data[2];
+
+		adsp_unicast(brightness_data, sizeof(brightness_data),
+			MSG_VIR_OPTIC, 0, MSG_TYPE_SET_CAL_DATA);
 
 		schedule_work(&data->light_br_work);
 
@@ -325,28 +329,48 @@ static ssize_t light_lcd_onoff_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
 	struct adsp_data *data = dev_get_drvdata(dev);
-	int32_t msg_buf[2];
 	int new_value;
 
 	if (sysfs_streq(buf, "0"))
 		new_value = 0;
 	else if (sysfs_streq(buf, "1"))
 		new_value = 1;
+	else if (sysfs_streq(buf, "2"))
+		new_value = 2;
 	else
 		return size;
 
-	pr_info("[FACTORY] %s: new_value %d\n", __func__, new_value);
-	msg_buf[0] = OPTION_TYPE_LCD_ONOFF;
-	msg_buf[1] = new_value;
+	if (new_value == 2) {
+		int32_t msg_buf[3];
 
-	mutex_lock(&data->light_factory_mutex);
-	adsp_unicast(msg_buf, sizeof(msg_buf),
-		MSG_SSC_CORE, 0, MSG_TYPE_OPTION_DEFINE);
+		pr_info("[FACTORY] %s: active screen main %d\n", __func__, new_value);
+		msg_buf[0] = data->brightness_info[0];
+		msg_buf[1] = data->brightness_info[1];
+		msg_buf[2] = 2;
+
+		mutex_lock(&data->light_factory_mutex);
+		adsp_unicast(msg_buf, sizeof(msg_buf),
+			MSG_VIR_OPTIC, 0, MSG_TYPE_SET_CAL_DATA);
+		mutex_unlock(&data->light_factory_mutex);
+	} else {
+		int32_t msg_buf[2];
+
+		if (new_value)
+			prev_brightness_data[0] = prev_brightness_data[2] = -1;
+
+		pr_info("[FACTORY] %s: new_value %d\n", __func__, new_value);
+		msg_buf[0] = OPTION_TYPE_LCD_ONOFF;
+		msg_buf[1] = new_value;
+
+		mutex_lock(&data->light_factory_mutex);
+		adsp_unicast(msg_buf, sizeof(msg_buf),
+			MSG_SSC_CORE, 0, MSG_TYPE_OPTION_DEFINE);
 #ifdef CONFIG_SUPPORT_DUAL_DDI_COPR_FOR_LIGHT_SENSOR
-	adsp_unicast(msg_buf, sizeof(msg_buf),
-		MSG_DDI, 0, MSG_TYPE_OPTION_DEFINE);
+		adsp_unicast(msg_buf, sizeof(msg_buf),
+			MSG_DDI, 0, MSG_TYPE_OPTION_DEFINE);
 #endif
-	mutex_unlock(&data->light_factory_mutex);
+		mutex_unlock(&data->light_factory_mutex);
+	}
 
 	return size;
 }
@@ -370,7 +394,7 @@ static ssize_t light_circle_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "45.2 7.3 2.5\n");
 #elif defined(CONFIG_SEC_BLOOMXQ_PROJECT)
 	return snprintf(buf, PAGE_SIZE, "34.1 11.6 2.4\n");
-#elif defined(CONFIG_SEC_F2Q_PROJECT)
+#elif defined(CONFIG_SEC_F2Q_PROJECT) || defined(CONFIG_SEC_VICTORY_PROJECT)
 #ifdef CONFIG_SUPPORT_DUAL_OPTIC
 	struct adsp_data *data = dev_get_drvdata(dev);
 	if (data->fac_fstate == FSTATE_INACTIVE || data->fac_fstate == FSTATE_FAC_INACTIVE || data->fac_fstate == FSTATE_FAC_INACTIVE_2)
@@ -448,7 +472,7 @@ static ssize_t light_copr_roix_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct adsp_data *data = dev_get_drvdata(dev);
-	uint16_t light_idx = get_light_sidx(data);
+	uint16_t light_idx = MSG_DDI;
 	uint8_t cnt = 0;
 
 	mutex_lock(&data->light_factory_mutex);

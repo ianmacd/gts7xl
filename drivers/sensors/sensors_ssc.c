@@ -35,6 +35,8 @@ static bool pretest = false;
 #define SSR_RESET_CMD 1
 #define SET_PRETEST_SSR 2
 #define CLR_PRETEST_SSR 3
+#define SET_DHALL_SSR 4
+#define CLR_DHALL_SSR 5
 #define SSR_FORCE_RESET_CMD 9
 #define CLASS_NAME	"ssc"
 #define DRV_NAME	"sensors"
@@ -272,10 +274,17 @@ static ssize_t slpi_ssr_store(struct kobject *kobj,
 		return -EINVAL;
 #if defined(CONFIG_SEC_FACTORY) && defined(CONFIG_SUPPORT_DUAL_6AXIS)
 	if (ssr_cmd == SET_PRETEST_SSR) {
-		pr_info("Set Pretest SSR. slpi will be restarted!!\n");
+		pr_info("[FACTORY] Set Pretest SSR. slpi will be restarted!!\n");
 		pretest = true;
 	} else if (ssr_cmd == CLR_PRETEST_SSR) {
-		pr_info("Clear Pretest SSR. return without slpi ssr!!\n");
+		pr_info("[FACTORY] Clear Pretest SSR. return without slpi ssr!!\n");
+		pretest = false;
+		return count;
+	} else if (ssr_cmd == SET_DHALL_SSR) {
+		pr_info("[FACTORY] SET_DHALL_SSR. slpi will be restarted!!\n");
+		pretest = true;
+	} else if (ssr_cmd == CLR_DHALL_SSR) {
+		pr_info("[FACTORY] CLR_DHALL_SSR. return without slpi ssr!!\n");
 		pretest = false;
 		return count;
 	} else if (ssr_cmd != SSR_RESET_CMD) {

@@ -595,10 +595,10 @@ static int32_t _get_error_go2_status(
 
 		goto exit;
 	}
-
+#ifdef STM_VL53L5_SUPPORT_LEGACY_CODE
 	if (status != STATUS_OK)
 		goto exit;
-
+#endif
 	trace_print(VL53L5_TRACE_LEVEL_DEBUG,
 		    "Group: %d, Type: %d, Stage: %d\n",
 		    status_struct.status__group,

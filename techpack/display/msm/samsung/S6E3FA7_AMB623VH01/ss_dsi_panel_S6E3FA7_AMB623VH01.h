@@ -53,7 +53,7 @@ static unsigned int elvss_table_hbm_revA[198] = {
 	[185 ... 197]	=	0x16,
 };
 
-#define SELF_MASK_IMG_CHECKSUM 0x9CA199A6
+#define SELF_MASK_IMG_CHECKSUM 0xEE19E437
 
 static char self_mask_img_data[] = {
 	0xc0, 0x25, 0x41, 0xe7, 0x41, 0xb9, 0x41, 0x93, 

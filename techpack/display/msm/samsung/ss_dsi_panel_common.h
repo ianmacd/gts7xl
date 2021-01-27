@@ -66,6 +66,7 @@ Copyright (C) 2012, Samsung Electronics. All rights reserved.
 
 #include "dsi_display.h"
 #include "dsi_panel.h"
+#include "dsi_drm.h"
 #include "sde_kms.h"
 #include "sde_connector.h"
 #include "sde_encoder.h"
@@ -121,6 +122,9 @@ extern bool enable_pr_debug;
 /* Register dump info */
 #define MAX_INTF_NUM 2
 
+/* Panel Unique Chip ID Byte count */
+#define MAX_CHIP_ID 6
+
 /* Panel Unique Cell ID Byte count */
 #define MAX_CELL_ID 16
 
@@ -166,7 +170,6 @@ enum PANEL_LEVEL_KEY {
 enum backlight_origin {
 	BACKLIGHT_NORMAL,
 	BACKLIGHT_FINGERMASK_ON,
-	BACKLIGHT_FINGERMASK_ON_SUSTAIN,
 	BACKLIGHT_FINGERMASK_OFF,
 };
 
@@ -284,6 +287,9 @@ struct lpm_info {
 	int need_self_grid;
 
 	struct mutex lpm_lock;
+
+	/* To prevent normal brightness patcket after tx LPM on */
+	struct mutex lpm_bl_lock;
 
 	struct lpm_pwr_ctrl lpm_pwr;
 };
@@ -422,6 +428,8 @@ struct samsung_display_dtsi_data {
 	/* Backlight IC discharge delay */
 	int blic_discharging_delay_tft;
 	int cabc_delay;
+
+	int ddi_id_length;
 };
 
 struct display_status {
@@ -518,6 +526,10 @@ struct samsung_display_debug_data {
 	bool print_cmds;
 	bool *is_factory_mode;
 	bool panic_on_pptimeout;
+
+	/* misc */
+	struct miscdevice dev;
+	bool report_once;
 };
 
 struct self_display {
@@ -732,6 +744,7 @@ struct FW_UP {
 	u32 read_done_check;
 
 	bool need_sleep_in;
+	bool cmd_done;
 };
 
 enum fw_up_state {
@@ -887,6 +900,7 @@ struct motto_data {
 enum CHECK_SUPPORT_MODE {
 	CHECK_SUPPORT_MCD,
 	CHECK_SUPPORT_HMD,
+	CHECK_SUPPORT_BRIGHTDOT,
 };
 
 struct brightness_table {
@@ -1069,7 +1083,7 @@ struct panel_func {
 	int (*samsung_poc_ctrl)(struct samsung_display_driver_data *vdd, u32 cmd, const char *buf);
 
 	/* FirmWare Update */
-	int (*samsung_fw_up)(struct samsung_display_driver_data *vdd);
+	int (*samsung_fw_up)(struct samsung_display_driver_data *vdd, int mode);
 
 
 	/* Gram Checksum Test */
@@ -1078,6 +1092,9 @@ struct panel_func {
 
 	/* GraySpot Test */
 	void (*samsung_gray_spot)(struct samsung_display_driver_data *vdd, int enable);
+
+	/* MCD Test */
+	void (*samsung_mcd_etc)(struct samsung_display_driver_data *vdd, int enable);
 
 	/* Gamma mode2 DDI flash */
 	int (*samsung_gm2_ddi_flash_prepare)(struct samsung_display_driver_data *vdd);
@@ -1119,6 +1136,10 @@ struct panel_func {
 		dfps operation related panel update func.
 	*/
 	void (*samsung_dfps_panel_update)(struct samsung_display_driver_data *vdd, int fps);
+
+	/* Dynamic MIPI Clock */
+	int (*samsung_dyn_mipi_pre)(struct samsung_display_driver_data *vdd);
+	int (*samsung_dyn_mipi_post)(struct samsung_display_driver_data *vdd);
 };
 
 enum SS_VBIAS_MODE {
@@ -1521,6 +1542,7 @@ struct vrr_info {
 	/* bridge refresh rate */
 	enum SS_BRR_MODE brr_mode;
 	bool brr_rewind_on; /* rewind BRR in case of new VRR set back to BRR start FPS */
+	int brr_bl_level;	/* brightness level causing BRR stopa */
 
 	struct workqueue_struct *vrr_workqueue;
 	struct work_struct vrr_work;
@@ -1646,7 +1668,7 @@ struct samsung_display_driver_data {
 	int manufacture_time_dsi;
 
 	int ddi_id_loaded_dsi;
-	int ddi_id_dsi[5];
+	int ddi_id_dsi[MAX_CHIP_ID];
 
 	int cell_id_loaded_dsi;		/* Panel Unique Cell ID */
 	int cell_id_dsi[MAX_CELL_ID];	/* white coordinate + manufacture date */
@@ -1704,10 +1726,16 @@ struct samsung_display_driver_data {
 	/* CABC feature */
 	int support_cabc;
 
+	/* LP RX timeout recovery */
+	bool support_lp_rx_err_recovery;
+
 	/*
 	 *  ESD
 	 */
 	struct esd_recovery esd_recovery;
+
+	/* FG_ERR */
+	int fg_err_gpio;
 
 	/* Panel ESD Recovery Count */
 	int panel_recovery_cnt;
@@ -1889,11 +1917,20 @@ struct samsung_display_driver_data {
 	/* sustain LP11 signal before LP00 on entering sleep status */
 	int lp11_sleep_ms_time;
 
+	/* Bloom5G need old style aor dimming : using both A-dimming & S-dimming */
+	bool old_aor_dimming;
+
+	/* BIT0: brightdot test, BIT1: brightdot test in LFD 0.5hz */
+	u32 brightdot_state;
+
 	/* Some panel has unstable TE period, and causes wr_ptr timeout panic
 	 * in inter-frame RSC idle policy.
 	 * W/A: select four frame RSC idle policy.
 	 */
 	bool rsc_4_frame_idle;
+
+	/* flag to support reading module id at probe timing */
+	bool support_early_id_read;
 };
 
 extern struct list_head vdds_list;
@@ -1981,6 +2018,7 @@ void ss_panel_lpm_ctrl(struct samsung_display_driver_data *vdd, int enable);
 int ss_panel_lpm_power_ctrl(struct samsung_display_driver_data *vdd, int enable);
 
 /* Dynamic MIPI Clock FUNCTION */
+int ss_find_dyn_mipi_clk_timing_idx(struct samsung_display_driver_data *vdd);
 int ss_change_dyn_mipi_clk_timing(struct samsung_display_driver_data *vdd);
 int ss_dyn_mipi_clk_tx_ffc(struct samsung_display_driver_data *vdd);
 
@@ -2002,6 +2040,8 @@ void ss_stm_set_cmd(struct samsung_display_driver_data *vdd, struct STM_CMD *cmd
 void ss_send_ub_uevent(struct samsung_display_driver_data *vdd);
 
 void ss_set_panel_state(struct samsung_display_driver_data *vdd, enum ss_panel_pwr_state panel_state);
+
+int ss_early_display_init(struct samsung_display_driver_data *vdd);
 
 void ss_notify_queue_work(struct samsung_display_driver_data *vdd,
 	enum panel_notifier_event_t event);

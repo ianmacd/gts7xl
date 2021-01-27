@@ -1236,34 +1236,50 @@ static ssize_t ss_temperature_show(struct device *dev,
 static ssize_t ss_temperature_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
-	struct samsung_display_driver_data *vdd =
+	struct samsung_display_driver_data *vdd_common =
 		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+	struct samsung_display_driver_data *vdd_main =
+						ss_get_vdd(PRIMARY_DISPLAY_NDX);
+	struct samsung_display_driver_data *vdd_sub =
+						ss_get_vdd(SECONDARY_DISPLAY_NDX);
 	int pre_temp = 0, temp;
 
-	if (IS_ERR_OR_NULL(vdd)) {
+	if (IS_ERR_OR_NULL(vdd_common)) {
 		LCD_ERR("no vdd");
 		return size;
 	}
 
-	pre_temp = vdd->br_info.temperature;
+	pre_temp = vdd_common->br_info.temperature;
 
 	if (sscanf(buf, "%d", &temp) != 1)
 		return size;
 
-	vdd->br_info.temperature = temp;
+	vdd_main->br_info.temperature = temp;
+	vdd_sub->br_info.temperature = temp;
 
 	/* When temperature changed, hbm_mode must setted 0 for EA8061 hbm setting. */
-	if (pre_temp != vdd->br_info.temperature && vdd->display_status_dsi.hbm_mode == 1)
-		vdd->display_status_dsi.hbm_mode = 0;
-
-	if (!ss_is_ready_to_send_cmd(vdd)) {
-		LCD_ERR("Panel is not ready. Panel State(%d)\n", vdd->panel_state);
-		return size;
+	if (pre_temp != vdd_main->br_info.temperature) {
+		if(vdd_main->display_status_dsi.hbm_mode == 1)
+			vdd_main->display_status_dsi.hbm_mode = 0;
+		if(vdd_sub->display_status_dsi.hbm_mode == 1)
+			vdd_sub->display_status_dsi.hbm_mode = 0;
 	}
 
-	ss_brightness_dcs(vdd, USE_CURRENT_BL_LEVEL, BACKLIGHT_NORMAL);
+	if (ss_is_ready_to_send_cmd(vdd_main)) {
+		ss_brightness_dcs(vdd_main, USE_CURRENT_BL_LEVEL, BACKLIGHT_NORMAL);
+		LCD_INFO("[DISPLAY_%d] temperature : %d", vdd_main->ndx, vdd_main->br_info.temperature);
+	} else {
+		LCD_ERR("Panel_%d is not ready. Panel State(%d)\n", vdd_main->ndx, vdd_main->panel_state);
+	}
 
-	LCD_INFO("temperature : %d", vdd->br_info.temperature);
+	if (vdd_sub->ndx == SECONDARY_DISPLAY_NDX) {
+		if (ss_is_ready_to_send_cmd(vdd_sub)) {
+			ss_brightness_dcs(vdd_sub, USE_CURRENT_BL_LEVEL, BACKLIGHT_NORMAL);
+			LCD_INFO("[DISPLAY_%d] temperature : %d", vdd_sub->ndx, vdd_sub->br_info.temperature);
+		} else {
+			LCD_ERR("Panel_%d is not ready. Panel State(%d)\n", vdd_sub->ndx, vdd_sub->panel_state);
+		}
+	}
 
 	return size;
 }
@@ -2413,6 +2429,9 @@ static ssize_t mipi_samsung_mcd_store(struct device *dev,
 	else
 		ss_send_cmd(vdd, TX_MCD_OFF);
 
+	if (vdd->panel_func.samsung_mcd_etc)
+		vdd->panel_func.samsung_mcd_etc(vdd, input);
+
 	/* C1 FA9 sometimes cannot turn off MCD mode, and keep black screen..
 	 * To debug this, read DDI dbg registers in evenry MCD setting, temporally..
 	 */
@@ -2423,6 +2442,120 @@ static ssize_t mipi_samsung_mcd_store(struct device *dev,
 		dsierror = ss_read_dsierr(vdd);
 
 		LCD_INFO("panel dbg after mcd: %x %x %x %x\n", rddpm, rddsm, errfg, dsierror);
+	}
+
+end:
+	return size;
+}
+
+enum BRIGHTDOT_STATE {
+	BRIGHTDOT_STATE_OFF = 0,
+	BRIGHTDOT_STATE_ON = 1,
+	BRIGHTDOT_LF_STATE_OFF = 2,
+	BRIGHTDOT_LF_STATE_ON = 3,
+	BRIGHTDOT_LF_STATE_MAX,
+};
+
+/* HOP display supports LFD mode using scan mode.
+ * But, some pixel dots have high voltage leakage more than expected,
+ * and it causes pixel dot blink issue in low LFD frequency and dark image..
+ * To detect above "brightdot" issue, add brightdot sysfs.
+ *
+ * LF BRIGHTDOT test: lowers LFD min/max frequency to 0.5hz, and detect brightdot pixel.
+ *
+ * During brightdot test, prevent whole brightntess setting,
+ * which changes brightdot setting.
+ */
+static ssize_t ss_brightdot_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int rc;
+
+	struct samsung_display_driver_data *vdd =
+			(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		return -ENODEV;
+	}
+
+	rc = sprintf(buf, "brightdot:%d lf_brightdot:%d\n",
+			!!(vdd->brightdot_state & BIT(0)),
+			!!(vdd->brightdot_state & BIT(1)));
+
+	LCD_INFO("state: %u, brightdot:%d lf_brightdot: %d\n",
+			vdd->brightdot_state,
+			!!(vdd->brightdot_state & BIT(0)),
+			!!(vdd->brightdot_state & BIT(1)));
+
+	return rc;
+}
+
+static ssize_t ss_brightdot_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+	u32 input;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		goto end;
+	}
+
+	if (!ss_is_ready_to_send_cmd(vdd)) {
+		LCD_ERR("Panel is not ready. Panel State(%d)\n", vdd->panel_state);
+		goto end;
+	}
+
+	if (sscanf(buf, "%d", &input) != 1 || input >= BRIGHTDOT_LF_STATE_MAX) {
+		LCD_ERR("invalid input(%u)\n", input);
+		goto end;
+	}
+
+	LCD_INFO("+ input: %u, state: %u, vrr_support_based_bl: %d, cur_rr: %d\n",
+			input, vdd->brightdot_state,
+			vdd->vrr.support_vrr_based_bl,
+			vdd->vrr.cur_refresh_rate);
+
+	if (vdd->panel_func.samsung_check_support_mode) {
+		if (!vdd->panel_func.samsung_check_support_mode(vdd, CHECK_SUPPORT_BRIGHTDOT)) {
+			LCD_ERR("invalid mode, skip brightdot test\n");
+			goto end;
+		}
+	}
+
+	mutex_lock(&vdd->bl_lock);
+	switch (input) {
+	case BRIGHTDOT_STATE_OFF:
+		vdd->brightdot_state &= ~BIT(0);
+		ss_send_cmd(vdd, TX_BRIGHTDOT_OFF);
+		break;
+	case BRIGHTDOT_STATE_ON:
+		vdd->brightdot_state |= BIT(0);
+		ss_send_cmd(vdd, TX_BRIGHTDOT_ON);
+		break;
+	case BRIGHTDOT_LF_STATE_OFF:
+		vdd->brightdot_state &= ~BIT(1);
+		ss_send_cmd(vdd, TX_BRIGHTDOT_LF_OFF);
+		break;
+	case BRIGHTDOT_LF_STATE_ON:
+		vdd->brightdot_state |= BIT(1);
+		ss_send_cmd(vdd, TX_BRIGHTDOT_LF_ON);
+		break;
+	default:
+		break;
+	};
+	mutex_unlock(&vdd->bl_lock);
+
+	LCD_INFO("- state: %u\n", vdd->brightdot_state);
+
+	/* BIT0: brightdot test, BIT1: brightdot test in LFD 0.5hz
+	 * allow brightness update in both brightdot test off case
+	 */
+	if (!vdd->brightdot_state) {
+		LCD_INFO("brightdot test is done, update brightness\n");
+		ss_brightness_dcs(vdd, USE_CURRENT_BL_LEVEL, BACKLIGHT_NORMAL);
 	}
 
 end:
@@ -2701,6 +2834,24 @@ static ssize_t mipi_samsung_poc_info_show(struct device *dev,
 	return strlen(buf);
 }
 
+static ssize_t ss_fw_update_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		return -ENODEV;
+	}
+
+	LCD_INFO("done : %d\n", vdd->fw_up.cmd_done);
+
+	snprintf(buf, PAGE_SIZE, "%d\n", vdd->fw_up.cmd_done);
+
+	return strlen(buf);
+}
+
 static ssize_t ss_fw_update_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
@@ -2722,6 +2873,7 @@ static ssize_t ss_fw_update_store(struct device *dev,
 	if (sscanf(buf, "%d ", &input) != 1)
 		return -EINVAL;
 
+	vdd->fw_up.cmd_done = false;
 	LCD_INFO("INPUT : (%d)\n", input);
 
 	if (input) {
@@ -2729,11 +2881,29 @@ static ssize_t ss_fw_update_store(struct device *dev,
 			LCD_ERR("FW Update func is null\n");
 			ret = FW_UP_ERR_UPDATE_FAIL;
 		} else {
-			ret = vdd->panel_func.samsung_fw_up(vdd);
+			ret = vdd->panel_func.samsung_fw_up(vdd, input);
 		}
 	}
 
 	return size;
+}
+
+static ssize_t ss_fw_id_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		return -ENODEV;
+	}
+
+	LCD_INFO("fw_id : %x\n", vdd->check_fw_id);
+
+	snprintf(buf, PAGE_SIZE, "%x\n", vdd->check_fw_id);
+
+	return strlen(buf);
 }
 
 static ssize_t xtalk_store(struct device *dev,
@@ -3162,13 +3332,23 @@ static ssize_t ss_disp_SVC_OCTA_DDI_CHIPID_show(struct device *dev,
 	vdd = ss_check_hall_ic_get_vdd(vdd);
 	ddi_id = vdd->ddi_id_dsi;
 
-	snprintf((char *)temp, sizeof(temp), "%02x%02x%02x%02x%02x\n",
-		ddi_id[0], ddi_id[1], ddi_id[2], ddi_id[3], ddi_id[4]);
+	if (vdd->dtsi_data.ddi_id_length == 6) {
+		snprintf((char *)temp, sizeof(temp), "%02x%02x%02x%02x%02x%02x\n",
+			ddi_id[0], ddi_id[1], ddi_id[2], ddi_id[3], ddi_id[4], ddi_id[5]);
 
-	strlcat(buf, temp, string_size);
+		strlcat(buf, temp, string_size);
 
-	LCD_INFO("%02x %02x %02x %02x %02x\n",
-		ddi_id[0], ddi_id[1], ddi_id[2], ddi_id[3], ddi_id[4]);
+		LCD_INFO("%02x %02x %02x %02x %02x %02x\n",
+			ddi_id[0], ddi_id[1], ddi_id[2], ddi_id[3], ddi_id[4], ddi_id[5]);
+	} else {
+		snprintf((char *)temp, sizeof(temp), "%02x%02x%02x%02x%02x\n",
+			ddi_id[0], ddi_id[1], ddi_id[2], ddi_id[3], ddi_id[4]);
+
+		strlcat(buf, temp, string_size);
+
+		LCD_INFO("%02x %02x %02x %02x %02x\n",
+			ddi_id[0], ddi_id[1], ddi_id[2], ddi_id[3], ddi_id[4]);
+	}
 
 	return strnlen(buf, string_size);
 }
@@ -4890,7 +5070,7 @@ static ssize_t ss_window_color_store(struct device *dev,
 {
 	struct samsung_display_driver_data *vdd =
 		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
-	char color[2];
+	char color[3];
 	int ret = 0;
 
 	if (IS_ERR_OR_NULL(vdd)) {
@@ -4918,6 +5098,46 @@ static ssize_t ss_window_color_store(struct device *dev,
 end:
 	return size;
 }
+
+static ssize_t ss_tcon_pre_emp_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	int len = 0;
+
+	len = sprintf(buf, "nothing to show.\n");
+	LCD_INFO("nothing to show.\n");
+	return len;
+}
+
+static ssize_t ss_tcon_pre_emp_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct samsung_display_driver_data *vdd =
+		(struct samsung_display_driver_data *)dev_get_drvdata(dev);
+	int input;
+
+	if (IS_ERR_OR_NULL(vdd)) {
+		LCD_ERR("no vdd");
+		return size;
+	}
+	if (!ss_is_ready_to_send_cmd(vdd)) {
+		LCD_ERR("Panel is not ready. Panel State(%d)\n", vdd->panel_state);
+		return size;
+	}
+
+	if (sscanf(buf, "%d", &input) != 1)
+		return size;
+
+	LCD_INFO("(%d)\n", input);
+
+	if (input)
+		ss_send_cmd(vdd, TX_TCON_PE_ON);
+	else
+		ss_send_cmd(vdd, TX_TCON_PE_OFF);
+
+	return size;
+}
+
 
 static DEVICE_ATTR(lcd_type, S_IRUGO, ss_disp_lcdtype_show, NULL);
 static DEVICE_ATTR(cell_id, S_IRUGO, ss_disp_cell_id_show, NULL);
@@ -4949,11 +5169,13 @@ static DEVICE_ATTR(alpm, S_IRUSR | S_IRGRP | S_IWUSR | S_IWGRP, ss_panel_lpm_mod
 static DEVICE_ATTR(hmt_bright, S_IRUGO | S_IWUSR | S_IWGRP, mipi_samsung_hmt_bright_show, mipi_samsung_hmt_bright_store);
 static DEVICE_ATTR(hmt_on, S_IRUGO | S_IWUSR | S_IWGRP,	mipi_samsung_hmt_on_show, mipi_samsung_hmt_on_store);
 static DEVICE_ATTR(mcd_mode, S_IRUGO | S_IWUSR | S_IWGRP, NULL, mipi_samsung_mcd_store);
+static DEVICE_ATTR(brightdot, S_IRUGO | S_IWUSR | S_IWGRP, ss_brightdot_show, ss_brightdot_store);
 static DEVICE_ATTR(mst, S_IRUGO | S_IWUSR | S_IWGRP, NULL, mipi_samsung_mst_store);
 static DEVICE_ATTR(poc, S_IRUGO | S_IWUSR | S_IWGRP, mipi_samsung_poc_show, mipi_samsung_poc_store);
 static DEVICE_ATTR(poc_mca, S_IRUGO | S_IWUSR | S_IWGRP, mipi_samsung_poc_mca_show, NULL);
 static DEVICE_ATTR(poc_info, S_IRUGO | S_IWUSR | S_IWGRP, mipi_samsung_poc_info_show, NULL);
-static DEVICE_ATTR(fw_up, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_fw_update_store);
+static DEVICE_ATTR(fw_up, S_IRUGO | S_IWUSR | S_IWGRP, ss_fw_update_show, ss_fw_update_store);
+static DEVICE_ATTR(fw_id, S_IRUGO | S_IWUSR | S_IWGRP, ss_fw_id_show, NULL);
 static DEVICE_ATTR(irc_mode, S_IRUGO | S_IWUSR | S_IWGRP, ss_irc_mode_show, ss_irc_mode_store);
 //static DEVICE_ATTR(ldu_correction, S_IRUGO | S_IWUSR | S_IWGRP, ss_ldu_correction_show, ss_ldu_correction_store);
 static DEVICE_ATTR(adaptive_control, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_adaptive_control_store);
@@ -4986,7 +5208,6 @@ static DEVICE_ATTR(gamma_flash, S_IRUGO | S_IWUSR | S_IWGRP, ss_disp_flash_gamma
 static DEVICE_ATTR(read_flash, S_IRUGO | S_IWUSR | S_IWGRP, ss_read_flash_show, ss_read_flash_store);
 static DEVICE_ATTR(test_aid, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_test_aid_store);
 
-
 static DEVICE_ATTR(spi_if_sel, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_spi_if_sel_store);
 static DEVICE_ATTR(ccd_state, S_IRUGO | S_IWUSR | S_IWGRP, ss_ccd_state_show, NULL);
 static DEVICE_ATTR(isc, S_IRUGO | S_IWUSR | S_IWGRP, NULL, ss_isc_store);
@@ -5006,6 +5227,7 @@ static DEVICE_ATTR(swing, S_IRUGO|S_IWUSR|S_IWGRP, ss_swing_show, ss_swing_store
 static DEVICE_ATTR(emphasis, S_IRUGO|S_IWUSR|S_IWGRP, ss_emphasis_show, ss_emphasis_store);
 static DEVICE_ATTR(ioctl_power_ctrl, S_IRUGO|S_IWUSR|S_IWGRP, ss_ioctl_power_ctrl_show, NULL);
 static DEVICE_ATTR(window_color, S_IRUGO | S_IWUSR | S_IWGRP, ss_window_color_show, ss_window_color_store);
+static DEVICE_ATTR(tcon_pe, S_IRUGO | S_IWUSR | S_IWGRP, ss_tcon_pre_emp_show, ss_tcon_pre_emp_store);
 
 static struct attribute *panel_sysfs_attributes[] = {
 	&dev_attr_lcd_type.attr,
@@ -5038,6 +5260,7 @@ static struct attribute *panel_sysfs_attributes[] = {
 	&dev_attr_hmt_bright.attr,
 	&dev_attr_hmt_on.attr,
 	&dev_attr_mcd_mode.attr,
+	&dev_attr_brightdot.attr,
 	&dev_attr_irc_mode.attr,
 //	&dev_attr_ldu_correction.attr,
 	&dev_attr_adaptive_control.attr,
@@ -5061,6 +5284,7 @@ static struct attribute *panel_sysfs_attributes[] = {
 	&dev_attr_poc_mca.attr,
 	&dev_attr_poc_info.attr,
 	&dev_attr_fw_up.attr,
+	&dev_attr_fw_id.attr,
 	&dev_attr_dpui.attr,
 	&dev_attr_dpui_dbg.attr,
 	&dev_attr_dpci.attr,
@@ -5086,6 +5310,7 @@ static struct attribute *panel_sysfs_attributes[] = {
 	&dev_attr_vrr_lfd.attr,
 	&dev_attr_ioctl_power_ctrl.attr,
 	&dev_attr_window_color.attr,
+	&dev_attr_tcon_pe.attr,
 	NULL
 };
 static const struct attribute_group panel_sysfs_group = {

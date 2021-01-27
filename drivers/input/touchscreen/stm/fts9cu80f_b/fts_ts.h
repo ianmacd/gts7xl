@@ -190,7 +190,7 @@
 #define FTS_INFO_READY_STATUS			0x00
 #define FTS_INFO_WET_MODE			0x01
 #define FTS_INFO_NOISE_MODE			0x02
-
+#define FTS_INFO_XENOSENSOR_DETECT		0x04
 
 // Scan mode for A0 command
 #define FTS_SCAN_MODE_SCAN_OFF			0
@@ -225,17 +225,19 @@
 #define FTS_BIT_CHARGER_MODE_WIRELESS_BATTERY_PACK	3
 
 // For 0xC1 command - on/off function
-#define FTS_FUNCTION_EDGE_HANDLER			0x00	/* used for grip cmd */
 #define FTS_FUNCTION_ENABLE_SIP_MODE			0x00
 #define FTS_FUNCTION_SET_MONITOR_NOISE_MODE		0x01
 #define FTS_FUNCTION_ENABLE_BRUSH_MODE			0x02
-#define FTS_FUNCTION_LANDSCAPE_MODE			0x03	/* used for grip cmd */
 #define FTS_FUNCTION_ENABLE_DEAD_ZONE			0x04	/* *#0*# */
 #define FTS_FUNCTION_ENABLE_SPONGE_LIB			0x05
-#define FTS_FUNCTION_LANDSCAPE_TOP_BOTTOM		0x06	/* used for grip cmd */
-#define FTS_FUNCTION_DEAD_ZONE				0x07	/* used for grip cmd */
-#define FTS_FUNCTION_EDGE_AREA				0x08	/* used for grip cmd */
+#define FTS_FUNCTION_EDGE_AREA				0x07	/* used for grip cmd */
+#define FTS_FUNCTION_DEAD_ZONE				0x08	/* used for grip cmd */
+#define FTS_FUNCTION_LANDSCAPE_MODE			0x09	/* used for grip cmd */
+#define FTS_FUNCTION_LANDSCAPE_TOP_BOTTOM		0x0A	/* used for grip cmd */
+#define FTS_FUNCTION_EDGE_HANDLER			0x0C	/* used for grip cmd */
+#define FTS_FUNCTION_ENABLE_VSYNC			0x0D
 #define FTS_FUNCTION_SET_TOUCHABLE_AREA			0x0F
+#define FTS_FUNCTION_SET_GAME_MODE			0x11
 
 /* FTS DEBUG FLAG */
 #define FTS_DEBUG_PRINT_I2C_READ_CMD			0x04
@@ -252,6 +254,7 @@
 #define FTS_SPONGE_EVENT_SWIPE_UP			0
 #define FTS_SPONGE_EVENT_DOUBLETAP			1
 #define FTS_SPONGE_EVENT_SINGLETAP			4
+#define FTS_SPONGE_EVENT_LARGE_PALM			6
 
 /* gesture ID */
 #define FTS_SPONGE_EVENT_GESTURE_ID_AOD			0
@@ -767,6 +770,13 @@ struct fts_ts_info {
 	u8 lowpower_flag;
 	bool deepsleep_mode;
 	bool wet_mode;
+	bool xenosensor_detect;
+	unsigned int xenosensor_detect_count;	/* noise mode count */
+	struct tm xenosensor_time;
+	u16 xenosensor_x;
+	u16 xenosensor_y;
+	u16 xenosensor_detect_x;
+	u16 xenosensor_detect_y;
 	volatile int fts_power_state;
 	int wakeful_edge_side;
 	struct completion resume_done;
@@ -843,6 +853,7 @@ struct fts_ts_info {
 	struct completion st_powerdown;
 	struct completion st_interrupt;
 	struct sec_touch_driver *ss_drv;
+	struct mutex st_lock;
 #endif
 	struct mutex i2c_mutex;
 	struct mutex irq_mutex;
@@ -869,6 +880,8 @@ struct fts_ts_info {
 	u16 grip_landscape_deadzone;
 	u16 grip_landscape_top_deadzone;
 	u16 grip_landscape_bottom_deadzone;
+	u16 grip_landscape_top_gripzone;
+	u16 grip_landscape_bottom_gripzone;
 
 	u16 rect_data[4];
 	u8 ito_test[4];
@@ -876,7 +889,6 @@ struct fts_ts_info {
 	bool read_ito;
 	unsigned int multi_count;
 	unsigned int wet_count;
-	unsigned int dive_count;
 	unsigned int comm_err_count;
 	unsigned int checksum_result;
 	unsigned int all_finger_count;

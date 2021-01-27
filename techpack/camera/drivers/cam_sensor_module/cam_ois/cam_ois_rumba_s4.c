@@ -1924,4 +1924,3 @@ void cam_ois_reset(void *ctrl)
 
 	CAM_INFO(CAM_OIS, "X");
 }
-

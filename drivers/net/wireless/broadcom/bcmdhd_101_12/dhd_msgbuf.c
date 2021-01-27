@@ -1554,7 +1554,7 @@ dhd_pktid_logging_init(dhd_pub_t *dhd, uint32 num_items)
 	dhd_pktid_log_t *log;
 	uint32 log_size;
 
-	log_size = DHD_PKTID_LOG_SZ(num_items);
+	log_size = (uint32)DHD_PKTID_LOG_SZ(num_items);
 	log = (dhd_pktid_log_t *)MALLOCZ(dhd->osh, log_size);
 	if (log == NULL) {
 		DHD_ERROR(("%s: MALLOC failed for size %d\n",
@@ -1580,7 +1580,7 @@ dhd_pktid_logging_fini(dhd_pub_t *dhd, dhd_pktid_log_handle_t *handle)
 	}
 
 	log = (dhd_pktid_log_t *)handle;
-	log_size = DHD_PKTID_LOG_SZ(log->items);
+	log_size = (uint32)DHD_PKTID_LOG_SZ(log->items);
 	MFREE(dhd->osh, handle, log_size);
 }
 

@@ -4400,8 +4400,13 @@ wl_cfg80211_post_ifcreate(struct net_device *ndev,
 	}
 
 	if (iface_type == NL80211_IFTYPE_P2P_CLIENT) {
+		struct ether_addr *p2p_addr;
 		s16 cfg_type = wl_cfgp2p_get_conn_idx(cfg);
-		struct ether_addr *p2p_addr = wl_to_p2p_bss_macaddr(cfg, cfg_type);
+		if (cfg_type < BCME_OK) {
+			WL_ERR(("Failed to get connection idx for p2p interface"));
+			goto fail;
+		}
+		p2p_addr = wl_to_p2p_bss_macaddr(cfg, cfg_type);
 
 		/* check if pre-registered mac matches the mac from dongle via WLC_E_LINK */
 		if (memcmp(p2p_addr->octet, addr, ETH_ALEN)) {
@@ -19385,12 +19390,6 @@ static s32 __wl_cfg80211_down(struct bcm_cfg80211 *cfg)
 #endif /* PROP_TXSTATUS_VSDB */
 	}
 
-#ifdef WL_NAN
-	mutex_lock(&cfg->if_sync);
-	wl_cfgnan_check_nan_disable_pending(cfg, true, false);
-	mutex_unlock(&cfg->if_sync);
-#endif /* WL_NAN */
-
 #ifdef WL_SAR_TX_POWER
 	cfg->wifi_tx_power_mode = WIFI_POWER_SCENARIO_INVALID;
 #endif /* WL_SAR_TX_POWER */
@@ -19501,9 +19500,7 @@ static s32 __wl_cfg80211_down(struct bcm_cfg80211 *cfg)
 		wl_cfgp2p_down(cfg);
 	}
 
-	if (timer_pending(&cfg->scan_timeout)) {
-		del_timer_sync(&cfg->scan_timeout);
-	}
+	del_timer_sync(&cfg->scan_timeout);
 
 	wl_cfg80211_clear_mgmt_vndr_ies(cfg);
 	DHD_OS_SCAN_WAKE_UNLOCK((dhd_pub_t *)(cfg->pub));
@@ -19720,6 +19717,12 @@ s32 wl_cfg80211_down(struct net_device *dev)
 	WL_DBG(("In\n"));
 
 	if (cfg) {
+#ifdef WL_NAN
+		mutex_lock(&cfg->if_sync);
+		wl_cfgnan_check_nan_disable_pending(cfg, true, false);
+		mutex_unlock(&cfg->if_sync);
+#endif /* WL_NAN */
+
 		mutex_lock(&cfg->usr_sync);
 		err = __wl_cfg80211_down(cfg);
 		mutex_unlock(&cfg->usr_sync);

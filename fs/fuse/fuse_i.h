@@ -29,8 +29,17 @@
 #include <linux/user_namespace.h>
 #include <linux/freezer.h>
 
-/** Max number of pages that can be used in a single read request */
-#define FUSE_MAX_PAGES_PER_REQ 32
+#ifdef CONFIG_FUSE_SUPPORT_STLOG
+#include <linux/fslog.h>
+#else
+#define ST_LOG(fmt, ...)
+#endif
+
+/** Default max number of pages that can be used in a single read request */
+#define FUSE_DEFAULT_MAX_PAGES_PER_REQ 32
+
+/** Maximum of max_pages received in init_out */
+#define FUSE_MAX_MAX_PAGES 256
 
 /** Bias for fi->writectr, meaning new writepages must not be sent */
 #define FUSE_NOWRITE INT_MIN
@@ -119,6 +128,8 @@ enum {
 	FUSE_I_INIT_RDPLUS,
 	/** An operation changing file size is in progress  */
 	FUSE_I_SIZE_UNSTABLE,
+	/** Can be filled in by open, to use direct I/O on this file. */
+	FUSE_I_ATTR_FORCE_SYNC,
 };
 
 struct fuse_conn;
@@ -482,6 +493,9 @@ struct fuse_conn {
 
 	/** Maximum write size */
 	unsigned max_write;
+
+	/** Maxmum number of pages that can be used in a single request */
+	unsigned int max_pages;
 
 	/** Input queue */
 	struct fuse_iqueue iq;
@@ -913,6 +927,8 @@ void fuse_ctl_remove_conn(struct fuse_conn *fc);
  */
 int fuse_valid_type(int m);
 
+bool fuse_invalid_attr(struct fuse_attr *attr);
+
 /**
  * Is current process allowed to perform filesystem operation?
  */
@@ -999,20 +1015,35 @@ struct posix_acl;
 struct posix_acl *fuse_get_acl(struct inode *inode, int type);
 int fuse_set_acl(struct inode *inode, struct posix_acl *acl, int type);
 
+#ifdef CONFIG_FREEZER
+static inline void fuse_freezer_do_not_count(void)
+{
+	current->flags |= PF_FREEZER_SKIP;
+}
+
+static inline void fuse_freezer_count(void)
+{
+	current->flags &= ~PF_FREEZER_SKIP;
+}
+#else /* !CONFIG_FREEZER */
+static inline void fuse_freezer_do_not_count(void) {}
+static inline void fuse_freezer_count(void) {}
+#endif
+
 #define fuse_wait_event(wq, condition)						\
 ({										\
-	freezer_do_not_count();							\
+	fuse_freezer_do_not_count();						\
 	wait_event(wq, condition);						\
-	freezer_count();							\
+	fuse_freezer_count();							\
 })
 
 #define fuse_wait_event_killable(wq, condition)					\
 ({										\
 	int __ret = 0;								\
 										\
-	freezer_do_not_count();							\
-	__ret = wait_event_killable(wq, condition);					\
-	freezer_count();							\
+	fuse_freezer_do_not_count();						\
+	__ret = wait_event_killable(wq, condition);				\
+	fuse_freezer_count();							\
 										\
 	__ret;									\
 })
@@ -1021,9 +1052,9 @@ int fuse_set_acl(struct inode *inode, struct posix_acl *acl, int type);
 ({										\
 	int __ret = 0;								\
 										\
-	freezer_do_not_count();							\
-	__ret = wait_event_killable_exclusive(wq, condition);				\
-	freezer_count();							\
+	fuse_freezer_do_not_count();						\
+	__ret = wait_event_killable_exclusive(wq, condition);			\
+	fuse_freezer_count();							\
 										\
 	__ret;									\
 })

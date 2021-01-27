@@ -242,9 +242,24 @@ config SAMSUNG_ACTUATOR_SOFTLANDING
 	---help---
 	Enables support for actuator softlanding
 
+config SAMSUNG_FRONT_FIXED_FOCUS
+	tristate "front camera fixed focus support"
+	depends on SPECTRA_CAMERA
+	default n
+	---help---
+	Enables support for front camera fixed focus
+
 config USE_CAMERA_HW_BIG_DATA
 	bool "CAMERA HW SYS"
 	depends on SPECTRA_CAMERA
 	default n
 	---help---
 	CAMERA HW SYS.
+
+config SAMSUNG_SUPPORT_REMOSAIC_MFNR_FEATURE
+        tristate "Remosaic MFNR Support"
+        depends on SPECTRA_CAMERA
+        default n
+        ---help---
+        Enables support for Remosaic MFNR
+

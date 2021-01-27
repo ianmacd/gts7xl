@@ -910,9 +910,26 @@ out_i2c_lock:
 static irqreturn_t stm32_dev_isr(int irq, void *dev_id)
 {
 	struct stm32_dev *stm32 = (struct stm32_dev *)dev_id;
+	int ret = 0;
 
 	if (gpio_get_value(stm32->dtdata->gpio_int))
 		return IRQ_HANDLED;
+
+	if (stm32->stm32_bus_perf_client) {
+		cancel_delayed_work(&stm32->bus_voting_work);
+		if (stm32->voting_flag == STM32_BUS_VOTING_NONE) {
+			ret = msm_bus_scale_client_update_request(stm32->stm32_bus_perf_client, STM32_BUS_VOTING_UP);
+			if (ret) {
+				input_info(true, &stm32->client->dev, "%s: voting failed ret:%d\n", __func__, ret);
+			} else {
+				input_info(true, &stm32->client->dev, "%s: voting success ret:%d\n", __func__, ret);
+				stm32->voting_flag = STM32_BUS_VOTING_UP;
+			}
+		}
+	}
+
+	if (stm32->stm32_bus_perf_client)
+		schedule_delayed_work(&stm32->bus_voting_work, msecs_to_jiffies(15000));
 
 	mutex_lock(&stm32->dev_lock);
 	stm32_dev_int_proc(stm32);
@@ -1154,6 +1171,25 @@ static void stm32_check_init_work(struct work_struct *work)
 		stm32_keyboard_connect(data);
 	}
 		
+}
+
+static void stm32_bus_voting_work(struct work_struct *work)
+{
+	struct stm32_dev *data = container_of((struct delayed_work *)work,
+			struct stm32_dev, bus_voting_work);
+	int ret = 0;
+
+	input_info(true, &data->client->dev, "%s: voting NONE\n", __func__);
+	if (data->stm32_bus_perf_client) {
+		if (data->voting_flag == STM32_BUS_VOTING_UP) {
+			ret = msm_bus_scale_client_update_request(data->stm32_bus_perf_client, STM32_BUS_VOTING_NONE);
+			if (ret) {
+				input_info(true, &data->client->dev, "%s: voting failed ret:%d\n", __func__, ret);
+			} else {
+				data->voting_flag = STM32_BUS_VOTING_NONE;
+			}
+		}
+	}
 }
 
 static irqreturn_t stm32_conn_isr(int irq, void *dev_id)
@@ -1801,6 +1837,24 @@ static ssize_t stm32_dev_fw_update(struct device *dev,
 		return snprintf(buf, 3, "NG");
 }
 
+static ssize_t get_mcu_fw_ver(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct stm32_dev *stm32 = dev_get_drvdata(dev);
+	int ret = 0;
+
+	if (stm32->connect_state)
+		return snprintf(buf, 3, "NG");
+
+	ret = stm32_dev_get_ic_ver(stm32);
+	if (ret < 0)
+		return snprintf(buf, 3, "NG");
+
+	if (stm32->mdata.phone_ver[3] == stm32->mdata.ic_ver[3])
+		return snprintf(buf, 3, "%2x", stm32->mdata.ic_ver[3]);
+	else
+		return snprintf(buf, 3, "NG");
+}
 
 static DEVICE_ATTR(keyboard_connected, 0644, keyboard_connected_show, keyboard_connected_store);
 static DEVICE_ATTR(hw_reset, 0444, hw_reset_show, NULL);
@@ -1818,6 +1872,8 @@ static DEVICE_ATTR(read_cmd, 0200, NULL, pogo_i2c_read);
 static DEVICE_ATTR(get_tc_fw_ver_bin, 0444, pogo_get_tc_fw_ver_bin, NULL);
 static DEVICE_ATTR(get_tc_fw_ver_ic, 0444, pogo_get_tc_fw_ver_ic, NULL);
 static DEVICE_ATTR(get_tc_crc, 0444, pogo_get_tc_crc, NULL);
+static DEVICE_ATTR(get_mcu_fw_ver, 0444, get_mcu_fw_ver, NULL);
+
 
 static struct attribute *key_attributes[] = {
 	&dev_attr_keyboard_connected.attr,
@@ -1836,6 +1892,7 @@ static struct attribute *key_attributes[] = {
 	&dev_attr_get_tc_fw_ver_bin.attr,
 	&dev_attr_get_tc_fw_ver_ic.attr,
 	&dev_attr_get_tc_crc.attr,
+	&dev_attr_get_mcu_fw_ver.attr,
 	NULL,
 };
 
@@ -1990,6 +2047,15 @@ static int stm32_dev_probe(struct i2c_client *client,
 	enable_irq_wake(device_data->conn_irq);
 	stm32_enable_irq(device_data, INT_DISABLE_NOSYNC);
 
+	device_data->stm32_bus_scale_table = msm_bus_cl_get_pdata_from_dev(&client->dev);
+	if (device_data->stm32_bus_scale_table) {
+		device_data->stm32_bus_perf_client = msm_bus_scale_register_client(device_data->stm32_bus_scale_table);
+		input_info(true, &client->dev, "%s request success bus_scale:%d\n", __func__, device_data->stm32_bus_perf_client);
+		device_data->voting_flag = STM32_BUS_VOTING_NONE;
+	} else {
+		input_info(true, &client->dev, "%s msm_bus_cl_get_pdata failed\n", __func__);
+	}
+
 	device_data->sec_pogo = sec_device_create(device_data, "sec_keypad");
 
 	if (IS_ERR(device_data->sec_pogo)) {
@@ -2012,6 +2078,8 @@ static int stm32_dev_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&device_data->print_info_work, stm32_print_info_work);
 	INIT_DELAYED_WORK(&device_data->check_conn_work, stm32_check_conn_work);
 	INIT_DELAYED_WORK(&device_data->check_init_work, stm32_check_init_work);
+	if (device_data->stm32_bus_perf_client)
+		INIT_DELAYED_WORK(&device_data->bus_voting_work, stm32_bus_voting_work);
 
 	device_data->connect_state = gpio_get_value(device_data->dtdata->gpio_conn);
 	if (device_data->connect_state)
@@ -2028,6 +2096,8 @@ static int stm32_dev_probe(struct i2c_client *client,
 err_create_group:
 	sec_device_destroy(15);
 err_create_device:
+	if (device_data->stm32_bus_perf_client)
+		msm_bus_scale_unregister_client(device_data->stm32_bus_perf_client);
 interrupt_err:
 err_firmware_update:
 	i2c_unregister_device(client);
@@ -2067,6 +2137,13 @@ static int stm32_dev_remove(struct i2c_client *client)
 	cancel_delayed_work_sync(&device_data->check_ic_work);
 	cancel_delayed_work_sync(&device_data->check_conn_work);
 	cancel_delayed_work_sync(&device_data->check_init_work);
+
+	if (device_data->stm32_bus_perf_client) {
+		cancel_delayed_work_sync(&device_data->bus_voting_work);
+		stm32_bus_voting_work(&device_data->bus_voting_work.work);
+		msm_bus_scale_unregister_client(device_data->stm32_bus_perf_client);
+	}
+
 	device_init_wakeup(&client->dev, 0);
 	wake_lock_destroy(&device_data->stm_wake_lock);
 
@@ -2102,6 +2179,11 @@ static int stm32_dev_suspend(struct device *dev)
 		input_err(true, &device_data->client->dev,
 				"%s: i2c is not handled, error %d\n",
 				__func__, ret);
+	}
+
+	if (device_data->stm32_bus_perf_client) {
+		cancel_delayed_work(&device_data->bus_voting_work);
+		stm32_bus_voting_work(&device_data->bus_voting_work.work);
 	}
 
 	cancel_delayed_work(&device_data->print_info_work);

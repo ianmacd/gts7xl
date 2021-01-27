@@ -40,6 +40,9 @@
 #define SPEC_MAX_IDX 1
 #define PASS 0
 #define FAIL (-1)
+#define ERR_NO_CNT_CNTL2 (-2)
+#define ERR_NO_CNT_WAIT (-3)
+#define ERR_NO_CNT_READ (-4)
 #define DEGREE_180 180
 #define DEGREE_90 90
 #define DEGREE_0 0
@@ -169,6 +172,9 @@ static ssize_t digital_hall_selftest_show(struct device *dev,
 		data->msg_buf[MSG_DIGITAL_HALL][6], data->msg_buf[MSG_DIGITAL_HALL][7],
 		data->msg_buf[MSG_DIGITAL_HALL][8], data->msg_buf[MSG_DIGITAL_HALL][9],
 		data->msg_buf[MSG_DIGITAL_HALL][10]);
+
+	if (data->msg_buf[MSG_DIGITAL_HALL][1] != PASS)
+		data->msg_buf[MSG_DIGITAL_HALL][1] = FAIL;
 
 	return snprintf(buf, PAGE_SIZE, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
 		data->msg_buf[MSG_DIGITAL_HALL][0], data->msg_buf[MSG_DIGITAL_HALL][1],

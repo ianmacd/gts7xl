@@ -79,6 +79,16 @@ struct AP_REQ_GET_STATUS_Type {
 };
 #endif
 
+#define NAME_LEN_HMD	14
+#define MAX_NUM_HMD	32
+#define TAG_HMD	"HMD"
+
+struct max77705_hmd_power_dev {
+	uint vid;
+	uint pid;
+	char hmd_name[NAME_LEN_HMD];
+};
+
 struct max77705_usbc_platform_data {
 	struct max77705_dev *max77705;
 	struct device *dev;
@@ -266,6 +276,8 @@ struct max77705_usbc_platform_data {
 	bool set_booster;
 	struct delayed_work acc_booster_off_work;
 #endif
+	struct mutex hmd_power_lock;
+	struct max77705_hmd_power_dev  *hmd_list;
 };
 
 /* Function Status from s2mm005 definition */
@@ -273,7 +285,6 @@ typedef enum {
 	max77705_State_PE_Initial_detach	= 0,
 	max77705_State_PE_SRC_Send_Capabilities = 3,
 	max77705_State_PE_SNK_Wait_for_Capabilities = 17,
-	max77705_State_PE_SNK_Ready = 21,
 } max77705_pd_state_t;
 
 typedef enum {
@@ -344,6 +355,7 @@ extern void max77705_clk_booster_set(void *data, int on);
 #if defined(CONFIG_TYPEC)
 int max77705_get_pd_support(struct max77705_usbc_platform_data *usbc_data);
 #endif
+bool max77705_check_hmd_dev(struct max77705_usbc_platform_data *usbpd_data);
 
 extern const uint8_t BOOT_FLASH_FW_PASS2[];
 extern const uint8_t BOOT_FLASH_FW_PASS3[];

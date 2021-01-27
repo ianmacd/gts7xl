@@ -382,9 +382,15 @@ struct max77705_dev {
 
 	int set_altmode;
 
+	bool suspended;
+	wait_queue_head_t suspend_wait;
+
 	wait_queue_head_t queue_empty_wait_q;
 	int doing_irq;
 	int is_usbc_queue;
+
+	int enable_nested_irq;    
+	u8 usbc_irq;
 
 	struct max77705_platform_data *pdata;
 };
@@ -401,6 +407,7 @@ extern int max77705_read_reg(struct i2c_client *i2c, u8 reg, u8 *dest);
 extern int max77705_bulk_read(struct i2c_client *i2c, u8 reg, int count,
 				u8 *buf);
 extern int max77705_write_reg(struct i2c_client *i2c, u8 reg, u8 value);
+extern int max77705_write_reg_nolock(struct i2c_client *i2c, u8 reg, u8 value);
 extern int max77705_bulk_write(struct i2c_client *i2c, u8 reg, int count,
 				u8 *buf);
 extern int max77705_write_word(struct i2c_client *i2c, u8 reg, u16 value);

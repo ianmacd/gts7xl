@@ -579,6 +579,7 @@
 			64	24700	25099	412
 			65	25100	25500	420
 		>;
+		/* GRAY/ BRONZE use same table_revA 50/183/300/420/670/1000 */
 		samsung,multi_to_one_candela_map_table_revA = <
 		/* <idx>  <from>  <end> <cd> */
 			24	0	2399	50
@@ -586,67 +587,25 @@
 			53	4900	7299	300
 			65	7300	9599	420
  		>;
-		/* BLACK/ Copper use same table */
 		samsung,hbm_candela_map_table_revA = <
 			0	9600	11999	670	5
 			1	12000	25501	1000	6
 		>;
-#if 0
-		/* BLACK */
-		samsung,multi_to_one_candela_map_table_revA = <
-		/* <idx>  <from>  <end> <cd> */
-			5	0		2399	15
-			26	2400	4899	56
-			35	4900	7299	98
-			41	7300	9599	143
-			45	9600	11999	183
-			65	12000	25500	420
- 		>;
-		/* PUPPLE */
+
+		/* WHITE uses table_revK 32/119/207/282/440/666 */
 		samsung,multi_to_one_candela_map_table_revK = <
 		/* <idx>  <from>  <end> <cd> */
-			18	0		2399	34
-			40	2400	4899	134
-			49	4900	7299	234
-			55	7300	9599	333
-			65	9600	11999	420
+			17	0	2399	32			/* BLOOMX_TODO : need to modify proper idx & cd values for WHITE */
+			38	2400	4899	119
+			47	4900	7299	207
+			52	7300	9599	282
  		>;
-		/* GOLD */
-		samsung,multi_to_one_candela_map_table_revL = <
-		/* <idx>  <from>  <end> <cd> */
-			15	0		2399	29
-			34	2400	4899	93
-			43	4900	7299	162
-			48	7300	9599	220
-			52	9600	11999	282
- 		>;
-		/* TOMBROWN */
-		samsung,multi_to_one_candela_map_table_revM = <
-		/* <idx>  <from>  <end> <cd> */
-			5	0		2399	15
-			26	2400	4899	56
-			35	4900	7299	98
-			41	7300	9599	143
-			45	9600	11999	183
-			65	12000	25500	420
- 		>;
-		/* BLACK do not use HBM */
-		samsung,hbm_candela_map_table_revA = <
-			0	25501	25501	0	0
-		>;
-		/* PUPPLE */
+
 		samsung,hbm_candela_map_table_revK = <
-			0	12000	25500	1000	6
+			0	9600	11999	440	5		/* BLOOMX_TODO : need to modify proper just cd value for WHITE */
+			1	12000	25501	666	6
 		>;
-		/* GOLD */
-		samsung,hbm_candela_map_table_revL = <
-			0	12000	25500	670	6
-		>;
-		/* TOMBROWN do not use HBM */
-		samsung,hbm_candela_map_table_revM = <
-			0	25501	25501	0	0
-		>;
-#endif
+
 		/*
 		* ************************************************************************************************************************
 		*  VINT

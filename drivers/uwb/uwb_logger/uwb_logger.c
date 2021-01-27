@@ -98,7 +98,7 @@ void uwb_logger_print(const char *fmt, ...)
 	g_curpos += len;
 }
 
-void uwb_print_hex_dump(void *buf, void *pref, size_t size)
+void uwb_print_hex_dump(void *buf, void *pref, uint32_t size)
 {
 	uint8_t *ptr = buf;
 	uint32_t i;
