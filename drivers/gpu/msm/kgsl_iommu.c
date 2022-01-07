@@ -655,7 +655,7 @@ static void _get_entries(struct kgsl_process_private *private,
 		prev->flags = p->memdesc.flags;
 		prev->priv = p->memdesc.priv;
 		prev->pending_free = p->pending_free;
-		prev->pid = private->pid;
+		prev->pid = pid_nr(private->pid);
 		__kgsl_get_memory_usage(prev);
 	}
 
@@ -665,7 +665,7 @@ static void _get_entries(struct kgsl_process_private *private,
 		next->flags = n->memdesc.flags;
 		next->priv = n->memdesc.priv;
 		next->pending_free = n->pending_free;
-		next->pid = private->pid;
+		next->pid = pid_nr(private->pid);
 		__kgsl_get_memory_usage(next);
 	}
 }
@@ -795,21 +795,9 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	private = kgsl_iommu_get_process(ptbase);
 
 	if (private) {
-		pid = private->pid;
+		pid = pid_nr(private->pid);
 		tid = private->tid;
 		comm = private->comm;
-#if defined(CONFIG_DISPLAY_SAMSUNG)
-		if ((strncmp(comm, "provider@3.0-se", 15) == 0) ||
-			(strncmp(comm, "roid.app.camera", 15) == 0)) {
-			adreno_dev->ft_pf_policy = (
-				(1 << KGSL_FT_PAGEFAULT_INT_ENABLE) |
-				(1 << KGSL_FT_PAGEFAULT_GPUHALT_ENABLE));
-			device->force_panic = true;
-			dev_err(device->dev, "### comm: %s, flags: 0x%08x, ft_pf_policy : 0x%08lx\n",
-				private->comm, flags, adreno_dev->ft_pf_policy);
-			flags |= IOMMU_FAULT_TRANSACTION_STALLED;
-		}
-#endif
 	}
 
 	if (pt->name == KGSL_MMU_SECURE_PT)
@@ -2536,6 +2524,11 @@ static int get_gpuaddr(struct kgsl_pagetable *pagetable,
 		return -ENOMEM;
 	}
 
+	/*
+	 * This path is only called in a non-SVM path with locks so we can be
+	 * sure we aren't racing with anybody so we don't need to worry about
+	 * taking the lock
+	 */
 	ret = _insert_gpuaddr(pagetable, addr, size);
 	spin_unlock(&pagetable->lock);
 

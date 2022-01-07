@@ -3,9 +3,7 @@
         - get Toolchain
                 From android git serveru, codesourcery and etc ..
                 - gcc/linux-x86/aarch64/aarch64-linux-android-4.9/bin/aarch64-linux-android-
-                From Qualcomm developer network (https://developer.qualcomm.com/software/snapdragon-llvm-compiler-android/tools)
-                - llvm-arm-toolchain-ship/10.0/
-                
+
         - make output folder 
                 EX) OUTPUT_DIR=out
                 $ mkdir out

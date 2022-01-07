@@ -22,6 +22,7 @@
 #include <linux/spinlock.h>
 #include <linux/wakelock.h>
 #include <linux/input/pogo_i2c_notifier.h>
+#include "stm/stm32l0/stm32_pogo_i2c.h"
 
 enum LID_POSITION {
 	E_LID_0 = 1,
@@ -43,7 +44,7 @@ struct hall_drvdata {
 	struct notifier_block			pogo_nb;
 };
 
-static int hall_logical_status = 1;
+static int hall_logical_status = 0;
 
 static ssize_t hall_logical_detect_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
@@ -62,7 +63,7 @@ static DEVICE_ATTR(hall_logical_detect, 0444, hall_logical_detect_show, NULL);
 static int hall_logical_open(struct input_dev *input)
 {
 	/* Report current state of buttons that are connected to GPIOs */
-	input_report_switch(input, SW_FLIP, 0);
+	input_report_switch(input, SW_FLIP, hall_logical_status);
 	input_sync(input);
 
 	return 0;
@@ -272,20 +273,17 @@ static struct platform_driver hall_device_driver = {
 	}
 };
 
-static int __init hall_logical_init(void)
+int hall_logical_init(void)
 {
 	pr_info("%s start\n", __func__);
-	return platform_driver_register(&hall_device_driver);
+	return platform_driver_probe(&hall_device_driver, hall_logical_probe);
 }
 
-static void __exit hall_logical_exit(void)
+void hall_logical_exit(void)
 {
 	pr_info("%s start\n", __func__);
 	platform_driver_unregister(&hall_device_driver);
 }
-
-late_initcall(hall_logical_init);
-module_exit(hall_logical_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("jjuny79.kim <jjuny79.kim@samsung.com>");
