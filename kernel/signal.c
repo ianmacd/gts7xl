@@ -1218,10 +1218,13 @@ static int send_signal(int sig, struct siginfo *info, struct task_struct *t,
 #endif
 
 	/* [SystemF/W, si_code is 0 : from userspace, si_code is over 0 : from kernel */
-	if ((current->pid != 1) && ((sig == SIGKILL && !strncmp("main", t->group_leader->comm, 4))
-			|| ((sig == SIGKILL || sig == SIGSEGV) && !strncmp("system_server", t->group_leader->comm, 13)))) {
-		pr_info("Send signal %d from %s(%d) to %s(%d) : %d\n",
-					sig, current->comm, current->pid, t->comm, t->pid, info->si_code);
+	if (!is_si_special(info)) {
+		if ((current->pid != 1) && ((sig == SIGKILL && !strncmp("main", t->group_leader->comm, 4))
+				|| ((sig == SIGKILL || sig == SIGSEGV)
+					&& !strncmp("system_server", t->group_leader->comm, 13)))) {
+			pr_info("Send signal %d from %s(%d) to %s(%d) : %d\n",
+						sig, current->comm, current->pid, t->comm, t->pid, info->si_code);
+		}
 	}
 	/* SystemF/W]*/
 
